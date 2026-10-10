@@ -331,7 +331,7 @@ func (s *Service) setApplicationRoles(ctx context.Context, in *setApplicationRol
 			return nil, huma.Error422UnprocessableEntity("「所有者」不能分配给 Application")
 		}
 	}
-	err = s.q.SetApplicationRoles(ctx, sqlc.SetApplicationRolesParams{ClientID: in.ClientID, Api: app.DefaultAPI, Roles: in.Body.Roles})
+	err = s.q.SetApplicationRoles(ctx, sqlc.SetApplicationRolesParams{ClientID: in.ClientID, Api: app.DefaultAPI, Roles: in.Body.Roles, By: callerSub(ctx)})
 	if isFKViolation(err) {
 		return nil, huma.Error422UnprocessableEntity("没有这个 Role")
 	}

@@ -154,15 +154,19 @@ WHERE roles.api = @api AND roles.key = @key AND NOT roles.builtin
                              AND NOT EXISTS (SELECT 1 FROM application_roles ar WHERE ar.api = roles.api AND ar.role = roles.key));
 
 -- name: SetApplicationRoles :exec
--- Makes roles an M2M Application's Roles on an API; the API is its default
--- API, and the audit is the generic set-application-roles event.
+-- Makes roles an M2M Application's Roles on its default API, audited with
+-- who did it. Its client_id is the event's subject, in the detail.
 WITH gone AS (
     DELETE FROM application_roles
     WHERE application_roles.client_id = @client_id AND application_roles.api = @api AND NOT (application_roles.role = ANY (@roles::text[]))
+), added AS (
+    INSERT INTO application_roles (client_id, api, role)
+    SELECT @client_id, @api, r FROM unnest(@roles::text[]) AS r
+    ON CONFLICT DO NOTHING
 )
-INSERT INTO application_roles (client_id, api, role)
-SELECT @client_id, @api, r FROM unnest(@roles::text[]) AS r
-ON CONFLICT DO NOTHING;
+INSERT INTO audit_log (event, sub, detail)
+VALUES ('application_roles.assigned', NULL,
+        jsonb_build_object('clientId', @client_id::text, 'api', @api::text, 'roles', @roles::text[], 'by', @by::text));
 
 -- name: ApplicationRoles :many
 -- Keys of the Roles an M2M Application holds on its API.
@@ -271,10 +275,11 @@ INSERT INTO audit_log (event, sub, detail)
 SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', @kind::text, 'by', @by::text) FROM put;
 
 -- name: ListAudit :many
--- Newest first. sub matches the User an event is about or the admin who
--- did it; before pages by id; empty filters match all. user_identifier and
+-- Newest first. sub matches the User an event is about or whoever did it
+-- (a User's sub or an M2M Application's client_id, per detail.byType);
+-- before pages by id; empty filters match all. user_identifier and
 -- by_identifier are their primary Identifiers (phone, email, username),
--- empty once the User is gone.
+-- empty once the User is gone (always for an Application, which has none).
 SELECT id, at, event, COALESCE(sub, '')::text AS sub, detail,
        COALESCE((SELECT i.value FROM identifiers i WHERE i.user_id = audit_log.sub
                  ORDER BY array_position(ARRAY['phone', 'email', 'username'], i.kind) LIMIT 1), '')::text AS user_identifier,

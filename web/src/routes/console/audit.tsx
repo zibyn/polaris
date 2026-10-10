@@ -380,7 +380,7 @@ export function EventTable({
 								{date(ev.at)}
 							</TableCell>
 							<TableCell className="whitespace-nowrap">
-								<Sentence parts={actor(ev)} />
+								<Sentence parts={actor(ev, names)} />
 							</TableCell>
 							<TableCell className="whitespace-normal" title={title}>
 								<Sentence parts={parts} />
@@ -428,7 +428,7 @@ export function EventList({ events }: { events: AuditEvent[] }) {
 		<ItemList>
 			{(naming ? [] : events).map((ev) => {
 				const { parts, title } = describe(ev, names);
-				const who = actor(ev);
+				const who = actor(ev, names);
 				const [first] = who;
 				return (
 					<Item key={ev.id}>

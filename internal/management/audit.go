@@ -20,7 +20,7 @@ var selfAudited = map[string]bool{
 	"end-session": true, "disable-user": true, "enable-user": true, "delete-user": true,
 	"replace-identifier": true, "set-user-roles": true, "put-settings": true, "rotate-signing-keys": true,
 	"reset-two-factor": true, "create-provider": true, "unbind-external-identity": true,
-	"remove-user-passkey": true,
+	"remove-user-passkey": true, "set-application-roles": true,
 }
 
 var pathParam = regexp.MustCompile(`\{(\w+)\}`)
@@ -57,7 +57,7 @@ type AuditEvent struct {
 	Sub    string         `json:"sub,omitempty" doc:"The User it is about"`
 	User   string         `json:"user,omitempty" doc:"sub's primary Identifier; absent once the User is deleted"`
 	ByUser string         `json:"byUser,omitempty" doc:"detail.by's primary Identifier; absent once that User is deleted"`
-	Detail map[string]any `json:"detail" doc:"by is the admin who did it"`
+	Detail map[string]any `json:"detail" doc:"by is the User or M2M Application (byType) who did it"`
 }
 
 type listAuditInput struct {

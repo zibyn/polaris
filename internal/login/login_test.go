@@ -563,6 +563,12 @@ func TestClientCredentials(t *testing.T) {
 	if tok.ExpiresIn != 600 || tok.RefreshToken != "" {
 		t.Errorf("expires_in %d, refresh token %q", tok.ExpiresIn, tok.RefreshToken)
 	}
+	// 换令牌不写审计 (docs/spec/security-compliance.md): done every 10
+	// minutes, it would drown the log.
+	var audited int64
+	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM audit_log").Scan(&audited); err != nil || audited != 0 {
+		t.Errorf("client_credentials wrote %d audit events, want none: %v", audited, err)
+	}
 	if at := e.claims(tok.AccessToken); at["aud"] != trackAPI || at["sub"] != "batch" || at["client_id"] != "batch" {
 		t.Errorf("claims: %v", at)
 	}

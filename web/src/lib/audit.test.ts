@@ -40,6 +40,7 @@ const spec: Record<string, [string, string][]> = {
 		["update-application", "修改应用"],
 		["delete-application", "删除应用"],
 		["new-application-secret", "重新生成 client secret"],
+		["application_roles.assigned", "设置角色"],
 		["webhook.failed", "用户删除通知发送失败"],
 	],
 	"API 资源": [
@@ -98,27 +99,55 @@ const ev = (over: Partial<AuditEvent> = {}): AuditEvent => ({
 
 test("who did it: an admin by their primary Identifier, linked", () => {
 	assert.deepEqual(
-		actor(ev({ sub: "ALICE", detail: { by: "ADMIN01X" }, byUser: "admin" })),
+		actor(
+			ev({ sub: "ALICE", detail: { by: "ADMIN01X" }, byUser: "admin" }),
+			names,
+		),
 		[{ text: "admin", user: "ADMIN01X" }],
 	);
 });
 
 test("who did it: nobody is the system", () => {
-	assert.deepEqual(actor(ev({ sub: "ALICE", user: "a@x.com" })), ["系统"]);
+	assert.deepEqual(actor(ev({ sub: "ALICE", user: "a@x.com" }), names), [
+		"系统",
+	]);
 });
 
 test("who did it: the User themselves", () => {
 	assert.deepEqual(
-		actor(ev({ sub: "ALICE", detail: { by: "ALICE" }, byUser: "a@x.com" })),
+		actor(
+			ev({ sub: "ALICE", detail: { by: "ALICE" }, byUser: "a@x.com" }),
+			names,
+		),
 		["用户本人"],
 	);
 });
 
 test("who did it: a deleted admin by the start of their ID", () => {
-	assert.deepEqual(actor(ev({ detail: { by: "GONE1234ABCDEFGH" } })), [
+	assert.deepEqual(actor(ev({ detail: { by: "GONE1234ABCDEFGH" } }), names), [
 		"已删除的用户 ",
 		{ text: "GONE1234", mono: true },
 	]);
+});
+
+test("who did it: an M2M Application by its name, its client_id once gone", () => {
+	const app = actor(
+		ev({ detail: { by: "SHOP", byType: "application" } }),
+		names,
+	);
+	assert.deepEqual(app, [{ text: "星选商城", app: "SHOP" }]);
+	// Deleted, or without applications:read, its client_id shows as it is.
+	assert.deepEqual(
+		actor(ev({ detail: { by: "GONE", byType: "application" } }), names),
+		[{ text: "GONE", mono: true }],
+	);
+	assert.deepEqual(
+		actor(ev({ detail: { by: "SHOP", byType: "application" } }), {
+			...names,
+			apps: undefined,
+		}),
+		[{ text: "SHOP", mono: true }],
+	);
 });
 
 const names: Names = {
@@ -194,6 +223,20 @@ test("every event reads as a sentence", () => {
 		[
 			{ event: "new-application-secret", detail: { clientId: "SHOP" } },
 			"重新生成了应用 星选商城 的 client secret",
+		],
+		[
+			{
+				event: "application_roles.assigned",
+				detail: { clientId: "SHOP", api, roles: ["editor", "viewer"] },
+			},
+			"把应用 星选商城 在 订单 API 上的角色设为 编辑、只读",
+		],
+		[
+			{
+				event: "application_roles.assigned",
+				detail: { clientId: "SHOP", api, roles: [] },
+			},
+			"清空了应用 星选商城 在 订单 API 上的角色",
 		],
 		[
 			{

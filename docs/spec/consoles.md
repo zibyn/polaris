@@ -283,9 +283,10 @@ Management API 不改,后端没拦的写在备注列。
 
 **行**:三列,依次为 时间、操作人、事件描述。事件描述是一句话,句中的对象可以点击(用户 → 用户详情,应用 → 应用详情),例如「禁用了用户 138****0001」「把用户 a@x.com 在 订单 API 上的角色设为 编辑、只读」。概览页的「最近事件」用同样的一句话,排成分隔线列表(见[视觉规范](#视觉规范))。
 
-**操作人与用户**:显示主登录标识,数据来自 `GET /audit` 的 `user` / `byUser` 字段。缺省规则如下:
+**操作人**:显示主登录标识,数据来自 `GET /audit` 的 `user` / `byUser` 字段。缺省规则如下:
 
 - 没有 `by` → 「系统」;
+- `detail.byType` 为 `application` → 应用名称(数据来自 `/applications`);应用已删除或读者没有 `applications:read` → 等宽的原 client_id;没有 `byType` 的老记录按 User 解析;
 - `by` 等于 `sub` → 「用户本人」;
 - 用户已删除 → 「已删除的用户」加 ID 前 8 位(等宽字体)。
 
@@ -304,6 +305,7 @@ Management API 不改,后端没拦的写在备注列。
 | | passkey.added / removed / renamed | 添加 Passkey / 删除 Passkey / 重命名 Passkey(句中写明 Passkey 的名称) |
 | 应用 | create / update / delete-application | 创建应用 / 修改应用 / 删除应用 |
 | | new-application-secret | 重新生成 client secret |
+| | application_roles.assigned | 设置角色(句中写明应用与 API) |
 | | webhook.failed | 用户删除通知发送失败 |
 | API 资源 | put-api / delete-api | 保存 API 资源 / 删除 API 资源 |
 | | put-permission / delete-permission | 保存权限 / 删除权限 |
@@ -326,6 +328,7 @@ Management API 不改,后端没拦的写在备注列。
 **详情字段**:
 
 - `clientId`、API 资源标识符、角色 key:前端用 `/applications`、`/apis` 映射成名称;对象已删除,或读者没有 `applications:read` 时,退回等宽的原 ID。
+- `by`、`byType` 决定操作人怎么显示(见上);`application_roles.assigned` 的 `clientId`、`api`、`roles` 写进句子,和 `roles.assigned` 一样。
 - `kind` 映射为 手机号 / 邮箱 / 用户名;`limit` 写进句子(「每日上限 N 条」);`ip` 原样写进句子。
 - `session`(会话 ID)不显示;Webhook 的 `id`(投递 ID)只放在悬浮提示里。
 - Provider ID(`id`、`provider`)显示为等宽的原 ID;吊销失败的 `error` 只放在悬浮提示里。

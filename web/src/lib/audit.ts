@@ -55,6 +55,7 @@ export const eventGroups: [string, [string, string][]][] = [
 			["update-application", "修改应用"],
 			["delete-application", "删除应用"],
 			["new-application-secret", "重新生成 client secret"],
+			["application_roles.assigned", "设置角色"],
 			["webhook.failed", "用户删除通知发送失败"],
 		],
 	],
@@ -117,11 +118,22 @@ const someone = (sub: string, identifier?: string): Part[] =>
 export const doneBy = (ev: AuditEvent) =>
 	typeof ev.detail.by === "string" && ev.detail.by ? ev.detail.by : undefined;
 
-// actor is who did it: an admin, the User themselves, or the system.
-export function actor(ev: AuditEvent): Part[] {
+// app names an Application by its client_id: its name, or the raw ID once
+// it is deleted or applications:read is absent.
+const app = (names: Names, clientId: string): Part => {
+	const name = names.apps?.find((a) => a.clientId === clientId)?.name;
+	return name ? { text: name, app: clientId } : raw(clientId);
+};
+
+// actor is who did it: a User, an M2M Application calling as itself, or the
+// system. byType is absent on events older than it, which were Users.
+export function actor(ev: AuditEvent, names: Names): Part[] {
 	const by = doneBy(ev);
 	if (!by) {
 		return ["系统"];
+	}
+	if (ev.detail.byType === "application") {
+		return [app(names, by)];
 	}
 	if (by === ev.sub) {
 		return ["用户本人"];
@@ -139,14 +151,26 @@ export function describe(
 	const str = (k: string) => (typeof d[k] === "string" ? (d[k] as string) : "");
 	const user = someone(ev.sub ?? "", ev.user);
 	const kind = kindName[str("kind") as Identifier["kind"]] ?? str("kind");
-	const app = (clientId: string): Part => {
-		const name = names.apps?.find((a) => a.clientId === clientId)?.name;
-		return name ? { text: name, app: clientId } : raw(clientId);
-	};
 	const apiDef = names.apis?.find((a) => a.identifier === str("api"));
 	const apiName: Part = apiDef?.name ?? raw(str("api"));
 	const named = (list: { key: string; name: string }[] = [], key: string) =>
 		list.find((x) => x.key === key)?.name ?? raw(key);
+	// roleSentence is who's Roles on this API set to what: the list, or
+	// 清空了 when empty. Shared by a User's and an Application's assignment.
+	const roleSentence = (who: Part[], roles: string[]): Part[] =>
+		roles.length === 0
+			? ["清空了", ...who, " 在 ", apiName, " 上的角色"]
+			: [
+					"把",
+					...who,
+					" 在 ",
+					apiName,
+					" 上的角色设为 ",
+					...roles.flatMap((r, i) => [
+						...(i ? ["、"] : []),
+						named(apiDef?.roles, r),
+					]),
+				];
 	// inAPI is a Permission or Role of the event's API resource.
 	const inAPI = (verb: string, what: "permissions" | "roles"): Part[] => [
 		`${verb} `,
@@ -185,34 +209,34 @@ export function describe(
 			return { parts: ["下线了", ...user, " 的一个会话"] };
 		case "roles.assigned": {
 			const roles = Array.isArray(d.roles) ? (d.roles as string[]) : [];
-			if (roles.length === 0) {
-				return { parts: ["清空了", ...user, " 在 ", apiName, " 上的角色"] };
-			}
-			const list = roles.flatMap((r, i) => [
-				...(i ? ["、"] : []),
-				named(apiDef?.roles, r),
-			]);
-			return {
-				parts: ["把", ...user, " 在 ", apiName, " 上的角色设为 ", ...list],
-			};
+			return { parts: roleSentence(user, roles) };
 		}
 		case "create-application":
 			return { parts: ["创建了一个应用"] };
 		case "update-application":
-			return { parts: ["修改了应用 ", app(str("clientId"))] };
+			return { parts: ["修改了应用 ", app(names, str("clientId"))] };
 		case "delete-application":
-			return { parts: ["删除了应用 ", app(str("clientId"))] };
+			return { parts: ["删除了应用 ", app(names, str("clientId"))] };
 		case "new-application-secret":
 			return {
-				parts: ["重新生成了应用 ", app(str("clientId")), " 的 client secret"],
+				parts: [
+					"重新生成了应用 ",
+					app(names, str("clientId")),
+					" 的 client secret",
+				],
 			};
+		case "application_roles.assigned": {
+			const roles = Array.isArray(d.roles) ? (d.roles as string[]) : [];
+			const target: Part[] = ["应用 ", app(names, str("clientId"))];
+			return { parts: roleSentence(target, roles) };
+		}
 		case "webhook.failed":
 			return {
 				parts: [
 					"没能把",
 					...user,
 					" 的删除通知发给应用 ",
-					app(str("application")),
+					app(names, str("application")),
 				],
 				title: str("id") ? `投递 ID：${str("id")}` : undefined,
 			};

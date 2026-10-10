@@ -2,10 +2,13 @@ package management_test
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/zibyn/stars-auth/internal/identity"
 )
 
 type auditEvent struct {
@@ -82,6 +85,47 @@ func TestAuditShowsWhoByTheirPrimaryIdentifier(t *testing.T) {
 	}
 	if ev := e.audited("refresh_token.reused"); ev.User != "bob" || ev.ByUser != "" {
 		t.Errorf("no by: %+v", ev)
+	}
+}
+
+// The audit types the operator: a User, or an M2M Application calling as
+// itself, whose client_id then stands where a User's sub would (ADR 0015).
+// An Application Role change is its own event, with its detail.
+func TestAuditTypesAnApplicationOperator(t *testing.T) {
+	e := start(t)
+	e.trackAPI()
+	e.user("ALICE", nil, "email:alice@example.com")
+	owner := e.token(e.owner, nil)
+	// It holds admin's Permissions on the Management API, so it may write.
+	app := e.m2mApp(identity.ManagementAPI, "admin")
+
+	if code := e.call("POST", owner, "/users/ALICE/disable", nil, nil); code != 204 {
+		t.Fatalf("a User admin disables: %d", code)
+	}
+	if ev := e.audited("user.disabled"); ev.Detail["by"] != e.owner || ev.Detail["byType"] != "user" {
+		t.Errorf("a User's write: %+v", ev)
+	}
+
+	// A User's erase of an Application's Roles, then the Application's own
+	// restore: the event names the Application and the Roles either way.
+	target := e.m2mApp(track)
+	if code := e.call("PUT", owner, "/applications/"+target+"/roles", map[string]any{"roles": []string{}}, nil); code != 204 {
+		t.Fatalf("a User clears Roles: %d", code)
+	}
+	if ev := e.audited("application_roles.assigned"); ev.Sub != "" || ev.Detail["clientId"] != target ||
+		ev.Detail["api"] != track || fmt.Sprint(ev.Detail["roles"]) != "[]" ||
+		ev.Detail["by"] != e.owner || ev.Detail["byType"] != "user" {
+		t.Errorf("a User's Role change: %+v", ev)
+	}
+	if code := e.call("PUT", e.token(app, nil), "/applications/"+target+"/roles", map[string]any{"roles": []string{"viewer"}}, nil); code != 204 {
+		t.Fatalf("the Application sets its own Roles: %d", code)
+	}
+	// by is the Application's client_id, typed; no User bears it, so nothing
+	// resolves a byUser.
+	if ev := e.audited("application_roles.assigned"); ev.Detail["clientId"] != target ||
+		fmt.Sprint(ev.Detail["roles"]) != "[viewer]" ||
+		ev.Detail["by"] != app || ev.Detail["byType"] != "application" || ev.ByUser != "" {
+		t.Errorf("an Application's write: %+v", ev)
 	}
 }
 
@@ -239,7 +283,7 @@ func TestAdminReplacesAnIdentifier(t *testing.T) {
 		}
 	}
 	// The audit names the kind, never the values.
-	if ev := e.audited("identifier.replaced"); ev.Sub != "ALICE" || ev.Detail["kind"] != "username" || ev.Detail["by"] != e.owner || len(ev.Detail) != 2 {
+	if ev := e.audited("identifier.replaced"); ev.Sub != "ALICE" || ev.Detail["kind"] != "username" || ev.Detail["by"] != e.owner || ev.Detail["byType"] != "user" || len(ev.Detail) != 3 {
 		t.Errorf("audit: %+v", ev)
 	}
 }

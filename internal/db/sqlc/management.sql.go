@@ -450,10 +450,11 @@ type ListAuditRow struct {
 	ByIdentifier   string
 }
 
-// Newest first. sub matches the User an event is about or the admin who
-// did it; before pages by id; empty filters match all. user_identifier and
+// Newest first. sub matches the User an event is about or whoever did it
+// (a User's sub or an M2M Application's client_id, per detail.byType);
+// before pages by id; empty filters match all. user_identifier and
 // by_identifier are their primary Identifiers (phone, email, username),
-// empty once the User is gone.
+// empty once the User is gone (always for an Application, which has none).
 func (q *Queries) ListAudit(ctx context.Context, arg ListAuditParams) ([]ListAuditRow, error) {
 	rows, err := q.db.Query(ctx, listAudit,
 		arg.Event,
@@ -824,22 +825,32 @@ const setApplicationRoles = `-- name: SetApplicationRoles :exec
 WITH gone AS (
     DELETE FROM application_roles
     WHERE application_roles.client_id = $1 AND application_roles.api = $2 AND NOT (application_roles.role = ANY ($3::text[]))
+), added AS (
+    INSERT INTO application_roles (client_id, api, role)
+    SELECT $1, $2, r FROM unnest($3::text[]) AS r
+    ON CONFLICT DO NOTHING
 )
-INSERT INTO application_roles (client_id, api, role)
-SELECT $1, $2, r FROM unnest($3::text[]) AS r
-ON CONFLICT DO NOTHING
+INSERT INTO audit_log (event, sub, detail)
+VALUES ('application_roles.assigned', NULL,
+        jsonb_build_object('clientId', $1::text, 'api', $2::text, 'roles', $3::text[], 'by', $4::text))
 `
 
 type SetApplicationRolesParams struct {
 	ClientID string
 	Api      string
 	Roles    []string
+	By       string
 }
 
-// Makes roles an M2M Application's Roles on an API; the API is its default
-// API, and the audit is the generic set-application-roles event.
+// Makes roles an M2M Application's Roles on its default API, audited with
+// who did it. Its client_id is the event's subject, in the detail.
 func (q *Queries) SetApplicationRoles(ctx context.Context, arg SetApplicationRolesParams) error {
-	_, err := q.db.Exec(ctx, setApplicationRoles, arg.ClientID, arg.Api, arg.Roles)
+	_, err := q.db.Exec(ctx, setApplicationRoles,
+		arg.ClientID,
+		arg.Api,
+		arg.Roles,
+		arg.By,
+	)
 	return err
 }
 
