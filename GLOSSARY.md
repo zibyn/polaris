@@ -16,6 +16,14 @@ _Avoid_: Operator, 站长, 租户
 一个自然人在 Stars Auth 中的唯一账号,跨所有 Application 是同一个。
 _Avoid_: 账户, 会员, 成员
 
+**待激活**:
+管理员创建、尚未接受邀请或首次登录改密的 User 状态。能登录,但拿不到任何令牌,只能改密码或注销。
+_Avoid_: 未激活, 待验证, 待确认
+
+**邀请**:
+管理员为某个 User 生成的一次性链接,让本人设置密码并激活账号;7 天内有效,只发往邮箱。
+_Avoid_: 邀请码, 激活邮件, 注册链接
+
 **Application**:
 在 Stars Auth 注册的一个接入方:委托 Stars Auth 认证 User(App、小程序或 Web 端),或以自己的身份调用 API(M2M Application)。
 _Avoid_: Client, 租户, 项目
