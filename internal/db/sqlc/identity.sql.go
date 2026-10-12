@@ -109,9 +109,7 @@ func (q *Queries) NeedsPhone(ctx context.Context, userID string) (bool, error) {
 }
 
 const passwordByIdentifier = `-- name: PasswordByIdentifier :one
-SELECT i.user_id, p.hash, (u.disabled_at IS NOT NULL)::boolean AS disabled,
-       EXISTS (SELECT 1 FROM user_roles r
-               WHERE r.user_id = i.user_id AND r.api = 'urn:stars-auth:management-api') AS admin
+SELECT i.user_id, p.hash, (u.disabled_at IS NOT NULL)::boolean AS disabled
 FROM identifiers i JOIN passwords p USING (user_id) JOIN users u ON u.id = i.user_id
 WHERE i.value = $1
 `
@@ -120,18 +118,12 @@ type PasswordByIdentifierRow struct {
 	UserID   string
 	Hash     string
 	Disabled bool
-	Admin    bool
 }
 
 func (q *Queries) PasswordByIdentifier(ctx context.Context, value string) (PasswordByIdentifierRow, error) {
 	row := q.db.QueryRow(ctx, passwordByIdentifier, value)
 	var i PasswordByIdentifierRow
-	err := row.Scan(
-		&i.UserID,
-		&i.Hash,
-		&i.Disabled,
-		&i.Admin,
-	)
+	err := row.Scan(&i.UserID, &i.Hash, &i.Disabled)
 	return i, err
 }
 

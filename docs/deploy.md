@@ -110,8 +110,8 @@ docker compose exec postgres psql -U stars
 
   ```sql
   UPDATE settings SET setup_done = false;
-  -- 密码登录被设成了"关闭"的话,改回"仅管理员":
-  UPDATE settings SET password_login = 'admins' WHERE password_login = 'off';
+  -- 密码登录被设成了"关闭"的话,改回开启:
+  UPDATE settings SET password_login = 'on' WHERE password_login = 'off';
   ```
 
   然后 `docker compose restart stars-auth`,按「首次引导」拿新链接,用一个**没被占用的用户名**创建所有者。登录管理端后,在用户详情里为原来的管理员重置两步验证、恢复禁用或重新分配 Role。打开了"管理员必须启用两步验证"的话,新所有者会先被拦下,按提示到账号中心开启两步验证后再进管理端。引导完成后引导页再次自动关闭。

@@ -411,7 +411,7 @@ func TestSelfAuditedWrites(t *testing.T) {
 		t.Errorf("roles.assigned: %+v", ev)
 	}
 
-	if code := e.call("PUT", owner, "/settings", settings{PasswordLogin: "all", DailySendLimit: 1, AuditRetentionDays: 1}, nil); code != 204 {
+	if code := e.call("PUT", owner, "/settings", settings{PasswordLogin: "on", DailySendLimit: 1, AuditRetentionDays: 1}, nil); code != 204 {
 		t.Fatalf("settings: %d", code)
 	}
 	if ev := e.audited("settings.updated"); ev.Detail["by"] != e.owner {

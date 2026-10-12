@@ -43,7 +43,7 @@ func TestAdminsMustUseTwoFactor(t *testing.T) {
 	e := start(t)
 	e.user("CAROL", []string{"readonly"})
 	owner, carol := e.token(e.owner, nil), e.token("CAROL", nil)
-	policy := settings{PasswordLogin: "admins", DailySendLimit: 1000, AuditRetentionDays: 180, AdminsNeedTwoFactor: true, PasskeyLogin: true}
+	policy := settings{PasswordLogin: "on", DailySendLimit: 1000, AuditRetentionDays: 180, AdminsNeedTwoFactor: true, PasskeyLogin: true}
 
 	if code := e.call("PUT", owner, "/settings", policy, nil); code != 422 {
 		t.Fatalf("turn on without 两步验证 of one's own: %d, want 422", code)
@@ -81,7 +81,7 @@ func TestPasskeyMeetsAdminsTwoFactor(t *testing.T) {
 	e.passkey(e.owner, "工作电脑", false) // the owner has no TOTP, only a Passkey
 	owner := e.token(e.owner, nil)
 
-	policy := settings{PasswordLogin: "admins", DailySendLimit: 1000, AuditRetentionDays: 180, AdminsNeedTwoFactor: true, PasskeyLogin: true}
+	policy := settings{PasswordLogin: "on", DailySendLimit: 1000, AuditRetentionDays: 180, AdminsNeedTwoFactor: true, PasskeyLogin: true}
 	if code := e.call("PUT", owner, "/settings", policy, nil); code != 204 {
 		t.Fatalf("turn on with only a Passkey: %d", code)
 	}
@@ -113,11 +113,11 @@ func TestAdminChangesLoginPolicy(t *testing.T) {
 	owner, ro := e.token(e.owner, nil), e.token("RO", nil)
 
 	var got settings
-	if code := e.get(ro, "/settings", &got); code != 200 || got != (settings{PasswordLogin: "admins", DailySendLimit: 1000, AuditRetentionDays: 180, PasskeyLogin: true}) {
+	if code := e.get(ro, "/settings", &got); code != 200 || got != (settings{PasswordLogin: "on", DailySendLimit: 1000, AuditRetentionDays: 180, PasskeyLogin: true}) {
 		t.Fatalf("defaults: %d %+v", code, got)
 	}
 	want := settings{
-		PasswordLogin: "all", RequirePhone: true, DailySendLimit: 50,
+		PasswordLogin: "on", RequirePhone: true, DailySendLimit: 50,
 		TermsURL: "https://example.com/terms", PrivacyURL: "https://example.com/privacy", TermsVersion: "2026-10",
 		AuditRetentionDays: 30, PasskeyLogin: true,
 	}
@@ -132,10 +132,10 @@ func TestAdminChangesLoginPolicy(t *testing.T) {
 	}
 
 	for name, bad := range map[string]settings{
-		"version without URLs": {PasswordLogin: "all", DailySendLimit: 1, AuditRetentionDays: 1, TermsVersion: "1"},
-		"URL not https":        {PasswordLogin: "all", DailySendLimit: 1, AuditRetentionDays: 1, TermsVersion: "1", TermsURL: "http://x", PrivacyURL: "https://x"},
-		"URL without version":  {PasswordLogin: "all", DailySendLimit: 1, AuditRetentionDays: 1, TermsURL: "javascript:alert(1)"},
-		"no retention":         {PasswordLogin: "all", DailySendLimit: 1},
+		"version without URLs": {PasswordLogin: "on", DailySendLimit: 1, AuditRetentionDays: 1, TermsVersion: "1"},
+		"URL not https":        {PasswordLogin: "on", DailySendLimit: 1, AuditRetentionDays: 1, TermsVersion: "1", TermsURL: "http://x", PrivacyURL: "https://x"},
+		"URL without version":  {PasswordLogin: "on", DailySendLimit: 1, AuditRetentionDays: 1, TermsURL: "javascript:alert(1)"},
+		"no retention":         {PasswordLogin: "on", DailySendLimit: 1},
 		"unknown password":     {PasswordLogin: "some", DailySendLimit: 1, AuditRetentionDays: 1},
 	} {
 		if code := e.call("PUT", owner, "/settings", bad, nil); code != 422 {
@@ -153,7 +153,7 @@ func TestPasskeySwitchRefusesToLockOutAnAdmin(t *testing.T) {
 	e := start(t)
 	e.passkey(e.owner, "工作电脑", false) // the owner has no TOTP, only a Passkey
 	owner := e.token(e.owner, nil)
-	on := settings{PasswordLogin: "admins", DailySendLimit: 1000, AuditRetentionDays: 180, AdminsNeedTwoFactor: true, PasskeyLogin: true}
+	on := settings{PasswordLogin: "on", DailySendLimit: 1000, AuditRetentionDays: 180, AdminsNeedTwoFactor: true, PasskeyLogin: true}
 	if code := e.call("PUT", owner, "/settings", on, nil); code != 204 {
 		t.Fatalf("turn the requirement on with only a Passkey: %d", code)
 	}
@@ -180,7 +180,7 @@ func TestPasskeySwitchStopsCountingForAdmins(t *testing.T) {
 	e.twoFactorOn(e.owner) // the owner has a TOTP, so the switch may go off
 	owner := e.token(e.owner, nil)
 
-	policy := settings{PasswordLogin: "admins", DailySendLimit: 1000, AuditRetentionDays: 180, AdminsNeedTwoFactor: true, PasskeyLogin: true}
+	policy := settings{PasswordLogin: "on", DailySendLimit: 1000, AuditRetentionDays: 180, AdminsNeedTwoFactor: true, PasskeyLogin: true}
 	if code := e.call("PUT", owner, "/settings", policy, nil); code != 204 {
 		t.Fatalf("turn the requirement on: %d", code)
 	}
@@ -206,6 +206,64 @@ func TestPasskeySwitchStopsCountingForAdmins(t *testing.T) {
 	}
 	if code := e.get(owner, "/users/CAROL", &detail); code != 200 || detail.TwoFactor || detail.TwoFactorOrPasskey {
 		t.Errorf("detail, Passkey no longer counting: %d %+v", code, detail)
+	}
+}
+
+// Turning password login off while the admin doing it has no other way to
+// sign in would shut them out of the console for good, with no CLI to rescue
+// them. 首次引导 gives the first owner a username and a password and nothing
+// else, so the guard is what stands between a deployment and a lockout.
+func TestPasswordLoginOffRefusesToLockOutAnAdmin(t *testing.T) {
+	e := start(t)
+	owner := e.token(e.owner, nil)
+
+	policy := settings{PasswordLogin: "on", DailySendLimit: 1000, AuditRetentionDays: 180, PasskeyLogin: true}
+	if code := e.call("PUT", owner, "/settings", policy, nil); code != 204 {
+		t.Fatalf("save with password login on: %d", code)
+	}
+	off := policy
+	off.PasswordLogin = "off"
+
+	// The owner has a username and a password, nothing else.
+	if code := e.call("PUT", owner, "/settings", off, nil); code != 422 {
+		t.Fatalf("turn it off with only a password: %d, want 422", code)
+	}
+	if code := e.get(owner, "/settings", &policy); code != 200 || policy.PasswordLogin != "on" {
+		t.Errorf("the refused save still went through: %d %+v", code, policy)
+	}
+
+	// An email or a phone is another way in, so it goes through.
+	if _, err := e.pool.Exec(context.Background(), "INSERT INTO identifiers VALUES ($1, 'email', 'owner@example.com')", e.owner); err != nil {
+		t.Fatal(err)
+	}
+	if code := e.call("PUT", owner, "/settings", off, nil); code != 204 {
+		t.Fatalf("turn it off with an email too: %d", code)
+	}
+	// ...and back on for the rest of the test.
+	on := policy
+	if code := e.call("PUT", owner, "/settings", on, nil); code != 204 {
+		t.Fatalf("turn it back on: %d", code)
+	}
+
+	// An External Identity at an enabled Provider counts. A disabled Provider
+	// is nothing anyone could sign in with, so it does not.
+	if code := e.call("POST", owner, "/providers", google(nil), nil); code != 204 {
+		t.Fatalf("add a Provider: %d", code)
+	}
+	e.user("CAROL", []string{"admin"}, "username:carol")
+	carol := e.token("CAROL", nil)
+	if _, err := e.pool.Exec(context.Background(),
+		"INSERT INTO external_identities (provider, subject, user_id) VALUES ('google', 'c', 'CAROL')"); err != nil {
+		t.Fatal(err)
+	}
+	if code := e.call("PUT", carol, "/settings", off, nil); code != 204 {
+		t.Fatalf("turn it off with a bound Provider: %d", code)
+	}
+	if code := e.call("POST", owner, "/providers/google/disable", nil, nil); code != 204 {
+		t.Fatalf("disable the Provider: %d", code)
+	}
+	if code := e.call("PUT", carol, "/settings", off, nil); code != 422 {
+		t.Errorf("turn it off with the Provider disabled: %d, want 422", code)
 	}
 }
 

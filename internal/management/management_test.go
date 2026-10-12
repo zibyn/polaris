@@ -372,7 +372,7 @@ func TestM2MCallsManagementAPI(t *testing.T) {
 	// Application, which has no one to turn 两步验证 on for it.
 	e.user("CAROL", []string{"readonly"})
 	e.twoFactorOn(e.owner)
-	policy := settings{PasswordLogin: "admins", DailySendLimit: 1000, AuditRetentionDays: 180, AdminsNeedTwoFactor: true, PasskeyLogin: true}
+	policy := settings{PasswordLogin: "on", DailySendLimit: 1000, AuditRetentionDays: 180, AdminsNeedTwoFactor: true, PasskeyLogin: true}
 	if code := e.call("PUT", owner, "/settings", policy, nil); code != 204 {
 		t.Fatalf("turn on 管理员必须启用两步验证: %d", code)
 	}

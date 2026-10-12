@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -80,6 +81,24 @@ func bound(n int64, err error) error {
 	return err
 }
 
+// OtherLoginPath reports whether a User with these login paths can sign in
+// without a password: a phone number or an email, or an External Identity at
+// an enabled Provider. A username on its own does not count — it only works
+// with a password. This is half of invariant 1 (changeLoginPaths below), and
+// the whole of what a password-login switch must leave in place before it may
+// go off (management.putSettings).
+func OtherLoginPath(paths sqlc.LoginPathsRow) bool {
+	if paths.HasExternalIdentity {
+		return true
+	}
+	for _, kind := range paths.Identifiers {
+		if kind != "username" {
+			return true
+		}
+	}
+	return false
+}
+
 // changeLoginPaths runs change with the User locked, and undoes it if it
 // leaves them no way to sign in (invariant 1): a phone number, an email,
 // a username with a password, or an External Identity at an enabled
@@ -97,13 +116,8 @@ func (s *Store) changeLoginPaths(ctx context.Context, sub string, change func(*s
 		if err != nil {
 			return err
 		}
-		if paths.HasExternalIdentity {
+		if OtherLoginPath(paths) || paths.HasPassword && slices.Contains(paths.Identifiers, "username") {
 			return nil
-		}
-		for _, kind := range paths.Identifiers {
-			if kind != "username" || paths.HasPassword {
-				return nil
-			}
 		}
 		return ErrLastLoginPath
 	})

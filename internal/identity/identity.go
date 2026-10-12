@@ -169,7 +169,7 @@ func (s *Store) CheckPassword(ctx context.Context, identifier, password string) 
 	if err != nil {
 		return "", err
 	}
-	if setting == "off" || setting == "admins" && !row.Admin {
+	if setting == "off" {
 		return "", ErrBadCredentials
 	}
 	return row.UserID, nil

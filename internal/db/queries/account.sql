@@ -9,8 +9,7 @@ SELECT u.created_at,
                  FROM identifiers i WHERE i.user_id = u.id), '[]')::jsonb AS identifiers,
        EXISTS (SELECT 1 FROM passwords p WHERE p.user_id = u.id) AS has_password,
        -- The password login setting lets this User use a password.
-       (s.password_login = 'all' OR s.password_login = 'admins' AND EXISTS (
-           SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.api = 'urn:stars-auth:management-api'))::boolean AS password_allowed,
+       (s.password_login = 'on')::boolean AS password_allowed,
        -- When 两步验证 was turned on; null while it is off.
        (SELECT t.confirmed_at FROM totp_credentials t WHERE t.user_id = u.id) AS two_factor_since,
        (SELECT count(*) FROM recovery_codes c WHERE c.user_id = u.id AND c.used_at IS NULL) AS recovery_codes_left,

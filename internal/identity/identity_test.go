@@ -97,7 +97,8 @@ func TestPasswordLoginSetting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// No product path creates a non-admin User with a password yet.
+	// A User with a password but no Management API Role, to prove the setting
+	// is the only thing that decides.
 	hash, err := hashPassword("password2")
 	if err != nil {
 		t.Fatal(err)
@@ -113,14 +114,11 @@ func TestPasswordLoginSetting(t *testing.T) {
 		setting     string
 		owner, user bool // can log in
 	}{
-		{"admins", true, false}, // the default
-		{"all", true, true},
+		{"on", true, true}, // the default
 		{"off", false, false},
 	} {
-		if tc.setting != "admins" {
-			if _, err := s.pool.Exec(ctx, "UPDATE settings SET password_login = $1", tc.setting); err != nil {
-				t.Fatal(err)
-			}
+		if _, err := s.pool.Exec(ctx, "UPDATE settings SET password_login = $1", tc.setting); err != nil {
+			t.Fatal(err)
 		}
 		got, err := s.CheckPassword(ctx, "owner", "password1")
 		if (got == owner) != tc.owner {

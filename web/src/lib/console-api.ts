@@ -106,7 +106,7 @@ export type ChannelSettings = {
 };
 
 export type Policy = {
-	passwordLogin: "off" | "admins" | "all";
+	passwordLogin: "off" | "on";
 	requirePhone: boolean;
 	dailySendLimit: number;
 	termsUrl: string;

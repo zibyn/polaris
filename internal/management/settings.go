@@ -10,11 +10,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zibyn/stars-auth/internal/db/sqlc"
+	"github.com/zibyn/stars-auth/internal/identity"
 )
 
 // Policy is the login policy (docs/spec/consoles.md, 安全).
 type Policy struct {
-	PasswordLogin       string `json:"passwordLogin" enum:"off,admins,all" doc:"Who may sign in with a password"`
+	PasswordLogin       string `json:"passwordLogin" enum:"off,on" doc:"Whether Users can sign in with a password"`
 	RequirePhone        bool   `json:"requirePhone" doc:"Every User must bind a phone number"`
 	DailySendLimit      int32  `json:"dailySendLimit" minimum:"0" doc:"Codes the instance sends a day at most"`
 	TermsURL            string `json:"termsUrl" doc:"用户协议; https"`
@@ -47,6 +48,18 @@ func (s *Service) putSettings(ctx context.Context, in *policyBody) (*struct{}, e
 		}
 	}
 	c := ctx.Value(callerKey{}).(caller)
+	// With password login off, an admin who has nothing else to sign in with
+	// is out of the console for good; refuse rather than let them do it. An
+	// M2M Application holds no Identifiers, so it has nothing to lose.
+	if b.PasswordLogin == "off" && !c.application {
+		paths, err := s.q.LoginPaths(ctx, c.sub)
+		if err != nil {
+			return nil, err
+		}
+		if !identity.OtherLoginPath(paths) {
+			return nil, huma.Error422UnprocessableEntity("请先为自己绑定邮箱、手机号或外部账号,关闭密码登录后你就进不了管理端了")
+		}
+	}
 	// With the switch on, an admin here satisfies it (两步验证 or a Passkey)
 	// already; this stops one turning it on and locking themselves out.
 	if b.AdminsNeedTwoFactor && !c.satisfied {

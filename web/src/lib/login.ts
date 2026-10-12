@@ -127,10 +127,10 @@ export const asksTermsVersion = (before: string, after: string) =>
 export const asksShorterRetention = (before: number, after: number) =>
 	after < before;
 
-// passwordLocksOut: without password login for everyone, users who only
-// have a username can't sign in, and the account center can't set one.
+// passwordLocksOut: with password login off, users who only have a username
+// can't sign in, and the account center can't set one.
 export const passwordLocksOut = (mode: Policy["passwordLogin"]) =>
-	mode !== "all";
+	mode === "off";
 
 // sendsNothing: a daily limit of 0 stops every code, login and binding alike.
 export const sendsNothing = (dailySendLimit: number) => dailySendLimit === 0;

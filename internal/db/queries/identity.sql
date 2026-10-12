@@ -29,9 +29,7 @@ ON CONFLICT (user_id) DO UPDATE SET hash = EXCLUDED.hash;
 INSERT INTO user_roles (user_id, api, role) VALUES ($1, $2, $3);
 
 -- name: PasswordByIdentifier :one
-SELECT i.user_id, p.hash, (u.disabled_at IS NOT NULL)::boolean AS disabled,
-       EXISTS (SELECT 1 FROM user_roles r
-               WHERE r.user_id = i.user_id AND r.api = 'urn:stars-auth:management-api') AS admin
+SELECT i.user_id, p.hash, (u.disabled_at IS NOT NULL)::boolean AS disabled
 FROM identifiers i JOIN passwords p USING (user_id) JOIN users u ON u.id = i.user_id
 WHERE i.value = $1;
 

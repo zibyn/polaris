@@ -211,14 +211,13 @@ test("the same or a longer audit retention doesn't ask", () => {
 	assert.equal(asksShorterRetention(30, 180), false);
 });
 
-test("password login off or for admins only warns", () => {
+test("password login off warns", () => {
 	// Username-only users can't sign in; the account center can't set one.
 	assert.equal(passwordLocksOut("off"), true);
-	assert.equal(passwordLocksOut("admins"), true);
 });
 
-test("password login for everyone doesn't warn", () => {
-	assert.equal(passwordLocksOut("all"), false);
+test("password login on doesn't warn", () => {
+	assert.equal(passwordLocksOut("on"), false);
 });
 
 test("a daily send limit of 0 warns", () => {

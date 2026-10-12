@@ -8,7 +8,7 @@
 |---|---|
 | 服务端基础 | PG 与迁移、环境变量配置、主密钥加密、签名密钥生成与手动轮换、setup token 引导、清理任务 |
 | 身份 | 手机号 / 邮箱 / 用户名三种 Identifier、登录即注册、不变式、换绑与解绑、注销、管理员对 User 的操作 |
-| 认证 | 短信验证码(阿里云短信认证 Channel + Webhook Channel)、邮箱验证码(SMTP Channel + Webhook Channel)、密码三档开关 |
+| 认证 | 短信验证码(阿里云短信认证 Channel + Webhook Channel)、邮箱验证码(SMTP Channel + Webhook Channel)、密码登录开关 |
 | 协议 | 裁剪后的 go-oidc:authorization code + PKCE、refresh 轮换与重用检测、JWKS、userinfo、revocation、RP-Initiated Logout;直连 challenge 端点(`/v1`);Session 模型;`amr` |
 | RBAC | API / Role / Permission、`roles` / `entitlements` 进入 access token、Management API 及其内置 Role 与实时鉴权 |
 | 安全与合规 | 发送限流与每日上限、ALTCHA PoW、失败锁定、审计日志、协议同意、数据留存、个人信息导出 |

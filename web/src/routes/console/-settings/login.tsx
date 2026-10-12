@@ -4,13 +4,6 @@ import { useState } from "react";
 import { FormField } from "#/components/form";
 import { Alert, AlertDescription } from "#/components/ui/alert";
 import { Input } from "#/components/ui/input";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "#/components/ui/select";
 import { Switch } from "#/components/ui/switch";
 import type { ChannelSettings, Policy } from "#/lib/console-api";
 import {
@@ -24,8 +17,6 @@ import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { SaveBar, Section } from "#/routes/console/-components/section";
 import { ChannelsLink, channelsQuery } from "./channels";
 import { usePolicy, useSavePolicy } from "./policy";
-
-const passwordModes = { off: "关闭", admins: "仅管理员", all: "所有用户" };
 
 const codeKinds = [
 	{ kind: "phone", label: "手机号", channel: "短信" },
@@ -129,31 +120,19 @@ function PasswordLogin({ current, editable }: SectionProps) {
 				{(field) => (
 					<FormField
 						field={field}
-						label="密码登录范围"
+						label="允许密码登录"
 						help="用户可以用手机号、邮箱或用户名加密码登录。关闭后，已经设置的密码会保留，但不能用来登录。"
 					>
 						{({ id }) => (
 							<>
-								<Select
-									value={field.state.value}
+								<Switch
+									id={id}
+									checked={field.state.value === "on"}
 									disabled={!editable}
-									onValueChange={(v) =>
-										field.handleChange(v as Policy["passwordLogin"])
+									onCheckedChange={(on) =>
+										field.handleChange(on ? "on" : "off")
 									}
-								>
-									<SelectTrigger id={id} className="w-48">
-										<SelectValue>
-											{(v: Policy["passwordLogin"]) => passwordModes[v]}
-										</SelectValue>
-									</SelectTrigger>
-									<SelectContent>
-										{Object.entries(passwordModes).map(([k, label]) => (
-											<SelectItem key={k} value={k}>
-												{label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								/>
 								{passwordLocksOut(field.state.value) && (
 									<Alert variant="warning">
 										<AlertDescription>

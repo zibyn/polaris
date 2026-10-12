@@ -274,7 +274,7 @@ func TestReauthentication(t *testing.T) {
 
 	// A password works too, when the setting lets this User use one.
 	e.password("ALICE", "password1")
-	if _, err := e.pool.Exec(context.Background(), "UPDATE settings SET password_login = 'all'; UPDATE sessions SET auth_time = now() - interval '1 hour'"); err != nil {
+	if _, err := e.pool.Exec(context.Background(), "UPDATE settings SET password_login = 'on'; UPDATE sessions SET auth_time = now() - interval '1 hour'"); err != nil {
 		t.Fatal(err)
 	}
 	if c := e.call("POST", tok, "/v1/account/reauth", map[string]string{"password": "wrong-one"}, nil); c != 422 {
@@ -350,14 +350,9 @@ func TestChangePasswordWellKnown(t *testing.T) {
 		defer resp.Body.Close() //nolint:errcheck
 		return resp.StatusCode, resp.Header.Get("Location")
 	}
-	// The default is "admins": a password can be changed, so the file is there.
-	for _, setting := range []string{"admins", "all"} {
-		if _, err := e.pool.Exec(context.Background(), "UPDATE settings SET password_login = $1", setting); err != nil {
-			t.Fatal(err)
-		}
-		if code, loc := fetch(); code != 302 || loc != e.issuer+"/account#passkeys" {
-			t.Errorf("change-password while %s: %d %q", setting, code, loc)
-		}
+	// Password login is on by default, so the file is there.
+	if code, loc := fetch(); code != 302 || loc != e.issuer+"/account#passkeys" {
+		t.Errorf("change-password while on: %d %q", code, loc)
 	}
 	if _, err := e.pool.Exec(context.Background(), "UPDATE settings SET password_login = 'off'"); err != nil {
 		t.Fatal(err)
@@ -377,7 +372,7 @@ func TestLastLoginPathStays(t *testing.T) {
 	if c := e.call("DELETE", tok, "/v1/account/identifiers/phone", nil, nil); c != 422 {
 		t.Errorf("unbind the only phone, username without password: %d", c)
 	}
-	if _, err := e.pool.Exec(context.Background(), "UPDATE settings SET password_login = 'all'"); err != nil {
+	if _, err := e.pool.Exec(context.Background(), "UPDATE settings SET password_login = 'on'"); err != nil {
 		t.Fatal(err)
 	}
 	if c := e.call("PUT", tok, "/v1/account/password", map[string]string{"password": "short"}, nil); c != 422 {
@@ -906,7 +901,7 @@ func TestReauthenticationWithTwoFactor(t *testing.T) {
 	e.password("ALICE", "password1")
 	tok := e.signIn("ALICE", 0)
 	secret, codes := e.enableTwoFactor(tok)
-	if _, err := e.pool.Exec(context.Background(), "UPDATE settings SET password_login = 'all'; UPDATE sessions SET auth_time = now() - interval '1 hour'"); err != nil {
+	if _, err := e.pool.Exec(context.Background(), "UPDATE settings SET password_login = 'on'; UPDATE sessions SET auth_time = now() - interval '1 hour'"); err != nil {
 		t.Fatal(err)
 	}
 
