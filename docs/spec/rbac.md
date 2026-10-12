@@ -11,7 +11,7 @@ API (aud)
       └── 分配给 User 或 M2M Application(同一 API 上可以有多个,权限取并集)
 ```
 
-- **默认 Role**:只能在业务 API 上设置。User **创建时**自动获得默认 Role;之后修改默认设置,不影响已有 User。它只在 User 创建时授予,不作用于 Application。
+- **默认 Role**:只能在业务 API 上设置。User **创建时**自动获得默认 Role;之后修改默认设置,不影响已有 User。它只在 User 创建时授予,不作用于 Application。**每一条创建途径都一致**,管理员创建的 User 同样如此。
 - **删除 Role**:如果 Role 仍被分配,先提示影响了几个 User 和 Application,确认后连同分配记录一起删除。删除 Permission 时,它也同步从所有 Role 中移除。
 - **Application 中只有 M2M Application 能持有 Role**:让 User 登录的 public 与 confidential Application 都不持有 Role。
 
@@ -39,7 +39,7 @@ Stars Auth 自带的内置 API,是一套 REST 接口。管理端前端只调用�
 | Permission | 所有者 | 管理员 | 只读 |
 |---|---|---|---|
 | `users:read` | ✓ | ✓ | ✓ |
-| `users:write`(禁用、删除、替换 Identifier、重置 2FA、下线 Session) | ✓ | ✓ | |
+| `users:write`(创建、禁用、删除、替换 Identifier、重置 2FA、下线 Session) | ✓ | ✓ | |
 | `roles:assign`(分配业务 API 上 User 与 M2M Application 的 Role) | ✓ | ✓ | |
 | `admin-roles:assign`(分配 Management API 的 Role) | ✓ | | |
 | `applications:read` | ✓ | ✓ | ✓ |
@@ -49,5 +49,5 @@ Stars Auth 自带的内置 API,是一套 REST 接口。管理端前端只调用�
 | `keys:rotate` | ✓ | | |
 | `audit:read` | ✓ | ✓ | ✓ |
 
-- **管理员**:在 Management API 上持有任一 Role 的 User。首次引导创建的是「所有者」。
+- **管理员**:在 Management API 上持有任一 Role 的 User。首次引导创建的是「所有者」。待激活的 User 也可以持有 Role(包括 Management API 的 Role):他拿不到令牌,调不了任何接口,所以风险为零。
 - **保护规则**:最后一个所有者不能被删除、禁用或降级。

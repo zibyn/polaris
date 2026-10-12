@@ -17,7 +17,7 @@ import (
 // selfAudited are the writes that audit themselves, in the same
 // transaction and with more detail; auditWrite audits the rest.
 var selfAudited = map[string]bool{
-	"end-session": true, "disable-user": true, "enable-user": true, "delete-user": true,
+	"end-session": true, "disable-user": true, "enable-user": true, "delete-user": true, "create-user": true,
 	"replace-identifier": true, "set-user-roles": true, "put-settings": true, "rotate-signing-keys": true,
 	"reset-two-factor": true, "create-provider": true, "unbind-external-identity": true,
 	"remove-user-passkey": true, "set-application-roles": true,

@@ -253,3 +253,62 @@ func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
+
+// CreatePendingUser makes a User for an admin to hand over (ADR 0016), with
+// an Identifier and an initial password of the admin's choosing, in 待激活.
+// The Identifier is stored as verified, so it can also receive codes; the
+// password is hashed here, never in the caller.
+func (s *Store) CreatePendingUser(ctx context.Context, identifier, password string) (string, error) {
+	if utf8.RuneCountInString(password) < 8 {
+		return "", ErrPasswordTooShort
+	}
+	kind, value, err := ParseCreateIdentifier(identifier)
+	if err != nil {
+		return "", err
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		return "", err
+	}
+	sub := rand.Text()
+	// One transaction: a User never outlives a failed Identifier, and the
+	// initial password never lands on an account that stayed active.
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		if err := q.CreateUser(ctx, sub); err != nil {
+			return err
+		}
+		if err := q.AddIdentifier(ctx, sqlc.AddIdentifierParams{UserID: sub, Kind: kind, Value: value}); err != nil {
+			if isUniqueViolation(err) {
+				return ErrIdentifierTaken
+			}
+			return err
+		}
+		if err := q.SetPassword(ctx, sqlc.SetPasswordParams{UserID: sub, Hash: hash}); err != nil {
+			return err
+		}
+		// CreateUser leaves the User active (it means "signed up"), so this
+		// is the step that makes them 待激活.
+		return q.SetUserPending(ctx, sub)
+	})
+	return sub, err
+}
+
+// ParseCreateIdentifier reads what an admin typed as an Identifier of any
+// kind: a username, which ParseIdentifier would insist be a phone number or
+// an email. The two can never disagree about a value's kind — a username
+// may hold neither '@' nor '+', so nothing that reads as a phone number or
+// an email can also read as one.
+func ParseCreateIdentifier(s string) (kind, value string, err error) {
+	if kind, value, err := ParseIdentifier(s); err == nil {
+		return kind, value, nil
+	}
+	if value, err := CheckUsername(s); err == nil {
+		return "username", value, nil
+	}
+	return "", "", ErrCreateIdentifier
+}
+
+// ErrCreateIdentifier is an Identifier an admin typed that is neither a
+// phone number, an email nor a username.
+const ErrCreateIdentifier Invalid = "请输入手机号、邮箱或用户名"

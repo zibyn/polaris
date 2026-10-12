@@ -56,6 +56,9 @@ const (
 	// Set, to the mistakes so far, while the pending login waits for a TOTP
 	// code or a 恢复码.
 	storeTOTPFailures = "totp_failures"
+	// Set while a 待激活 User past the first factor must replace the initial
+	// password an admin set (ADR 0016). It comes before 两步验证.
+	storeSetPassword = "set_password"
 	// The challenge of the login's Passkey options, renewed each time the
 	// first step renders; what a replayed assertion fails against.
 	storePasskeyChallenge = "passkey_challenge"
@@ -378,10 +381,44 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 
 	op := r.PostFormValue("op")
 	failures, awaitingTOTP := as.Store[storeTOTPFailures].(int64)
-	if awaitingTOTP && op != "totp" {
+	awaitingPassword := as.Store[storeSetPassword] == true
+	switch {
+	case awaitingPassword && op != "set-password" && op != "delete-pending":
+		// 待激活: nothing else before the User sets their own password —
+		// except 注销, which is open to them too.
+		return s.render(w, r, as, c, loginPage{})
+	case awaitingTOTP && op != "totp":
 		return s.render(w, r, as, c, loginPage{}) // nothing else before TOTP
 	}
 	switch op {
+	case "delete-pending":
+		// 注销 while 待激活: the User has no token to delete an account
+		// with, so they do it from the login they are stuck in (ADR 0016).
+		if !awaitingPassword {
+			break
+		}
+		if err := s.deletePending(ctx, pending); err != nil {
+			return fail(err)
+		}
+		as.Store = nil
+		page(w, http.StatusOK, "message", "账号已注销")
+		return goidc.StatusPending, nil
+
+	case "set-password":
+		if !awaitingPassword {
+			break
+		}
+		// The password path of its own (ADR 0016): the account center's
+		// would ask for a recent reauthentication, which a User with 两步验证
+		// on is refused, and they would never get past this page.
+		if err := s.ids.SetPasswordIfPending(ctx, pending, r.PostFormValue("password")); err != nil {
+			return fail(err)
+		}
+		// No consent and no Session: the pending step asked for nothing but
+		// the password, so the terms come next as they always would.
+		delete(as.Store, storeSetPassword)
+		return s.complete(w, r, as, c, "", pending, time.Unix(pendingAuthTime, 0), storedAMR(as.Store[storeAMR]))
+
 	case "totp":
 		if !awaitingTOTP {
 			break
@@ -581,22 +618,38 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request, as *goidc.AuthnS
 // is empty unless the browser already had one (whose login passed 两步验证
 // already), and the Session starts once nothing is left.
 func (s *Service) complete(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client, session, sub string, authTime time.Time, amr []string) (goidc.Status, error) {
-	totp := false
+	// 待激活 comes before 两步验证, 绑手机号 and the terms (ADR 0016), and is
+	// identical to the direct auth API's order. The only evidence so far is
+	// that the User knows a password an admin chose, and running the rest of
+	// the login on that evidence is what this step refuses.
+	//
+	// A browser Session already signed in is not re-asked: it cannot exist
+	// for a 待激活 User, since they never got past this step.
+	pending := false
 	if session == "" {
+		var err error
+		if pending, err = s.ids.Pending(r.Context(), sub); err != nil {
+			return goidc.StatusFailure, err
+		}
+	}
+	totp := false
+	if session == "" && !pending {
 		var err error
 		if totp, err = s.needsTOTP(r.Context(), sub, amr); err != nil {
 			return goidc.StatusFailure, err
 		}
 	}
-	phone, err := s.q.NeedsPhone(r.Context(), sub)
-	if err != nil {
-		return goidc.StatusFailure, err
+	phone, consent := false, false
+	if !pending {
+		var err error
+		if phone, err = s.q.NeedsPhone(r.Context(), sub); err != nil {
+			return goidc.StatusFailure, err
+		}
+		if consent, err = s.q.NeedsConsent(r.Context(), sub); err != nil {
+			return goidc.StatusFailure, err
+		}
 	}
-	consent, err := s.q.NeedsConsent(r.Context(), sub)
-	if err != nil {
-		return goidc.StatusFailure, err
-	}
-	if totp || phone || consent {
+	if pending || totp || phone || consent {
 		as.Store = map[string]any{storeBindSub: sub, storeAuthTime: authTime.Unix(), storeAMR: amr, storeBinder: hex.EncodeToString(hash(binder(w, r)))}
 		if session != "" {
 			as.Store[oidcstore.SessionKey] = session
@@ -604,9 +657,13 @@ func (s *Service) complete(w http.ResponseWriter, r *http.Request, as *goidc.Aut
 		if totp {
 			as.Store[storeTOTPFailures] = int64(0)
 		}
+		if pending {
+			as.Store[storeSetPassword] = true
+		}
 		return s.render(w, r, as, c, loginPage{})
 	}
 	if session == "" {
+		var err error
 		if session, err = s.newSession(w, r, c.ID, sub, authTime, amr); err != nil {
 			return goidc.StatusFailure, err
 		}
@@ -802,6 +859,9 @@ type loginPage struct {
 	// TOTP: a User past the first factor must enter a TOTP code, or a 恢复码
 	// on the Recovery form.
 	TOTP, Recovery bool
+	// SetPassword: a 待激活 User must replace the admin's initial password
+	// before anything else happens (ADR 0016).
+	SetPassword bool
 	// Consent: a signed-in User must agree to new terms before going on;
 	// then Bind: they must bind a phone number.
 	Consent, Bind bool
@@ -829,7 +889,8 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 	p.Client, p.Action = c.Name, "/authorize/"+as.ID
 	ctx := r.Context()
 	_, p.TOTP = as.Store[storeTOTPFailures]
-	if pending, ok := as.Store[storeBindSub].(string); ok && !p.TOTP {
+	p.SetPassword = as.Store[storeSetPassword] == true
+	if pending, ok := as.Store[storeBindSub].(string); ok && !p.TOTP && !p.SetPassword {
 		consent, err := s.q.NeedsConsent(ctx, pending)
 		if err != nil {
 			return goidc.StatusFailure, err
@@ -867,12 +928,12 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		p.CodeKinds = "手机号或邮箱"
 	}
 	p.IdentifierLabel = p.CodeKinds
-	if _, pending := as.Store[storeBindSub]; !pending && !p.TOTP {
+	if _, pending := as.Store[storeBindSub]; !pending && !p.TOTP && !p.SetPassword {
 		if p.Providers, err = s.providers.Buttons(ctx); err != nil {
 			return goidc.StatusFailure, err
 		}
 	}
-	if p.PasswordOn && !p.Bind {
+	if p.PasswordOn && !p.Bind && !p.SetPassword {
 		p.IdentifierLabel = strings.Replace(p.CodeKinds, "或", "、", 1) + "或用户名"
 	}
 	// The first step carries Passkey assertion options, and a fresh challenge
@@ -906,7 +967,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 // identifier one, or the username and password one an instance without
 // Channels offers. A Passkey can start a login from either.
 func (p loginPage) firstStep() bool {
-	return !p.TOTP && !p.Consent && !p.Bind && !p.CodeSent &&
+	return !p.TOTP && !p.Consent && !p.Bind && !p.SetPassword && !p.CodeSent &&
 		(p.Username == "" || p.PasswordForm)
 }
 

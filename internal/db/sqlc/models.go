@@ -276,6 +276,7 @@ type User struct {
 	ID         string
 	CreatedAt  pgtype.Timestamptz
 	DisabledAt pgtype.Timestamptz
+	Status     string
 }
 
 type UserRole struct {

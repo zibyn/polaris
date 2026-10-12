@@ -32,6 +32,7 @@
 - **记录**:
   - Management API 的全部写操作,含 M2M Application 以自身身份做的(ADR 0015):操作人带类型,记为该 Application 的 client_id,而不是被误当成某个 User;
   - User 安全事件:绑定或解绑、开关两步验证、重新生成恢复码、用掉恢复码(`recovery_code.used`)、增删改 Passkey(`passkey.added` / `passkey.removed` / `passkey.renamed`)、Passkey 计数器回退被拒(`passkey.counter_regressed`)、改密码、下线 Session、注销;
+  - User 生命周期:管理员创建(`user.created`)、待激活的本人改密激活;
   - 登录锁定;
   - 触发每日发送上限。
 - **不记录**:普通的登录成功(这些信息已体现在 Session 中);`client_credentials` 换令牌(每 10 分钟一次,会淹没其他事件)。

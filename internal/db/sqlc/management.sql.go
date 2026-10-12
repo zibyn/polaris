@@ -244,7 +244,7 @@ func (q *Queries) GetSettings(ctx context.Context) (GetSettingsRow, error) {
 }
 
 const getUser = `-- name: GetUser :one
-SELECT u.id, u.created_at, u.disabled_at,
+SELECT u.id, u.created_at, u.disabled_at, u.status,
        COALESCE((SELECT json_agg(json_build_object('kind', i.kind, 'value', i.value) ORDER BY i.kind)
                  FROM identifiers i WHERE i.user_id = u.id), '[]')::jsonb AS identifiers,
        COALESCE((SELECT json_agg(json_build_object('api', r.api, 'key', r.key, 'name', r.name) ORDER BY r.api, r.key)
@@ -261,6 +261,7 @@ type GetUserRow struct {
 	ID                 string
 	CreatedAt          pgtype.Timestamptz
 	DisabledAt         pgtype.Timestamptz
+	Status             string
 	Identifiers        []byte
 	Roles              []byte
 	HasPassword        bool
@@ -275,6 +276,7 @@ func (q *Queries) GetUser(ctx context.Context, id string) (GetUserRow, error) {
 		&i.ID,
 		&i.CreatedAt,
 		&i.DisabledAt,
+		&i.Status,
 		&i.Identifiers,
 		&i.Roles,
 		&i.HasPassword,
@@ -560,7 +562,7 @@ func (q *Queries) ListSigningKeys(ctx context.Context) ([]ListSigningKeysRow, er
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT u.id, u.created_at, u.disabled_at,
+SELECT u.id, u.created_at, u.disabled_at, u.status,
        COALESCE((SELECT json_agg(json_build_object('kind', i.kind, 'value', i.value) ORDER BY i.kind)
                  FROM identifiers i WHERE i.user_id = u.id), '[]')::jsonb AS identifiers,
        COALESCE((SELECT json_agg(json_build_object('api', r.api, 'key', r.key, 'name', r.name) ORDER BY r.api, r.key)
@@ -572,14 +574,19 @@ WHERE ($1::text = ''
        OR EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = u.id AND strpos(i.value, lower($1)) > 0))
   AND ($2::text = ''
        OR EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id AND ur.api = $3 AND ur.role = $2))
+  -- 待激活 = pending 且未禁用, 与 UserPending 同一份口径; 剩下的一律算
+  -- active, 被禁用的 User 也在那一侧 —— 他根本登录不了.
+  AND ($4::text = 'any'
+       OR ($4::text = 'pending') = (u.status = 'pending' AND u.disabled_at IS NULL))
 ORDER BY u.created_at DESC, u.id
-LIMIT $5 OFFSET $4
+LIMIT $6 OFFSET $5
 `
 
 type ListUsersParams struct {
 	Search string
 	Role   string
 	Api    string
+	Status string
 	Off    int32
 	Lim    int32
 }
@@ -588,18 +595,20 @@ type ListUsersRow struct {
 	ID          string
 	CreatedAt   pgtype.Timestamptz
 	DisabledAt  pgtype.Timestamptz
+	Status      string
 	Identifiers []byte
 	Roles       []byte
 }
 
 // Search matches part of the sub or of any Identifier. An empty role skips
-// the Role filter.
+// the Role filter, and 'any' the status one.
 // ponytail: strpos scans every row; add a pg_trgm index when the pool is big.
 func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUsersRow, error) {
 	rows, err := q.db.Query(ctx, listUsers,
 		arg.Search,
 		arg.Role,
 		arg.Api,
+		arg.Status,
 		arg.Off,
 		arg.Lim,
 	)
@@ -614,6 +623,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 			&i.ID,
 			&i.CreatedAt,
 			&i.DisabledAt,
+			&i.Status,
 			&i.Identifiers,
 			&i.Roles,
 		); err != nil {

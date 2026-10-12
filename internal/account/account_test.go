@@ -983,3 +983,33 @@ func TestDeleteAccountRevokesApple(t *testing.T) {
 		t.Errorf("revoked: %v", apple.Revoked)
 	}
 }
+
+// 待激活的 User 拿不到令牌, 所以账号中心本来就进不去 (ADR 0016). 仍在这里
+// 拦一道: "没有令牌"就是全部的保护, 万一有一张漏了出来, 它也不该打开账号
+// 中心 —— 绑手机号、开两步验证都要求先激活。
+func TestPendingUserCannotUseTheAccountCenter(t *testing.T) {
+	e := start(t)
+	e.user("ALICE", "email:alice@example.com")
+	tok := e.signIn("ALICE", 0)
+	if _, err := e.pool.Exec(context.Background(), "UPDATE users SET status = 'pending' WHERE id = 'ALICE'"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, op := range []struct {
+		method, path string
+		body         any
+	}{
+		{"GET", "/v1/account/me", nil},
+		{"PUT", "/v1/account/password", map[string]string{"password": "password1"}},
+		{"POST", "/v1/account/2fa/totp", nil},
+		{"PUT", "/v1/account/identifiers/phone", map[string]string{"value": "+8613800138000", "code": "123456"}},
+	} {
+		if c := e.call(op.method, tok, op.path, op.body, nil); c != 403 {
+			t.Errorf("%s %s while 待激活: %d, want 403", op.method, op.path, c)
+		}
+	}
+	var n int
+	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM passwords WHERE user_id = 'ALICE'").Scan(&n); err != nil || n != 0 {
+		t.Errorf("%d passwords, want 0: the account center wrote one", n)
+	}
+}

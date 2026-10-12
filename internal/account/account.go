@@ -74,6 +74,8 @@ type callerKey struct{}
 type caller struct {
 	sub, session, ip string
 	authTime         time.Time
+	// 待激活, read with the Session; see AccountSession.
+	pending bool
 }
 
 func callerOf(ctx context.Context) caller { return ctx.Value(callerKey{}).(caller) }
@@ -169,6 +171,14 @@ func (s *Service) authorize(api huma.API) func(huma.Context, func(huma.Context))
 			_ = huma.WriteErr(api, ctx, http.StatusInternalServerError, "internal error")
 			return
 		}
+		// 待激活: no token is ever issued to such a User — the sign-in stops
+		// at setting a password — so this is normally unreachable. Checked
+		// anyway: "no token exists" is the whole of the protection, so a
+		// token that did turn up must not open the account center.
+		if c.pending {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "账号待激活,请先设置密码")
+			return
+		}
 		r, _ := humago.Unwrap(ctx)
 		c.ip = clientIP(r)
 		next(huma.WithValue(ctx, callerKey{}, c))
@@ -182,13 +192,13 @@ func (s *Service) caller(ctx context.Context, audience, header string) (caller, 
 	if err != nil {
 		return caller{}, err
 	}
-	authTime, err := s.q.AccountSession(ctx, sqlc.AccountSessionParams{ID: tok.SessionID, UserID: tok.Subject})
+	sess, err := s.q.AccountSession(ctx, sqlc.AccountSessionParams{ID: tok.SessionID, UserID: tok.Subject})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return caller{}, oidcstore.ErrToken
 	} else if err != nil {
 		return caller{}, err
 	}
-	return caller{sub: tok.Subject, session: tok.SessionID, authTime: authTime.Time}, nil
+	return caller{sub: tok.Subject, session: tok.SessionID, authTime: sess.AuthTime.Time, pending: sess.Pending}, nil
 }
 
 type Identifier struct {

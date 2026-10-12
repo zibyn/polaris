@@ -119,3 +119,58 @@ func before24(t *testing.T) fs.FS {
 	}
 	return files
 }
+
+// 待激活 is a new User status (ADR 0016). A User created before it is active:
+// the column's default has to say so, or every existing User would read as
+// 待激活 and be stopped at a password step they cannot pass.
+func TestPendingStatusDefaultsToActive(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.Fresh(t)
+	if err := migrate(ctx, pool, before25(t)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "INSERT INTO users (id) VALUES ('OLD')"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := pool.QueryRow(ctx, "SELECT status FROM users WHERE id = 'OLD'").Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "active" {
+		t.Errorf("an existing User is %q, want active", status)
+	}
+	// And the column only accepts the two states.
+	if _, err := pool.Exec(ctx, "UPDATE users SET status = 'nope'"); err == nil {
+		t.Error("an unknown status is accepted")
+	}
+}
+
+// before25 is the embedded migrations as they stood before 00025, so a test
+// can start an instance without the 待激活 status column.
+func before25(t *testing.T) fs.FS {
+	t.Helper()
+	sub, err := fs.Sub(migrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := fs.ReadDir(sub, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := fstest.MapFS{}
+	for _, e := range entries {
+		n, err := strconv.ParseInt(strings.SplitN(e.Name(), "_", 2)[0], 10, 64)
+		if err != nil || n >= 25 {
+			continue
+		}
+		b, err := fs.ReadFile(sub, e.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[e.Name()] = &fstest.MapFile{Data: b}
+	}
+	return files
+}

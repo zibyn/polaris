@@ -318,3 +318,142 @@ func TestBootstrapGetsDefaultRoles(t *testing.T) {
 		t.Errorf("the first owner: %v", got)
 	}
 }
+
+// 管理员创建 User (ADR 0016): 建号、加标识符、设初始密码、置待激活在一个
+// 事务里; 初始密码能登录, 但 User 处于待激活。
+func TestCreatePendingUser(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	owner(t, s) // 密码登录开着, 且实例已引导
+
+	sub, err := s.CreatePendingUser(ctx, "Alice@Example.com ", "password1")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if sub == "" {
+		t.Fatal("no sub")
+	}
+	// 标识符按既有口径归一化并用它登录.
+	if got, err := s.CheckPassword(ctx, "alice@example.com", "password1"); err != nil || got != sub {
+		t.Errorf("sign in with the initial password: %q %v, want %q", got, err, sub)
+	}
+	if pending, err := s.Pending(ctx, sub); err != nil || !pending {
+		t.Errorf("pending = %v %v, want true", pending, err)
+	}
+	// 照常拿业务 API 的默认 Role, 与其它创建途径一致 (rbac.md). 默认 Role
+	// 只在创建时授予, 所以先建一条再建第二个 User 比。
+	defaultRole(t, s, "member")
+	withRole, err := s.CreatePendingUser(ctx, "dave@example.com", "password1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rolesOf(t, s, withRole); !slices.Equal(got, []string{"member"}) {
+		t.Errorf("roles = %v, want [member]", got)
+	}
+
+	// 手机号与用户名同样接受; 用户名不要求 @ 或 +, 走 ParseIdentifier 会失败.
+	if _, err := s.CreatePendingUser(ctx, "13800001111", "password1"); err != nil {
+		t.Errorf("phone: %v", err)
+	}
+	if _, err := s.CreatePendingUser(ctx, "bob", "password1"); err != nil {
+		t.Errorf("username: %v", err)
+	}
+
+	// 已被占用的标识符: 明确错误, 且不留下半个 User.
+	before := countUsers(t, s)
+	for _, id := range []string{"alice@example.com", "13800001111", "bob"} {
+		if _, err := s.CreatePendingUser(ctx, id, "password1"); !errors.Is(err, ErrIdentifierTaken) {
+			t.Errorf("%q: %v, want ErrIdentifierTaken", id, err)
+		}
+	}
+	if after := countUsers(t, s); after != before {
+		t.Errorf("%d Users left behind, want %d", after, before)
+	}
+
+	// 密码规则沿用现有; 标识符不认识时明确拒绝.
+	if _, err := s.CreatePendingUser(ctx, "carol@example.com", "short"); !errors.Is(err, ErrPasswordTooShort) {
+		t.Errorf("short password: %v", err)
+	}
+	if _, err := s.CreatePendingUser(ctx, "not an identifier", "password1"); !errors.Is(err, ErrCreateIdentifier) {
+		t.Errorf("bad identifier: %v", err)
+	}
+}
+
+// 强制改密: 待激活的 User 设完自己的密码即激活; 已激活的账号再走一次这条
+// 通路什么也不做 —— 否则重放一个 auth_session 就能改别人的密码。
+func TestSetPasswordIfPendingActivates(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	owner(t, s)
+
+	sub, err := s.CreatePendingUser(ctx, "alice@example.com", "password1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes := audited(t, s, "password.changed")
+	if err := s.SetPasswordIfPending(ctx, sub, "mine-mine-mine"); err != nil {
+		t.Fatalf("set password: %v", err)
+	}
+	if pending, _ := s.Pending(ctx, sub); pending {
+		t.Error("still 待激活 after setting a password")
+	}
+	if _, err := s.CheckPassword(ctx, "alice@example.com", "mine-mine-mine"); err != nil {
+		t.Errorf("sign in with the new password: %v", err)
+	}
+	if _, err := s.CheckPassword(ctx, "alice@example.com", "password1"); !errors.Is(err, ErrBadCredentials) {
+		t.Errorf("the initial password still works: %v", err)
+	}
+	if n := audited(t, s, "password.changed"); n != changes+1 {
+		t.Errorf("%d password.changed events, want %d", n, changes+1)
+	}
+
+	// 已激活: 这条通路关掉了.
+	if err := s.SetPasswordIfPending(ctx, sub, "someone-else"); !errors.Is(err, ErrNotPending) {
+		t.Errorf("on an active User: %v, want ErrNotPending", err)
+	}
+	if _, err := s.CheckPassword(ctx, "alice@example.com", "mine-mine-mine"); err != nil {
+		t.Errorf("the password changed anyway: %v", err)
+	}
+	if n := audited(t, s, "password.changed"); n != changes+1 {
+		t.Errorf("%d password.changed events, want %d: an activated account was written to", n, changes+1)
+	}
+
+	// 密码规则同样适用.
+	other, _ := s.CreatePendingUser(ctx, "bob@example.com", "password1")
+	if err := s.SetPasswordIfPending(ctx, other, "short"); !errors.Is(err, ErrPasswordTooShort) {
+		t.Errorf("short: %v", err)
+	}
+	if pending, _ := s.Pending(ctx, other); !pending {
+		t.Error("a rejected password activated the account")
+	}
+}
+
+// 禁用优先于待激活: 被禁用的 User 不能登录, 所以他不算待激活, 也不会被
+// 强制改密拦住 —— 他根本进不来。
+func TestDisabledBeatsPending(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	owner(t, s)
+	sub, err := s.CreatePendingUser(ctx, "alice@example.com", "password1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, "UPDATE users SET disabled_at = now() WHERE id = $1", sub); err != nil {
+		t.Fatal(err)
+	}
+	if pending, err := s.Pending(ctx, sub); err != nil || pending {
+		t.Errorf("a disabled User is 待激活: %v %v", pending, err)
+	}
+	if _, err := s.CheckPassword(ctx, "alice@example.com", "password1"); !errors.Is(err, ErrDisabled) {
+		t.Errorf("sign in: %v, want ErrDisabled", err)
+	}
+}
+
+func countUsers(t *testing.T, s *Store) int {
+	t.Helper()
+	var n int
+	if err := s.pool.QueryRow(context.Background(), "SELECT count(*) FROM users").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}

@@ -59,3 +59,29 @@ FROM settings s;
 
 -- name: RecordConsent :exec
 INSERT INTO consents (user_id, version, client_id) VALUES ($1, $2, $3);
+
+-- name: SetUserPending :exec
+-- 管理员创建的 User 进入待激活 (ADR 0016). 单独一条语句, 不并进 CreateUser:
+-- 默认 Role 的定义只有那一处, 每条创建途径才都一致.
+UPDATE users SET status = 'pending' WHERE id = $1;
+
+-- name: UserPending :one
+-- 待激活 = pending 且未禁用; 禁用永远优先 (一个禁用的 User 根本登录不了).
+SELECT (u.status = 'pending' AND u.disabled_at IS NULL)::boolean AS pending
+FROM users u WHERE u.id = $1;
+
+-- name: ActivateUser :execrows
+-- 强制改密 (ADR 0016): 待激活的 User 写进自己的密码, 随即激活.
+-- 单独一条通路, 不复用账号中心的 PutPassword — 那条要求近期重新认证, 而
+-- 重新认证对开了两步验证的 User 一律拒绝密码和验证码, 2FA 用户会卡死.
+-- put 挂在 activated 上, 只有这一行真的还是 pending 才写得进去: 重放一个
+-- 已激活账号的 auth_session 改不动密码, 也不会多记一条审计.
+WITH activated AS (
+    UPDATE users SET status = 'active' WHERE users.id = @user_id AND users.status = 'pending' RETURNING users.id
+), put AS (
+    INSERT INTO passwords (user_id, hash) SELECT activated.id, @hash FROM activated
+    ON CONFLICT (user_id) DO UPDATE SET hash = EXCLUDED.hash
+    RETURNING user_id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'password.changed', put.user_id, jsonb_build_object('by', put.user_id) FROM put;

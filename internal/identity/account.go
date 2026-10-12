@@ -159,3 +159,45 @@ func (s *Store) Delete(ctx context.Context, sub string) error {
 		return nil
 	})
 }
+
+// ErrNotPending is a password write that only a 待激活 User may make, on an
+// account that is not 待激活 any more.
+const ErrNotPending Invalid = "该账号已经激活,请重新登录"
+
+// SetPasswordIfPending replaces a 待激活 User's password with their own and
+// activates the account (ADR 0016).
+//
+// It is a password path of its own, deliberately not the account center's
+// SetPassword above: that one is a sensitive action, and reauthenticating for
+// one is refused to a User with 两步验证 on — a password or a code is turned
+// down there, and a Passkey or TOTP they have not set up yet is nothing to
+// fall back on. A 待激活 User would be stuck for good. Here their password
+// itself is the proof they just gave, and nothing else is asked for.
+func (s *Store) SetPasswordIfPending(ctx context.Context, sub, password string) error {
+	if utf8.RuneCountInString(password) < 8 {
+		return ErrPasswordTooShort
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		return err
+	}
+	// Only a row that is still pending takes the password, so replaying the
+	// step of an account that has been activated since changes nothing.
+	if n, err := s.q.ActivateUser(ctx, sqlc.ActivateUserParams{UserID: sub, Hash: hash}); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNotPending
+	}
+	return nil
+}
+
+// Pending reports whether the User is 待激活: created by an admin, with a
+// password of someone else's choosing they have not replaced yet. A disabled
+// User is never 待激活 — they cannot sign in at all.
+func (s *Store) Pending(ctx context.Context, sub string) (bool, error) {
+	pending, err := s.q.UserPending(ctx, sub)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil // no such User: nothing to hold back
+	}
+	return pending, err
+}

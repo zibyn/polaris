@@ -2,10 +2,12 @@ package management
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/zibyn/stars-auth/internal/db/sqlc"
 	"github.com/zibyn/stars-auth/internal/identity"
@@ -14,6 +16,64 @@ import (
 
 type subPath struct {
 	Sub string `path:"sub"`
+}
+
+type createUserInput struct {
+	Body struct {
+		Identifier string `json:"identifier" doc:"+86 phone number, email or username; stored normalised. An admin-typed phone number or email counts as verified at once: no code is sent (ADR 0016)"`
+		Password   string `json:"password" minLength:"8" doc:"The initial password the admin hands over; the User must replace it at first sign-in before they get any token"`
+	}
+}
+
+type createUserOutput struct {
+	Body UserDetail
+}
+
+// createUser makes a User for an admin to hand over (ADR 0016). It starts
+// 待激活: they can sign in with the initial password, but get no
+// authorization code — hence no token — until they replace it, so no
+// Application ever sees this state. The admin-typed Identifier is taken as
+// verified, the same as GitLab's admin-created accounts and Keycloak's Email
+// Verified checkbox; typed wrong, the account lands with whoever holds that
+// address, which the admin checks offline.
+func (s *Service) createUser(ctx context.Context, in *createUserInput) (*createUserOutput, error) {
+	// 密码登录 is this feature's precondition: the initial password goes
+	// through it, so with the switch off pre-setting one is meaningless.
+	// The console disables the entry and says why.
+	setting, err := s.q.PasswordLogin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if setting == "off" {
+		return nil, huma.Error422UnprocessableEntity("密码登录已关闭,不能设置初始密码")
+	}
+	sub, err := s.ids.CreatePendingUser(ctx, in.Body.Identifier, in.Body.Password)
+	// ErrIdentifierTaken is itself an identity.Invalid, so it is named first:
+	// a taken Identifier is a 409, not the 422 the other Invalid errors get.
+	var bad identity.Invalid
+	switch {
+	case errors.Is(err, identity.ErrIdentifierTaken):
+		return nil, huma.Error409Conflict(err.Error())
+	case errors.As(err, &bad):
+		return nil, huma.Error422UnprocessableEntity(bad.Error())
+	case err != nil:
+		return nil, err
+	}
+	// The generic audit only records path parameters, and this write has
+	// none: audited here, with the User it made.
+	detail, _ := json.Marshal(map[string]string{"by": callerSub(ctx)})
+	if err := s.q.Audit(ctx, sqlc.AuditParams{Event: "user.created", Sub: pgtype.Text{String: sub, Valid: true}, Detail: detail}); err != nil {
+		return nil, err
+	}
+	r, err := s.q.GetUser(ctx, sub)
+	if err != nil {
+		return nil, err
+	}
+	u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Status, r.Identifiers, r.Roles)
+	if err != nil {
+		return nil, err
+	}
+	return &createUserOutput{Body: UserDetail{User: u, HasPassword: r.HasPassword, TwoFactor: r.TwoFactor, TwoFactorOrPasskey: r.TwoFactorOrPasskey}}, nil
 }
 
 // ensureUser is the 404 for a User a path names who is not.
@@ -34,7 +94,7 @@ func (s *Service) mayManage(ctx context.Context, sub string) error {
 	} else if err != nil {
 		return err
 	}
-	target, err := user(u.ID, u.CreatedAt.Time, u.DisabledAt, u.Identifiers, u.Roles)
+	target, err := user(u.ID, u.CreatedAt.Time, u.DisabledAt, u.Status, u.Identifiers, u.Roles)
 	if err != nil {
 		return err
 	}

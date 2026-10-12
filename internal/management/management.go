@@ -41,6 +41,7 @@ type Service struct {
 	twoFactor *twofactor.Store
 	providers *provider.Store
 	passkeys  *passkey.Store
+	ids       *identity.Store
 }
 
 func New(pool *pgxpool.Pool, keyring *crypt.Keyring, issuer string) (*Service, error) {
@@ -48,7 +49,7 @@ func New(pool *pgxpool.Pool, keyring *crypt.Keyring, issuer string) (*Service, e
 	if err != nil {
 		return nil, err
 	}
-	return &Service{issuer: issuer, pool: pool, keyring: keyring, q: sqlc.New(pool), keys: oidcstore.NewKeys(pool, keyring), channels: channel.NewStore(pool, keyring), twoFactor: twofactor.New(pool, keyring), providers: provider.NewStore(pool, keyring), passkeys: passkeys}, nil
+	return &Service{issuer: issuer, pool: pool, keyring: keyring, q: sqlc.New(pool), keys: oidcstore.NewKeys(pool, keyring), channels: channel.NewStore(pool, keyring), twoFactor: twofactor.New(pool, keyring), providers: provider.NewStore(pool, keyring), passkeys: passkeys, ids: identity.New(pool, keyring)}, nil
 }
 
 type callerKey struct{}
@@ -84,6 +85,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 
 	get(api, "me", "", "/me", "The caller and their Permissions", s.me)
 	get(api, "list-users", "users:read", "/users", "Search Users", s.listUsers)
+	op(api, http.MethodPost, "create-user", "users:write", "/users", "Create a User for an admin to hand over: 待激活 until they set their own password", s.createUser)
 	get(api, "get-user", "users:read", "/users/{sub}", "A User's details", s.getUser)
 	// Role names show in the Users list, so reading them needs no more than users:read.
 	get(api, "list-sessions", "users:read", "/users/{sub}/sessions", "A User's Sessions", s.listSessions)
@@ -241,6 +243,7 @@ type User struct {
 	Sub         string       `json:"sub"`
 	CreatedAt   time.Time    `json:"createdAt"`
 	DisabledAt  *time.Time   `json:"disabledAt,omitempty" doc:"Set while the User is disabled"`
+	Pending     bool         `json:"pending" doc:"待激活: an admin created the User and they have not set a password of their own yet; they can sign in but get no token until they do"`
 	Identifiers []Identifier `json:"identifiers"`
 	Roles       []Role       `json:"roles"`
 }
@@ -271,7 +274,7 @@ func (s *Service) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Identifiers, r.Roles)
+	u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Status, r.Identifiers, r.Roles)
 	if err != nil {
 		return nil, err
 	}
@@ -288,6 +291,7 @@ type listUsersInput struct {
 	Q      string `query:"q" doc:"Part of a sub, phone number, email or username"`
 	Role   string `query:"role" doc:"Only Users holding this Role"`
 	API    string `query:"api" doc:"API of the Role filter; defaults to the Management API"`
+	Status string `query:"status" default:"any" enum:"any,active,pending" doc:"pending: 待激活 and not disabled; active: everything else, a disabled User included"`
 	Limit  int32  `query:"limit" default:"50" minimum:"1" maximum:"200"`
 	Offset int32  `query:"offset" minimum:"0"`
 }
@@ -305,7 +309,7 @@ func (s *Service) listUsers(ctx context.Context, in *listUsersInput) (*listUsers
 		api = identity.ManagementAPI
 	}
 	rows, err := s.q.ListUsers(ctx, sqlc.ListUsersParams{
-		Search: strings.TrimSpace(in.Q), Role: in.Role, Api: api, Lim: in.Limit + 1, Off: in.Offset,
+		Search: strings.TrimSpace(in.Q), Role: in.Role, Api: api, Status: in.Status, Lim: in.Limit + 1, Off: in.Offset,
 	})
 	if err != nil {
 		return nil, err
@@ -317,7 +321,7 @@ func (s *Service) listUsers(ctx context.Context, in *listUsersInput) (*listUsers
 			out.Body.HasMore = true
 			break
 		}
-		u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Identifiers, r.Roles)
+		u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Status, r.Identifiers, r.Roles)
 		if err != nil {
 			return nil, err
 		}
@@ -337,15 +341,15 @@ func (s *Service) getUser(ctx context.Context, in *struct {
 	} else if err != nil {
 		return nil, err
 	}
-	u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Identifiers, r.Roles)
+	u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Status, r.Identifiers, r.Roles)
 	if err != nil {
 		return nil, err
 	}
 	return &getUserOutput{Body: UserDetail{User: u, HasPassword: r.HasPassword, TwoFactor: r.TwoFactor, TwoFactorOrPasskey: r.TwoFactorOrPasskey}}, nil
 }
 
-func user(sub string, created time.Time, disabled pgtype.Timestamptz, identifiers, roles []byte) (User, error) {
-	u := User{Sub: sub, CreatedAt: created}
+func user(sub string, created time.Time, disabled pgtype.Timestamptz, status string, identifiers, roles []byte) (User, error) {
+	u := User{Sub: sub, CreatedAt: created, Pending: status == "pending" && !disabled.Valid}
 	if disabled.Valid {
 		u.DisabledAt = &disabled.Time
 	}

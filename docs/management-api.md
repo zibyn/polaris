@@ -62,13 +62,28 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" \
   "$ISSUER/v1/management/users?limit=50"
 ```
 
+## 创建 User
+
+给一个标识符与一个初始密码,账号进入**待激活**:本人用初始密码登录时被要求先设置自己的密码,改完才拿得到令牌。管理员代填的手机号或邮箱**直接算已验证**,不发验证邮件、不消耗验证码条数——与 GitLab 建号时替用户确认邮箱、Keycloak 的 Email Verified 勾选同形,填错由管理员线下核对承担。密码登录关闭时返回 `422`。
+
+```bash
+curl -X POST "$ISSUER/v1/management/users" \
+  -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"identifier": "13800001234", "password": "initial-password"}'
+```
+
+- `identifier` 是手机号、邮箱或用户名任一,按既有口径归一化。
+- 标识符已被别的 User 占用时返回 `409`;建出的 User 照常获得业务 API 的默认 Role。
+- 响应里的 `pending: true` 表示待激活;`GET /users?status=pending` 按状态筛选,详情与列表都带这个字段。
+
 ## 各接口所需 Permission
 
 | Permission | 接口 |
 |---|---|
 | 任一 Role | `GET /me` |
 | `users:read` | `GET /users`、`GET /users/{sub}`、`GET /users/{sub}/sessions`、`GET /users/{sub}/passkeys`、`GET /users/{sub}/external-identities`、`GET /overview`、`GET /roles` |
-| `users:write` | `POST /users/{sub}/disable`、`POST /users/{sub}/enable`、`DELETE /users/{sub}`、`DELETE /users/{sub}/2fa`、`PUT /users/{sub}/identifiers/{kind}`、`DELETE /users/{sub}/sessions/{id}`、`DELETE /users/{sub}/passkeys/{id}`、`DELETE /users/{sub}/external-identities/{provider}` |
+| `users:write` | `POST /users`、`POST /users/{sub}/disable`、`POST /users/{sub}/enable`、`DELETE /users/{sub}`、`DELETE /users/{sub}/2fa`、`PUT /users/{sub}/identifiers/{kind}`、`DELETE /users/{sub}/sessions/{id}`、`DELETE /users/{sub}/passkeys/{id}`、`DELETE /users/{sub}/external-identities/{provider}` |
 | `audit:read` | `GET /audit` |
 | `applications:read` | `GET /apis`、`GET /applications`、`GET /applications/{clientId}`、`GET /applications/{clientId}/roles` |
 | `applications:write` | `PUT` / `DELETE /apis/{api}`、`PUT` / `DELETE /apis/{api}/permissions/{key}`、`PUT` / `DELETE /apis/{api}/roles/{key}`、`POST /applications`、`PUT` / `DELETE /applications/{clientId}`、`POST /applications/{clientId}/secret` |

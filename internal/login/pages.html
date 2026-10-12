@@ -106,7 +106,21 @@ form.providers button.github svg { fill: #181717; }
 {{define "agreed"}}{{if not .Bind}}{{with .Terms.TermsVersion}}<input type="hidden" name="agree" value="{{.}}">{{end}}{{end}}{{end}}
 
 {{define "login"}}{{template "head" "登录"}}
-{{if .TOTP}}<h1>两步验证</h1>
+{{if .SetPassword}}<h1>设置密码</h1>
+<p>这个账号由管理员创建。请设置一个只有你知道的密码,然后就能继续登录。</p>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form method="post" action="{{.Action}}">
+  <input type="hidden" name="op" value="set-password">
+  <label>新密码
+    <input name="password" type="password" autocomplete="new-password" required minlength="8" autofocus>
+  </label>
+  <button>设置并继续</button>
+</form>
+<form method="post" action="{{.Action}}">
+  <input type="hidden" name="op" value="delete-pending">
+  <a href="#" onclick="this.closest('form').requestSubmit();return false">注销这个账号</a>
+</form>
+{{else if .TOTP}}<h1>两步验证</h1>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="totp">

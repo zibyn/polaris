@@ -168,8 +168,10 @@ func (e *env) call(method, token, path string, in, out any) int {
 	}
 	defer resp.Body.Close() //nolint:errcheck
 	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode == 200 && out != nil {
-		if err := json.Unmarshal(raw, out); err != nil {
+	// A 422 carries its explanation in the problem document's detail field;
+	// callers decode it by asking for a struct with one.
+	if out != nil && (resp.StatusCode == 200 || resp.StatusCode == 422) {
+		if err := json.Unmarshal(raw, out); err != nil && resp.StatusCode == 200 {
 			e.t.Fatalf("%s: %v\n%s", path, err, raw)
 		}
 	}
@@ -180,6 +182,7 @@ type role struct{ API, Key, Name string }
 
 type user struct {
 	Sub         string
+	Pending     bool
 	Identifiers []struct{ Kind, Value string }
 	Roles       []role
 	HasPassword bool

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -472,5 +474,200 @@ func TestAdminResetsTwoFactor(t *testing.T) {
 	}
 	if code := e.call("DELETE", owner, "/users/NOBODY/2fa", nil, nil); code != 404 {
 		t.Errorf("unknown User: %d", code)
+	}
+}
+
+// pendingUser is a User an admin created: 待激活, with the initial password.
+type pendingUser struct {
+	Sub         string
+	Pending     bool
+	HasPassword bool
+	Identifiers []struct{ Kind, Value string }
+}
+
+// createPending makes a User through the API, as the owner.
+func (e *env) createPending(identifier, password string, out any) int {
+	e.t.Helper()
+	return e.call("POST", e.token(e.owner, nil), "/users",
+		map[string]string{"identifier": identifier, "password": password}, out)
+}
+
+// 管理员创建 User (ADR 0016): 需要 users:write, 接受手机号 / 邮箱 / 用户名
+// 任一标识符, 建出的 User 处于待激活并在管理 API 的读取里可见。
+func TestAdminCreatesAPendingUser(t *testing.T) {
+	e := start(t)
+	e.trackAPI()
+	e.user("RO", []string{"readonly"})
+	owner, ro := e.token(e.owner, nil), e.token("RO", nil)
+	// 一条默认 Role, 用来验「照常获得业务 API 的默认 Role」.
+	if code := e.call("PUT", e.token(e.owner, nil), "/apis/"+url.PathEscape(track), map[string]any{"name": "Track"}, nil); code != 204 {
+		t.Fatalf("put API: %d", code)
+	}
+	if code := e.call("PUT", e.token(e.owner, nil), "/apis/"+url.PathEscape(track)+"/roles/member", map[string]any{"name": "会员", "permissions": []string{}, "default": true}, nil); code != 204 {
+		t.Fatalf("default Role: %d", code)
+	}
+	var created pendingUser
+
+	if code := e.call("POST", ro, "/users", map[string]string{"identifier": "nope@example.com", "password": "password1"}, nil); code != 403 {
+		t.Errorf("readonly creates: %d", code)
+	}
+	if code := e.createPending("  Alice@Example.com ", "password1", &created); code != 200 {
+		t.Fatalf("create: %d", code)
+	}
+	if created.Sub == "" || !created.Pending || !created.HasPassword ||
+		len(created.Identifiers) != 1 || created.Identifiers[0].Value != "alice@example.com" {
+		t.Errorf("created: %+v", created)
+	}
+	// 待激活在读取里可见: 列表和详情都有.
+	var list struct{ Users []user }
+	e.get(owner, "/users", &list)
+	found := false
+	for _, u := range list.Users {
+		if u.Sub == created.Sub {
+			found = true
+			if !u.Pending {
+				t.Errorf("the list does not show 待激活: %+v", u)
+			}
+		}
+	}
+	if !found {
+		t.Error("the new User is not in the list")
+	}
+	var detail struct {
+		Pending bool
+		Roles   []role
+	}
+	if code := e.get(owner, "/users/"+created.Sub, &detail); code != 200 || !detail.Pending {
+		t.Errorf("detail: %d %+v", code, detail)
+	}
+	// 照常获得业务 API 的默认 Role (rbac.md: 对所有创建途径一致).
+	if !slices.ContainsFunc(detail.Roles, func(r role) bool { return r.API == track && r.Key == "member" }) {
+		t.Errorf("no default Role: %+v", detail.Roles)
+	}
+
+	// 手机号与用户名同样接受, 各自归一化.
+	for _, tc := range []struct{ in, kind, value string }{
+		{"138 0000 2222", "phone", "+8613800002222"},
+		{"Bob", "username", "bob"},
+	} {
+		var u pendingUser
+		if code := e.createPending(tc.in, "password1", &u); code != 200 {
+			t.Fatalf("%q: %d", tc.in, code)
+		}
+		if len(u.Identifiers) != 1 || u.Identifiers[0].Kind != tc.kind || u.Identifiers[0].Value != tc.value {
+			t.Errorf("%q: %+v", tc.in, u.Identifiers)
+		}
+	}
+
+	// 撞上已被占用的标识符: 明确错误, 而不是 500 或一个半成品账号.
+	before := len(list.Users)
+	for _, id := range []string{"alice@example.com", "13800002222", "bob"} {
+		if code := e.createPending(id, "password1", nil); code != 409 {
+			t.Errorf("%q: %d, want 409", id, code)
+		}
+	}
+	e.get(owner, "/users", &list)
+	if len(list.Users) != before+2 {
+		t.Errorf("%d Users, want %d: a rejected create left a User behind", len(list.Users), before+3)
+	}
+
+	// 密码规则与标识符校验沿用现有.
+	for name, body := range map[string]map[string]string{
+		"short password":   {"identifier": "x@example.com", "password": "short"},
+		"not a identifier": {"identifier": "not an identifier", "password": "password1"},
+	} {
+		if code := e.call("POST", owner, "/users", body, nil); code != 422 {
+			t.Errorf("%s: %d, want 422", name, code)
+		}
+	}
+
+	// 审计: 每个新建的 User 一条 user.created, 操作人是管理员.
+	if ev := e.audited("user.created"); ev.Detail["by"] != e.owner || ev.Detail["byType"] != "user" {
+		t.Errorf("audit: %+v", ev)
+	}
+	mine := e.events("event=user.created&sub=" + created.Sub)
+	if len(mine) != 1 || mine[0].Detail["by"] != e.owner || mine[0].Detail["byType"] != "user" {
+		t.Errorf("the first User's audit: %+v", mine)
+	}
+	// 每个新建的 User 一条 user.created, 而且只此一条: 自审的那条不再走
+	// 通用审计, 否则每次创建会记两条.
+	if got := e.events("event=user.created"); len(got) != 3 {
+		t.Errorf("%d user.created events, want 3: %+v", len(got), got)
+	}
+	if got := e.events("event=create-user"); len(got) != 0 {
+		t.Errorf("the generic audit fired too: %+v", got)
+	}
+}
+
+// 待激活可按状态筛选, 禁用优先: 禁用中的待激活 User 落进 active 一侧。
+func TestUserListFiltersByStatus(t *testing.T) {
+	e := start(t)
+	e.user("ACTIVE", nil, "email:active@example.com")
+	var p1, p2 pendingUser
+	e.createPending("p1@example.com", "password1", &p1)
+	e.createPending("p2@example.com", "password1", &p2)
+	if code := e.call("POST", e.token(e.owner, nil), "/users/"+p2.Sub+"/disable", nil, nil); code != 204 {
+		t.Fatalf("disable: %d", code)
+	}
+	owner := e.token(e.owner, nil)
+
+	var list struct{ Users []user }
+	for query, want := range map[string][]string{
+		"":                {"ACTIVE", p1.Sub, p2.Sub, e.owner},
+		"?status=pending": {p1.Sub},
+		"?status=active":  {"ACTIVE", p2.Sub, e.owner},
+	} {
+		want := slices.Clone(want)
+		slices.Sort(want)
+		if code := e.get(owner, "/users"+query, &list); code != 200 || !slices.Equal(subs(list.Users), want) {
+			t.Errorf("users%s: %d %v, want %v", query, code, subs(list.Users), want)
+		}
+	}
+	if code := e.get(owner, "/users?status=nonsense", &list); code != 422 {
+		t.Errorf("unknown status: %d", code)
+	}
+}
+
+// 密码登录关闭时创建端点返回 422, 文案说明原因 (ADR 0017: 它是这一包功能的
+// 前置条件 —— 初始密码与邀请都要走密码).
+func TestCreateUserNeedsPasswordLogin(t *testing.T) {
+	e := start(t)
+	owner := e.token(e.owner, nil)
+	// 所有者先给自己一条密码之外的途径, 否则保存「关闭」会被自锁守卫拒绝.
+	if code := e.call("PUT", owner, "/users/"+e.owner+"/identifiers/email", map[string]string{"value": "owner@example.com"}, nil); code != 204 {
+		t.Fatalf("bind email: %d", code)
+	}
+	if code := e.call("PUT", owner, "/settings", settings{PasswordLogin: "off", DailySendLimit: 1000, AuditRetentionDays: 180}, nil); code != 204 {
+		t.Fatalf("turn password login off: %d", code)
+	}
+	var out struct{ Detail string }
+	if code := e.call("POST", owner, "/users", map[string]string{"identifier": "new@example.com", "password": "password1"}, &out); code != 422 {
+		t.Fatalf("create with password login off: %d", code)
+	}
+	if !strings.Contains(out.Detail, "密码登录") {
+		t.Errorf("the message does not say why: %q", out.Detail)
+	}
+	var list struct{ Users []user }
+	e.get(owner, "/users", &list)
+	if len(list.Users) != 1 {
+		t.Errorf("%d Users, want 1: the create went through anyway", len(list.Users))
+	}
+}
+
+// 部署脚本与业务后端以 M2M Application 的身份开号 (ADR 0015 + 0016):
+// 审计的操作人是那个 Application, 不是某个 User。
+func TestM2MApplicationCreatesAUser(t *testing.T) {
+	e := start(t)
+	e.trackAPI()
+	app := e.m2mApp(identity.ManagementAPI, "admin")
+	var created pendingUser
+	if code := e.call("POST", e.token(app, nil), "/users", map[string]string{"identifier": "new@example.com", "password": "password1"}, &created); code != 200 {
+		t.Fatalf("an M2M Application creates: %d", code)
+	}
+	if !created.Pending {
+		t.Errorf("not 待激活: %+v", created)
+	}
+	if ev := e.audited("user.created"); ev.Detail["by"] != app || ev.Detail["byType"] != "application" {
+		t.Errorf("audit: %+v", ev)
 	}
 }

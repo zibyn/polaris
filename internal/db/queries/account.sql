@@ -1,6 +1,10 @@
 -- name: AccountSession :one
--- The live Session an account center request comes from.
-SELECT s.auth_time FROM sessions s
+-- The live Session an account center request comes from, and whether the
+-- User is 待激活: no token is ever issued to such a User (ADR 0016), so the
+-- flag is normally false — read here rather than in a second query so every
+-- request pays nothing extra for the check.
+SELECT s.auth_time, (u.status = 'pending' AND u.disabled_at IS NULL)::boolean AS pending
+FROM sessions s JOIN users u ON u.id = s.user_id
 WHERE s.id = @id AND s.user_id = @user_id AND s.id IN (SELECT l.id FROM live_sessions l);
 
 -- name: AccountUser :one

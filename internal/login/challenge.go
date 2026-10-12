@@ -1,6 +1,7 @@
 package login
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -35,9 +36,10 @@ const (
 
 // Values of next (ADR 0010): only ever added to, never renamed or removed.
 const (
-	nextCode  = "code"  // enter the code just sent
-	nextPhone = "phone" // bind a phone number first
-	nextTOTP  = "totp"  // enter a TOTP code or a 恢复码
+	nextCode     = "code"     // enter the code just sent
+	nextPhone    = "phone"    // bind a phone number first
+	nextTOTP     = "totp"     // enter a TOTP code or a 恢复码
+	nextPassword = "password" // set your own password first: the account is 待激活
 )
 
 // challengeState is what an auth_session carries between requests.
@@ -61,6 +63,9 @@ type pendingLogin struct {
 	// TOTP: waiting for a TOTP code or a 恢复码, with Failures mistakes so far.
 	TOTP     bool `json:"totp,omitempty"`
 	Failures int  `json:"failures,omitempty"`
+	// Password: 待激活, waiting for the User to replace the initial password
+	// an admin set. Nothing else happens until they do (ADR 0016).
+	Password bool `json:"password,omitempty"`
 }
 
 // challengeError is a draft error response; AuthSession lets the App go on.
@@ -185,6 +190,16 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 	// signedIn ends the sign-in with an authorization code, unless sub must
 	// pass 两步验证 or bind a phone number first, in that order.
 	signedIn := func(sub string, authTime time.Time, amr []string) (answer, error) {
+		// 待激活 comes before everything else (ADR 0016): the only evidence
+		// so far is that the User knows a password someone else chose, and
+		// letting that carry on through a TOTP, a phone number and the terms
+		// would build the session on it.
+		if pending, err := s.ids.Pending(ctx, sub); err != nil {
+			return answer{}, err
+		} else if pending {
+			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, Password: true}, ""
+			return next(nextPassword, "set your own password: send password")
+		}
 		if totp, err := s.needsTOTP(ctx, sub, amr); err != nil {
 			return answer{}, err
 		} else if totp {
@@ -234,6 +249,41 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 	}
 
 	switch {
+	case st.Pending != nil && st.Pending.Password:
+		// 强制改密: the one step a 待激活 User may take, and the only one
+		// open. It writes the password down a path of its own rather than
+		// the account center's, which demands a recent reauthentication and
+		// so is closed to a User with 两步验证 on (ADR 0016).
+		p := st.Pending
+		// 注销 is the other thing open to them. They have no token to delete
+		// an account with — no token of any kind — so the sign-in they are
+		// stuck in is where they do it, with delete=true.
+		if r.PostFormValue("delete") != "" {
+			if err := s.deletePending(ctx, p.Sub); err != nil {
+				return answer{}, err
+			}
+			// The auth_session goes with the account it belonged to, as a
+			// refused assertion's does: nothing is left to continue (ADR 0016).
+			if token != "" {
+				if err := s.q.DeleteChallengeSession(ctx, hash(token)); err != nil {
+					return answer{}, err
+				}
+			}
+			return answer{}, &challengeError{status: http.StatusBadRequest, Code: string(goidc.ErrorCodeAccessDenied), Description: "账号已注销,请重新登录"}
+		}
+		if secret := r.PostFormValue("password"); secret == "" {
+			return mistake(identity.Invalid("请先设置自己的密码"))
+		} else if err := s.ids.SetPasswordIfPending(ctx, p.Sub, secret); err != nil {
+			// The account is no longer 待激活: it was activated, or deleted
+			// meanwhile. Nothing was written; the App starts over as a new
+			// User rather than reading a message about a state it cannot fix.
+			if errors.Is(err, identity.ErrNotPending) {
+				return answer{}, &challengeError{status: http.StatusBadRequest, Code: errInvalidSession, Description: "the account is not 待激活 any more: start over"}
+			}
+			return mistake(err)
+		}
+		return signedIn(p.Sub, time.Unix(p.AuthTime, 0), p.AMR)
+
 	case st.Pending != nil && st.Pending.TOTP: // nothing else before TOTP
 		p := st.Pending
 		totp, recoveryCode := r.PostFormValue("totp"), r.PostFormValue("recovery_code")
@@ -386,6 +436,16 @@ func (s *Service) terms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"terms_url": t.TermsUrl, "privacy_url": t.PrivacyUrl, "version": t.TermsVersion})
+}
+
+// deletePending deletes the account of a 待激活 User at their own request: the
+// same deletion as 注销, minus the browser Session a 待激活 User cannot have.
+func (s *Service) deletePending(ctx context.Context, sub string) error {
+	err := s.providers.DeleteUser(ctx, sub, s.ids.Delete)
+	if errors.Is(err, identity.ErrLastOwner) {
+		return invalid(identity.ErrLastOwner.Error())
+	}
+	return err
 }
 
 func invalid(description string) error {
