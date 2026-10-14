@@ -270,10 +270,33 @@ func (s *Store) CreatePendingUser(ctx context.Context, identifier, password stri
 	if err != nil {
 		return "", err
 	}
+	return s.createPending(ctx, kind, value, func(q *sqlc.Queries, sub string) error {
+		return q.SetPassword(ctx, sqlc.SetPasswordParams{UserID: sub, Hash: hash})
+	})
+}
+
+// CreateInvitedUser makes a User for an admin to invite (ADR 0016): one email
+// Identifier, in 待激活, with no credential at all — the invite link is the
+// only way in until they set their own password.
+func (s *Store) CreateInvitedUser(ctx context.Context, identifier string) (string, error) {
+	kind, value, err := ParseCreateIdentifier(identifier)
+	if err != nil {
+		return "", err
+	}
+	if kind != "email" {
+		return "", ErrInviteNeedsEmail
+	}
+	// No credential to write: an invited User has nothing to sign in with
+	// until the link is accepted.
+	return s.createPending(ctx, kind, value, func(*sqlc.Queries, string) error { return nil })
+}
+
+// createPending makes a User with one Identifier, in 待激活, running write for
+// the credential in the same transaction: a User never outlives a failed
+// Identifier, and a credential never lands on an account that stayed active.
+func (s *Store) createPending(ctx context.Context, kind, value string, write func(*sqlc.Queries, string) error) (string, error) {
 	sub := rand.Text()
-	// One transaction: a User never outlives a failed Identifier, and the
-	// initial password never lands on an account that stayed active.
-	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if err := q.CreateUser(ctx, sub); err != nil {
 			return err
@@ -284,7 +307,7 @@ func (s *Store) CreatePendingUser(ctx context.Context, identifier, password stri
 			}
 			return err
 		}
-		if err := q.SetPassword(ctx, sqlc.SetPasswordParams{UserID: sub, Hash: hash}); err != nil {
+		if err := write(q, sub); err != nil {
 			return err
 		}
 		// CreateUser leaves the User active (it means "signed up"), so this

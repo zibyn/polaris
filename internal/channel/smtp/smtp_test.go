@@ -151,3 +151,30 @@ func TestRejectsBadSettings(t *testing.T) {
 		}
 	}
 }
+
+// 注册邀请的邮件只有链接, 没有验证码那一行: 同一封信里多一个密钥, 对收信人
+// 没有任何好处。
+func TestSendsInviteLinkWithoutACode(t *testing.T) {
+	port, got := server(t)
+	ch, err := channel.Get("smtp").New(map[string]string{"host": "127.0.0.1", "port": port, "from": "Stars Auth <noreply@example.com>"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := "https://auth.example.com/invite?token=abcdef"
+	if err := ch.SendLink(context.Background(), "alice@example.com", link); err != nil {
+		t.Fatal(err)
+	}
+	m := <-got
+	msg, err := mail.ReadMessage(strings.NewReader(m.data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	subject, _ := new(mime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
+	body, _ := io.ReadAll(base64.NewDecoder(base64.StdEncoding, msg.Body))
+	if !strings.Contains(subject, "邀请") || !strings.Contains(string(body), link) {
+		t.Errorf("subject %q body %q", subject, body)
+	}
+	if strings.Contains(string(body), "验证码") {
+		t.Errorf("an invite carries a code line:\n%s", body)
+	}
+}

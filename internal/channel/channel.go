@@ -8,10 +8,16 @@ import (
 	"slices"
 )
 
-// Send delivers code to an Identifier: an E.164 phone number or an email
-// address. Stars Auth makes and checks the code; a Channel only carries it.
+// Channel carries what Stars Auth has already made: a verification code, or
+// a 注册邀请 link.
 type Channel interface {
+	// Send delivers code to an Identifier: an E.164 phone number or an email
+	// address. Stars Auth makes and checks the code; a Channel only carries it.
 	Send(ctx context.Context, to, code string) error
+	// SendLink delivers a 注册邀请: one link, no code. A Channel that cannot
+	// carry one (a phone-only SMS route with no invitation template) says so
+	// rather than mangling a link into the code slot.
+	SendLink(ctx context.Context, to, link string) error
 }
 
 // Field is one setting a plugin needs. The console renders a form from them.

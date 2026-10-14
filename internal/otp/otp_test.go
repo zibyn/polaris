@@ -225,3 +225,53 @@ func TestSendWithoutChannel(t *testing.T) {
 		t.Errorf("no Channel: %v", err)
 	}
 }
+
+// 邀请只受实例每日上限约束: 按标识符、按 IP 的那几条是防人刷码的, 而邀请是
+// 管理员主动发的, 一次一条。它和验证码共用一个每日名额
+// (docs/spec/security-compliance.md#发送限制)。
+func TestInviteCountsOnlyAgainstTheDailyCap(t *testing.T) {
+	s, _, c := setup(t)
+	ctx := context.Background()
+	if _, err := s.pool.Exec(ctx, "UPDATE settings SET daily_send_limit = 25"); err != nil {
+		t.Fatal(err)
+	}
+	link := func(i int) string { return fmt.Sprintf("https://x/invite?token=%d", i) }
+	// 同一个邮箱、同一瞬间、连着 25 条: 没有 60 秒, 没有一小时 5 条, 也没有
+	// 按 IP 的 20 条。
+	for i := range 25 {
+		if err := s.SendInvite(ctx, "a@example.com", link(i)); err != nil {
+			t.Fatalf("invite %d: %v", i, err)
+		}
+	}
+	if err := s.SendInvite(ctx, "a@example.com", link(25)); !errors.Is(err, ErrDailyCap) {
+		t.Errorf("the 26th invite: %v, want ErrDailyCap", err)
+	}
+	// 名额是共用的: 邀请占满了, 验证码也就发不出去了。
+	if err := s.Send(ctx, "email", "b@example.com", "10.0.0.1"); !errors.Is(err, ErrDailyCap) {
+		t.Errorf("a code after the invites: %v", err)
+	}
+	var n int
+	if err := s.pool.QueryRow(ctx, "SELECT count(*) FROM audit_log WHERE event = $1", auditDailyCap).Scan(&n); err != nil || n != 1 {
+		t.Errorf("audit rows: %d %v", n, err)
+	}
+	c.advance(24 * time.Hour)
+	if err := s.SendInvite(ctx, "a@example.com", link(26)); err != nil {
+		t.Errorf("next day: %v", err)
+	}
+}
+
+// 没有配邮箱渠道就发不出邀请, 说的是这件事而不是"发送失败"。
+func TestInviteNeedsAnEmailChannel(t *testing.T) {
+	s, _, _ := setup(t)
+	ctx := context.Background()
+	if _, err := s.pool.Exec(ctx, "DELETE FROM channels WHERE kind = 'email'"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SendInvite(ctx, "a@example.com", "https://x/invite?token=1"); !errors.Is(err, ErrNoEmailChannel) {
+		t.Errorf("no email Channel: %v, want ErrNoEmailChannel", err)
+	}
+	// 电话渠道还在, 也帮不上忙。
+	if err := s.SendInvite(ctx, "a@example.com", "https://x/invite?token=1"); !errors.Is(err, ErrNoEmailChannel) {
+		t.Errorf("a phone Channel is not an email Channel: %v", err)
+	}
+}

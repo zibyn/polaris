@@ -16,6 +16,12 @@ WHERE sent_at > @day_ago;
 -- name: RecordSend :exec
 INSERT INTO sends (identifier, ip, sent_at) VALUES ($1, $2, $3);
 
+-- name: RecordInviteSend :exec
+-- 注册邀请写一条 identifier 与 ip 都为空的记录: 它计入 SendCounts 的
+-- instance_day (实例每日发送上限), 而按标识符、按 IP 的计数永远匹配不上
+-- 它 —— 真实的标识符与 clientIP 都不为空, 邀请也不该占它们那两份额度。
+INSERT INTO sends (identifier, ip, sent_at) VALUES ('', '', $1);
+
 -- name: PutCode :exec
 INSERT INTO codes (identifier, code, expires_at) VALUES ($1, $2, $3)
 ON CONFLICT (identifier) DO UPDATE SET code = EXCLUDED.code, attempts = 0, expires_at = EXCLUDED.expires_at;

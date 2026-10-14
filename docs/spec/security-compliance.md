@@ -12,6 +12,8 @@
 
 除每日上限外,其他阈值都是固定值。
 
+**注册邀请**算一次发送,只计入全实例每日上限,不计入按手机号 / 邮箱 / IP 的那三条:邀请邮件里没有验证码,而发它的是已认证的管理员,不是等着收码的陌生人。
+
 ## 防机器刷
 
 内置工作量证明(ALTCHA 协议,MIT 许可的 Go 库)。"发送验证码"和"密码登录"请求都必须附带解答;托管页面在浏览器里计算,原生 App 由 KMP SDK 计算。不对接商业行为验证码。
@@ -32,7 +34,7 @@
 - **记录**:
   - Management API 的全部写操作,含 M2M Application 以自身身份做的(ADR 0015):操作人带类型,记为该 Application 的 client_id,而不是被误当成某个 User;
   - User 安全事件:绑定或解绑、开关两步验证、重新生成恢复码、用掉恢复码(`recovery_code.used`)、增删改 Passkey(`passkey.added` / `passkey.removed` / `passkey.renamed`)、Passkey 计数器回退被拒(`passkey.counter_regressed`)、改密码、下线 Session、注销;
-  - User 生命周期:管理员创建(`user.created`)、待激活的本人改密激活;
+  - User 生命周期:管理员创建(`user.created`)、发出与撤销注册邀请(`invite.sent` / `invite.revoked`,操作人是管理员)、本人接受邀请(`invite.accepted`,操作人是本人)、待激活的本人改密激活;
   - 登录锁定;
   - 触发每日发送上限。
 - **不记录**:普通的登录成功(这些信息已体现在 Session 中);`client_credentials` 换令牌(每 10 分钟一次,会淹没其他事件)。
@@ -55,6 +57,7 @@
 | 数据 | 留存 |
 |---|---|
 | 验证码、PoW 题目、限流计数、临时登录状态 | 过期后由每小时一次的清理任务删除 |
+| 已过期或被替换的注册邀请 | 同上(表里只有 token 的哈希) |
 | 已终止或已过期的 Session | 30 天 |
 | 审计日志 | 180 天,可以调整;注销后只保留 `sub` |
 | 同意记录 | 随 User 注销一起删除 |

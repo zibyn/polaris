@@ -61,6 +61,21 @@ func newSMTP(c map[string]string) (channel.Channel, error) {
 }
 
 func (s *mailer) Send(ctx context.Context, to, code string) error {
+	return s.deliver(ctx, to, message(s.from, to,
+		mime.BEncoding.Encode("utf-8", "验证码 "+code),
+		fmt.Sprintf("你的验证码是 %s,5 分钟内有效。\r\n如非本人操作,请忽略本邮件。\r\n", code)))
+}
+
+// SendLink sends a 注册邀请: the link, and no code line (a code in an email
+// that also carries a link is one more secret in the same mailbox for no
+// reason).
+func (s *mailer) SendLink(ctx context.Context, to, link string) error {
+	return s.deliver(ctx, to, message(s.from, to,
+		mime.BEncoding.Encode("utf-8", "邀请你设置密码"),
+		fmt.Sprintf("点开下面的链接,设置你自己的密码。链接 7 天内有效,只能用一次。\r\n\r\n%s\r\n\r\n设置完就能直接使用,不用再注册。\r\n如非本人操作,请忽略本邮件。\r\n", link)))
+}
+
+func (s *mailer) deliver(ctx context.Context, to string, body []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	addr := net.JoinHostPort(s.host, s.port)
@@ -104,7 +119,7 @@ func (s *mailer) Send(ctx context.Context, to, code string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := w.Write(message(s.from, to, code)); err != nil {
+	if _, err := w.Write(body); err != nil {
 		return err
 	}
 	if err := w.Close(); err != nil {
@@ -118,13 +133,12 @@ func loopback(host string) bool {
 	return host == "localhost" || ip != nil && ip.IsLoopback()
 }
 
-func message(from *mail.Address, to, code string) []byte {
-	body := fmt.Sprintf("你的验证码是 %s,5 分钟内有效。\r\n如非本人操作,请忽略本邮件。\r\n", code)
+func message(from *mail.Address, to, subject, body string) []byte {
 	var b strings.Builder
 	for _, h := range [][2]string{
 		{"From", from.String()},
 		{"To", to},
-		{"Subject", mime.BEncoding.Encode("utf-8", "验证码 "+code)},
+		{"Subject", subject},
 		{"Date", time.Now().Format(time.RFC1123Z)},
 		{"MIME-Version", "1.0"},
 		{"Content-Type", "text/plain; charset=utf-8"},

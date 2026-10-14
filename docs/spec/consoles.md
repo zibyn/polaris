@@ -199,7 +199,7 @@ Passkey 开关默认打开,关它时若自己只剩 Passkey(既没开两步验�
 
 #### 登录页
 
-登录、绑定、协议同意、首次引导、退出登录等页面(`internal/login/pages.html`)用同一套 token。
+登录、绑定、协议同意、首次引导、退出登录、**邀请接受页**(`/invite`,设完密码当场登录,再回到 Application 就不用登了)等页面(`internal/login/pages.html`)用同一套 token。
 
 - 宽屏左右两栏:左半是品牌区,右半是表单,最宽 340px。窄屏只留表单。
 - 品牌区是「星云」:主色浅底上叠两团径向渐变光晕(星云色、星标色),撒星标色星点和几颗四角星,左上角是星标和「Stars」。原型(一次性)见分支 `prototype/login-layout`,选中的是方案 D。
@@ -212,6 +212,7 @@ Passkey 开关默认打开,关它时若自己只剩 Passkey(既没开两步验�
   4. 「使用密码登录」切到「标识 + 密码 + 协议勾选」的表单,其中有「改用验证码登录」。
   5. 密码登录设为关闭时不显示「使用密码登录」,输入用户名提示「该账号不能用验证码登录」,不透露账号是否存在。
   6. 只有一种方式可用时直接显示那一种:没有通道就只有密码表单。
+  7. **邀请接受页是特例**:它是从邮件点进来的,没有 Application 可指,所以标题就是「设置密码」,只说明"点开这个链接就说明这个邮箱是你的",一个密码框加一个「设置并继续」。设完密码只在没有别的步骤剩下时才当场登录(见 authentication.md 的注册邀请);链接不好用(过期 / 用过 / 已撤销)时给一句人话并指向管理员,不复用发码失败那套文案。
 
 ### 创建应用与接入清单
 
@@ -294,7 +295,8 @@ Management API 不改,后端没拦的写在备注列。
 
 | 分组 | 事件 | 名称 |
 |---|---|---|
-| 用户 | user.disabled / enabled / deleted | 禁用用户 / 恢复用户 / 删除用户 |
+| 用户 | invite.sent / accepted / revoked | 发出注册邀请 / 接受注册邀请 / 撤销注册邀请 |
+| | user.disabled / enabled / deleted | 禁用用户 / 恢复用户 / 删除用户 |
 | | identifier.replaced / removed | 更换登录标识 / 移除登录标识(句中写明手机号 / 邮箱 / 用户名) |
 | | password.changed / removed | 设置密码 / 移除密码 |
 | | mfa.enabled / disabled / reset | 开启两步验证 / 关闭两步验证 / 重置两步验证 |
@@ -312,7 +314,7 @@ Management API 不改,后端没拦的写在备注列。
 | | put-role / delete-role | 保存角色 / 删除角色 |
 | 登录与通道 | settings.updated | 修改登录设置 |
 | | put-channel / delete-channel / test-channel | 配置验证码通道 / 停用验证码通道 / 发送测试验证码 |
-| | send.daily_cap_reached | 验证码达到每日发送上限 |
+| | send.daily_cap_reached | 达到每日发送上限 |
 | | create / update / enable / disable / delete-provider | 添加认证源 / 修改认证源 / 启用认证源 / 停用认证源 / 删除认证源 |
 | | provider.unlink_failed | 外部账号吊销授权失败 |
 | 设置 | keys.rotated | 轮换令牌签名密钥 |

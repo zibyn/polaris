@@ -64,7 +64,7 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" \
 
 ## 创建 User
 
-给一个标识符与一个初始密码,账号进入**待激活**:本人用初始密码登录时被要求先设置自己的密码,改完才拿得到令牌。管理员代填的手机号或邮箱**直接算已验证**,不发验证邮件、不消耗验证码条数——与 GitLab 建号时替用户确认邮箱、Keycloak 的 Email Verified 勾选同形,填错由管理员线下核对承担。密码登录关闭时返回 `422`。
+给一个标识符,再**二选一**:一个初始密码,或一封**注册邀请**(`"invite": true`,此时标识符必须是邮箱)。两种情况账号都进入**待激活**:本人用初始密码登录时被要求先设置自己的密码,或点邮件里的链接自己设一个,设完才拿得到令牌。管理员代填的手机号或邮箱**直接算已验证**,不发验证邮件、不消耗验证码条数——与 GitLab 建号时替用户确认邮箱、Keycloak 的 Email Verified 勾选同形,填错由管理员线下核对承担。密码登录关闭时返回 `422`(两条路都要走密码,所以一起被挡)。
 
 ```bash
 curl -X POST "$ISSUER/v1/management/users" \
@@ -73,9 +73,31 @@ curl -X POST "$ISSUER/v1/management/users" \
   -d '{"identifier": "13800001234", "password": "initial-password"}'
 ```
 
+```bash
+# 发注册邀请: 管理员看不到也设不了本人的密码
+curl -X POST "$ISSUER/v1/management/users" \
+  -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"identifier": "alice@example.com", "invite": true}'
+```
+
 - `identifier` 是手机号、邮箱或用户名任一,按既有口径归一化。
+- 两个字段都给、或都不给,返回 `422`;选邀请时标识符必须是邮箱,否则返回 `422` 并说明是这个原因。
 - 标识符已被别的 User 占用时返回 `409`;建出的 User 照常获得业务 API 的默认 Role。
 - 响应里的 `pending: true` 表示待激活;`GET /users?status=pending` 按状态筛选,详情与列表都带这个字段。
+
+## 发出与撤销注册邀请
+
+对**已有** User 也能发,已经激活的也一样——那是忘了密码的人回得来的那条路。链接 7 天有效、一次性,重发就是拿新的换掉旧的,旧链接**立刻**不可用。
+
+```bash
+curl -X POST "$ISSUER/v1/management/users/$SUB/invite" -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN"
+curl -X DELETE "$ISSUER/v1/management/users/$SUB/invite" -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN"
+```
+
+- 两个都是 `204`;撤销一条本来就没有的邀请也返回 `204`,但不算一次撤销、不留审计。
+- 账号没有邮箱、实例没配邮箱 Channel、或密码登录已关闭时,`POST` 返回 `422` 并说明原因;邮件发不出去时返回 `422`,并且**不会留下可用链接**(账号本身还在,重发即可)。
+- 对已有 User 只有这一条路:Management API 不提供替本人设密码的接口。
 
 ## 各接口所需 Permission
 
@@ -83,7 +105,7 @@ curl -X POST "$ISSUER/v1/management/users" \
 |---|---|
 | 任一 Role | `GET /me` |
 | `users:read` | `GET /users`、`GET /users/{sub}`、`GET /users/{sub}/sessions`、`GET /users/{sub}/passkeys`、`GET /users/{sub}/external-identities`、`GET /overview`、`GET /roles` |
-| `users:write` | `POST /users`、`POST /users/{sub}/disable`、`POST /users/{sub}/enable`、`DELETE /users/{sub}`、`DELETE /users/{sub}/2fa`、`PUT /users/{sub}/identifiers/{kind}`、`DELETE /users/{sub}/sessions/{id}`、`DELETE /users/{sub}/passkeys/{id}`、`DELETE /users/{sub}/external-identities/{provider}` |
+| `users:write` | `POST /users`、`POST` / `DELETE /users/{sub}/invite`、`POST /users/{sub}/disable`、`POST /users/{sub}/enable`、`DELETE /users/{sub}`、`DELETE /users/{sub}/2fa`、`PUT /users/{sub}/identifiers/{kind}`、`DELETE /users/{sub}/sessions/{id}`、`DELETE /users/{sub}/passkeys/{id}`、`DELETE /users/{sub}/external-identities/{provider}` |
 | `audit:read` | `GET /audit` |
 | `applications:read` | `GET /apis`、`GET /applications`、`GET /applications/{clientId}`、`GET /applications/{clientId}/roles` |
 | `applications:write` | `PUT` / `DELETE /apis/{api}`、`PUT` / `DELETE /apis/{api}/permissions/{key}`、`PUT` / `DELETE /apis/{api}/roles/{key}`、`POST /applications`、`PUT` / `DELETE /applications/{clientId}`、`POST /applications/{clientId}/secret` |
@@ -95,7 +117,7 @@ curl -X POST "$ISSUER/v1/management/users" \
 除表里的 Permission,还有这几条附加规则:
 
 - **给 User 管理员权限**:`PUT /users/{sub}/roles` 设置 Management API 上的 Role 时,除 `roles:assign` 还需 `admin-roles:assign`。
-- **对管理员动手**:目标 User 在 Management API 上持有 Role 时,`users:write` 里的写操作(禁用、删除、重置两步验证、替换登录标识、删除 Passkey、解绑外部账号)还需 `admin-roles:assign`。
+- **对管理员动手**:目标 User 在 Management API 上持有 Role 时,`users:write` 里的写操作(禁用、删除、重置两步验证、替换登录标识、删除 Passkey、解绑外部账号、发出或撤销邀请)还需 `admin-roles:assign`。
 - **改 Management API 自己的定义**:定义、修改或删除 Management API 上的自定义 Role 还需 `admin-roles:assign`;它内置的 API、Permission 与 Role 一律不可改(`409`)。
 - **最后一个所有者**:不能被删除、禁用或降级(`409`)。
 

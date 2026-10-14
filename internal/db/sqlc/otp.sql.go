@@ -65,6 +65,18 @@ func (q *Queries) PutCode(ctx context.Context, arg PutCodeParams) error {
 	return err
 }
 
+const recordInviteSend = `-- name: RecordInviteSend :exec
+INSERT INTO sends (identifier, ip, sent_at) VALUES ('', '', $1)
+`
+
+// 注册邀请写一条 identifier 与 ip 都为空的记录: 它计入 SendCounts 的
+// instance_day (实例每日发送上限), 而按标识符、按 IP 的计数永远匹配不上
+// 它 —— 真实的标识符与 clientIP 都不为空, 邀请也不该占它们那两份额度。
+func (q *Queries) RecordInviteSend(ctx context.Context, sentAt pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, recordInviteSend, sentAt)
+	return err
+}
+
 const recordSend = `-- name: RecordSend :exec
 INSERT INTO sends (identifier, ip, sent_at) VALUES ($1, $2, $3)
 `

@@ -25,12 +25,12 @@
 
 | 类型 | 职责 | 产出 | 实例数 |
 |---|---|---|---|
-| **Channel** | 把 Stars Auth 生成的验证码投递到手机号或邮箱 | 投递结果 | 每种 Identifier(短信、邮件)同时只启用一个,不做故障切换 |
+| **Channel** | 把 Stars Auth 生成的验证码或一次性链接投递到手机号或邮箱 | 投递结果 | 每种 Identifier(短信、邮件)同时只启用一个,不做故障切换 |
 | **Provider** | 由外部服务证明"这是谁" | 一个已验证的 Identifier(如一键登录给出的手机号),**或**一个 External Identity | 可以添加多个 Provider,同一 Provider 类型也可以添加多个,各自的 External Identity 互不相通 |
 
 - **核心能力不做成插件**:验证码登录、密码、Passkey、TOTP。
 - **三个免写代码的通用插件**:
-  - **Webhook Channel**:把 `{"to": 目标, "code": 验证码}` POST 到管理员指定的 URL,返回 2xx 即视为送达;请求头 `X-Stars-Signature: t=<秒>,v1=<hex HMAC-SHA256(密钥, "<t>.<body>")>`,接收方应拒绝过旧的 `t` 以防重放;
+  - **Webhook Channel**:把 `{"to": 目标, "code": 验证码}` POST 到管理员指定的 URL,返回 2xx 即视为送达;注册邀请不带验证码,送的是 `{"to": 目标, "link": 链接}`;请求头 `X-Stars-Signature: t=<秒>,v1=<hex HMAC-SHA256(密钥, "<t>.<body>")>`,接收方应拒绝过旧的 `t` 以防重放;
   - **通用 OIDC Provider 类型**:填 issuer、client_id、secret 即可接入,见下文;
   - **通用 OAuth2 Provider 类型**:填 authorization、token、userinfo 三个 endpoint、scope 与用户 ID 字段即可接入,见下文。
 - **Provider 的交互形态**:每个 Provider 类型声明自己支持哪种,或两种都支持。

@@ -215,6 +215,8 @@ func (s *Service) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /login/providers/{id}/callback", s.providerCallback)
 	mux.HandleFunc("GET /setup", s.setupPage)
 	mux.HandleFunc("POST /setup", s.setup)
+	mux.HandleFunc("GET /invite", s.invitePage)
+	mux.HandleFunc("POST /invite", s.acceptInvite)
 }
 
 // clientCredentialsRules applies ADR 0015 to a client_credentials request:

@@ -22,6 +22,7 @@ import (
 	"github.com/zibyn/stars-auth/internal/db/sqlc"
 	"github.com/zibyn/stars-auth/internal/identity"
 	"github.com/zibyn/stars-auth/internal/oidcstore"
+	"github.com/zibyn/stars-auth/internal/otp"
 	"github.com/zibyn/stars-auth/internal/passkey"
 	"github.com/zibyn/stars-auth/internal/provider"
 	"github.com/zibyn/stars-auth/internal/twofactor"
@@ -42,6 +43,7 @@ type Service struct {
 	providers *provider.Store
 	passkeys  *passkey.Store
 	ids       *identity.Store
+	codes     *otp.Service
 }
 
 func New(pool *pgxpool.Pool, keyring *crypt.Keyring, issuer string) (*Service, error) {
@@ -49,7 +51,8 @@ func New(pool *pgxpool.Pool, keyring *crypt.Keyring, issuer string) (*Service, e
 	if err != nil {
 		return nil, err
 	}
-	return &Service{issuer: issuer, pool: pool, keyring: keyring, q: sqlc.New(pool), keys: oidcstore.NewKeys(pool, keyring), channels: channel.NewStore(pool, keyring), twoFactor: twofactor.New(pool, keyring), providers: provider.NewStore(pool, keyring), passkeys: passkeys, ids: identity.New(pool, keyring)}, nil
+	channels := channel.NewStore(pool, keyring)
+	return &Service{issuer: issuer, pool: pool, keyring: keyring, q: sqlc.New(pool), keys: oidcstore.NewKeys(pool, keyring), channels: channels, twoFactor: twofactor.New(pool, keyring), providers: provider.NewStore(pool, keyring), passkeys: passkeys, ids: identity.New(pool, keyring), codes: otp.New(pool, channels)}, nil
 }
 
 type callerKey struct{}
@@ -87,6 +90,10 @@ func (s *Service) Register(mux *http.ServeMux) {
 	get(api, "list-users", "users:read", "/users", "Search Users", s.listUsers)
 	op(api, http.MethodPost, "create-user", "users:write", "/users", "Create a User for an admin to hand over: 待激活 until they set their own password", s.createUser)
 	get(api, "get-user", "users:read", "/users/{sub}", "A User's details", s.getUser)
+	// 注册邀请: one admin-sent link that sets the User's own password. A send
+	// that fails leaves the User made but with no usable link.
+	op(api, http.MethodPost, "send-invite", "users:write", "/users/{sub}/invite", "Send or re-send a User's 注册邀请: the old link stops working at once", s.inviteUser)
+	op(api, http.MethodDelete, "revoke-invite", "users:write", "/users/{sub}/invite", "Take a User's 注册邀请 back: the link stops working at once", s.revokeInvite)
 	// Role names show in the Users list, so reading them needs no more than users:read.
 	get(api, "list-sessions", "users:read", "/users/{sub}/sessions", "A User's Sessions", s.listSessions)
 	op(api, http.MethodDelete, "end-session", "users:write", "/users/{sub}/sessions/{id}", "Sign a User out of one Session", s.endSession)

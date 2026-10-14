@@ -92,6 +92,14 @@ func (s *sms) Send(ctx context.Context, to, code string) error {
 	return nil
 }
 
+func (s *sms) SendLink(context.Context, string, string) error {
+	// The 号码认证 template is a code-and-minutes one the sender does not get
+	// to write, and there is no invitation template to borrow; a link that
+	// only fits the code slot would go out as a garbled code. Invitations are
+	// email-only for now.
+	return errors.New("阿里云短信认证投递不了注册邀请:邀请只支持邮箱")
+}
+
 // sign is Aliyun's RPC signature, version 1.0 (HMAC-SHA1).
 func sign(method string, p url.Values, secret string) string {
 	// Encode sorts by key; re-encode each pair the way Aliyun wants.

@@ -21,7 +21,8 @@ type subPath struct {
 type createUserInput struct {
 	Body struct {
 		Identifier string `json:"identifier" doc:"+86 phone number, email or username; stored normalised. An admin-typed phone number or email counts as verified at once: no code is sent (ADR 0016)"`
-		Password   string `json:"password" minLength:"8" doc:"The initial password the admin hands over; the User must replace it at first sign-in before they get any token"`
+		Password   string `json:"password,omitempty" minLength:"8" doc:"The initial password the admin hands over; the User must replace it at first sign-in before they get any token. 互斥 with invite, and one of the two is required"`
+		Invite     bool   `json:"invite,omitempty" doc:"Send a 注册邀请 instead of setting an initial password: the User sets their own, so the admin never knows it. 互斥 with password, and the Identifier must be an email. An invite that fails to send leaves the User made but with no usable link: re-send it from the User's page"`
 	}
 }
 
@@ -36,18 +37,34 @@ type createUserOutput struct {
 // verified, the same as GitLab's admin-created accounts and Keycloak's Email
 // Verified checkbox; typed wrong, the account lands with whoever holds that
 // address, which the admin checks offline.
+//
+// 初始密码 and 发注册邀请 are the two ways in and exclude each other: the first
+// has the admin choose a password the User must replace, the second lets the
+// User choose from the start. One of them has to be picked — a 待激活 account
+// with neither has no way in at all but the 注销 button.
 func (s *Service) createUser(ctx context.Context, in *createUserInput) (*createUserOutput, error) {
-	// 密码登录 is this feature's precondition: the initial password goes
-	// through it, so with the switch off pre-setting one is meaningless.
+	switch {
+	case in.Body.Invite && in.Body.Password != "":
+		return nil, huma.Error422UnprocessableEntity("「初始密码」与「发注册邀请」只能选一个")
+	case !in.Body.Invite && in.Body.Password == "":
+		return nil, huma.Error422UnprocessableEntity("请二选一:给一个「初始密码」,或「发注册邀请」")
+	}
+	// 密码登录 is this feature's precondition: both ways end in a password the
+	// User signs in with, so with the switch off neither is worth setting up.
 	// The console disables the entry and says why.
 	setting, err := s.q.PasswordLogin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if setting == "off" {
-		return nil, huma.Error422UnprocessableEntity("密码登录已关闭,不能设置初始密码")
+		return nil, huma.Error422UnprocessableEntity("密码登录已关闭,不能创建要设密码的账号")
 	}
-	sub, err := s.ids.CreatePendingUser(ctx, in.Body.Identifier, in.Body.Password)
+	var sub string
+	if in.Body.Invite {
+		sub, err = s.ids.CreateInvitedUser(ctx, in.Body.Identifier)
+	} else {
+		sub, err = s.ids.CreatePendingUser(ctx, in.Body.Identifier, in.Body.Password)
+	}
 	// ErrIdentifierTaken is itself an identity.Invalid, so it is named first:
 	// a taken Identifier is a 409, not the 422 the other Invalid errors get.
 	var bad identity.Invalid
@@ -64,6 +81,11 @@ func (s *Service) createUser(ctx context.Context, in *createUserInput) (*createU
 	detail, _ := json.Marshal(map[string]string{"by": callerSub(ctx)})
 	if err := s.q.Audit(ctx, sqlc.AuditParams{Event: "user.created", Sub: pgtype.Text{String: sub, Valid: true}, Detail: detail}); err != nil {
 		return nil, err
+	}
+	if in.Body.Invite {
+		if err := s.sendInvite(ctx, sub); err != nil {
+			return nil, err
+		}
 	}
 	r, err := s.q.GetUser(ctx, sub)
 	if err != nil {

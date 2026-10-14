@@ -1,6 +1,6 @@
 // Package webhook is the Channel for any service Stars Auth has no plugin
-// for: it POSTs {"to", "code"} to the admin's URL, signed with a shared
-// secret.
+// for: it POSTs {"to", "code"} to the admin's URL, or {"to", "link"} for a
+// 注册邀请, signed with a shared secret.
 //
 // X-Stars-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>
 //
@@ -29,7 +29,7 @@ func init() {
 		Name:  "Webhook",
 		Kinds: []string{"phone", "email"},
 		Fields: []channel.Field{
-			{Key: "url", Label: "URL", Type: "url", Help: `收到 POST {"to", "code"},返回 2xx 即视为送达`},
+			{Key: "url", Label: "URL", Type: "url", Help: `收到 POST {"to", "code"}(注册邀请为 {"to", "link"}),返回 2xx 即视为送达`},
 			{Key: "secret", Label: "签名密钥", Type: "text", Secret: true,
 				Help: "X-Stars-Signature: t=<秒>,v1=<hex HMAC-SHA256(密钥, \"<t>.<body>\")>"},
 		},
@@ -47,7 +47,15 @@ type webhook struct {
 var client = &http.Client{Timeout: 10 * time.Second}
 
 func (w *webhook) Send(ctx context.Context, to, code string) error {
-	body, err := json.Marshal(map[string]string{"to": to, "code": code})
+	return w.post(ctx, map[string]string{"to": to, "code": code})
+}
+
+func (w *webhook) SendLink(ctx context.Context, to, link string) error {
+	return w.post(ctx, map[string]string{"to": to, "link": link})
+}
+
+func (w *webhook) post(ctx context.Context, payload map[string]string) error {
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}

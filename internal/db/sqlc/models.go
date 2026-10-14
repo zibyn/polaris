@@ -90,6 +90,13 @@ type Identifier struct {
 	Value  string
 }
 
+type Invite struct {
+	TokenHash []byte
+	UserID    string
+	ExpiresAt pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+}
+
 type LiveSession struct {
 	ID string
 }

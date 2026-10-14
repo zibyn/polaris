@@ -293,6 +293,19 @@ addEventListener("DOMContentLoaded", () => {
 </form>
 {{template "foot"}}{{end}}
 
+{{define "invite"}}{{template "head" "设置密码"}}
+<h1>设置密码</h1>
+<p>点开这个链接,就说明这个邮箱是你的。设一个只有你知道的密码,就能直接使用。</p>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form method="post" action="/invite">
+  <input type="hidden" name="token" value="{{.Token}}">
+  <label>新密码
+    <input name="password" type="password" autocomplete="new-password" required minlength="8" autofocus>
+  </label>
+  <button>设置并继续</button>
+</form>
+{{template "foot"}}{{end}}
+
 {{define "message"}}{{template "head" "Stars Auth"}}
 <p>{{.}}</p>
 {{template "foot"}}{{end}}

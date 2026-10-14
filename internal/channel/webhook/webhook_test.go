@@ -57,6 +57,33 @@ func TestPostsSignedTargetAndCode(t *testing.T) {
 	}
 }
 
+// 注册邀请带的是 link, 不是 code: 收信方按 {"to","link"} 认, 邮件里没有
+// 验证码那一行。
+func TestPostsLinkForAnInvite(t *testing.T) {
+	posts := make(chan []byte, 1)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		posts <- body
+	}))
+	defer ts.Close()
+
+	ch, err := channel.Get("webhook").New(map[string]string{"url": ts.URL, "secret": "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := "https://auth.example.com/invite?token=abc"
+	if err := ch.SendLink(context.Background(), "alice@example.com", link); err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(<-posts, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["to"] != "alice@example.com" || body["link"] != link || len(body) != 2 {
+		t.Errorf("body: %v", body)
+	}
+}
+
 func TestNon2xxIsAnError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nope", http.StatusBadGateway)

@@ -21,6 +21,7 @@ var selfAudited = map[string]bool{
 	"replace-identifier": true, "set-user-roles": true, "put-settings": true, "rotate-signing-keys": true,
 	"reset-two-factor": true, "create-provider": true, "unbind-external-identity": true,
 	"remove-user-passkey": true, "set-application-roles": true,
+	"send-invite": true, "revoke-invite": true,
 }
 
 var pathParam = regexp.MustCompile(`\{(\w+)\}`)
