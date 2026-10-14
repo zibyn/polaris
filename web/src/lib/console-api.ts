@@ -24,10 +24,18 @@ export type User = {
 	identifiers: Identifier[];
 	roles: Role[];
 };
+// Invite is what a User's 注册邀请 has come to: none 没发出过（撤销了、过期了
+// 也算）, sent 有一条还没被接受的链接（expiresAt 是它的期限）, accepted 上一
+// 条已经被本人用掉.
+export type Invite = {
+	state: "none" | "sent" | "accepted";
+	expiresAt?: string;
+};
 export type UserDetail = User & {
 	hasPassword: boolean;
 	twoFactor: boolean;
 	twoFactorOrPasskey: boolean;
+	invite: Invite;
 };
 export type RoleInfo = Role & { apiName: string; builtin: boolean };
 export type Me = { sub: string; identifier: string; permissions: string[] };

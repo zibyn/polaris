@@ -35,7 +35,8 @@ type env struct {
 	issuer  string
 	keys    *oidcstore.Keys
 	keyring *crypt.Keyring
-	owner   string // sub
+	ids     *identity.Store // for what a User does to their own account
+	owner   string          // sub
 }
 
 func start(t *testing.T) *env {
@@ -72,7 +73,7 @@ func start(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	ts.Config.Handler = server.New(pool.Ping, http.NotFoundHandler(), nil, svc.Register)
-	return &env{t: t, pool: pool, issuer: issuer, keys: keys, keyring: keyring, owner: owner}
+	return &env{t: t, pool: pool, issuer: issuer, keys: keys, keyring: keyring, ids: ids, owner: owner}
 }
 
 // user adds a User with the given Identifiers ("kind:value") and Management

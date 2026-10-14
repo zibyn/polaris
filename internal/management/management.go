@@ -255,11 +255,18 @@ type User struct {
 	Roles       []Role       `json:"roles"`
 }
 
+// Invite is what a User's 注册邀请 has come to, as their page shows it.
+type Invite struct {
+	State     string     `json:"state" enum:"none,sent,accepted" doc:"none: 没发出过 (or it was revoked or has expired); sent: a link is out there and nobody has used it; accepted: the last invite was spent by the User themselves"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty" doc:"Set while state is sent: when the link stops working, 7 days after it went out"`
+}
+
 type UserDetail struct {
 	User
-	HasPassword        bool `json:"hasPassword"`
-	TwoFactor          bool `json:"twoFactor" doc:"两步验证 is on"`
-	TwoFactorOrPasskey bool `json:"twoFactorOrPasskey" doc:"已开启两步验证或仍有至少一把 Passkey"`
+	HasPassword        bool   `json:"hasPassword"`
+	TwoFactor          bool   `json:"twoFactor" doc:"两步验证 is on"`
+	TwoFactorOrPasskey bool   `json:"twoFactorOrPasskey" doc:"已开启两步验证或仍有至少一把 Passkey"`
+	Invite             Invite `json:"invite" doc:"The User's 注册邀请: what the console offers 发出 / 重发 / 撤销 on"`
 }
 
 type meOutput struct {
@@ -348,11 +355,27 @@ func (s *Service) getUser(ctx context.Context, in *struct {
 	} else if err != nil {
 		return nil, err
 	}
-	u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Status, r.Identifiers, r.Roles)
+	u, err := userDetail(r)
 	if err != nil {
 		return nil, err
 	}
-	return &getUserOutput{Body: UserDetail{User: u, HasPassword: r.HasPassword, TwoFactor: r.TwoFactor, TwoFactorOrPasskey: r.TwoFactorOrPasskey}}, nil
+	return &getUserOutput{Body: u}, nil
+}
+
+// userDetail is a User's page: the User themselves plus what only their own
+// page shows.
+func userDetail(r sqlc.GetUserRow) (UserDetail, error) {
+	u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Status, r.Identifiers, r.Roles)
+	if err != nil {
+		return UserDetail{}, err
+	}
+	return UserDetail{
+		User:               u,
+		HasPassword:        r.HasPassword,
+		TwoFactor:          r.TwoFactor,
+		TwoFactorOrPasskey: r.TwoFactorOrPasskey,
+		Invite:             invite(r),
+	}, nil
 }
 
 func user(sub string, created time.Time, disabled pgtype.Timestamptz, status string, identifiers, roles []byte) (User, error) {

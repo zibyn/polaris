@@ -1,12 +1,19 @@
-import { revalidateLogic, useForm } from "@tanstack/react-form";
+import { revalidateLogic, useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { FormError, FormField } from "#/components/form";
 import { Button } from "#/components/ui/button";
 import { FieldSet } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "#/components/ui/select";
 import { api, type UserDetail } from "#/lib/console-api";
-import { createUserSchema } from "#/lib/users";
+import { createUserSchema, type WayIn, wayName, waysIn } from "#/lib/users";
 import { type Header, useCan } from "#/routes/console/route";
 import {
 	PasswordLoginNotice,
@@ -33,7 +40,8 @@ function useHeader(): Header | null {
 }
 
 // CreateUser opens one 待激活 account for an admin to hand over (ADR 0016),
-// with the initial password they pass on themselves.
+// either with an initial password they pass on themselves or with a 注册邀请
+// that lets the User set their own.
 function CreateUser() {
 	const can = useCan();
 	if (!can("users:write")) {
@@ -42,15 +50,26 @@ function CreateUser() {
 	return <CreateForm />;
 }
 
+// wayHelp is what each way in is, said under the choice.
+const wayHelp: Record<WayIn, string> = {
+	password:
+		"当面或另找渠道把临时密码交给本人，对方第一次登录时必须先改成自己的密码。",
+	invite:
+		"认证服务往这个邮箱发一条 7 天有效的一次性链接，本人点开自己设密码，密码不经过你手上。",
+};
+
 function CreateForm() {
 	const off = usePasswordLoginOff();
 	const client = useQueryClient();
 	const navigate = useNavigate();
 	const save = useMutation({
-		mutationFn: (v: { identifier: string; password: string }) =>
+		mutationFn: (v: { identifier: string; way: WayIn; password: string }) =>
 			api<UserDetail>("/users", {
 				method: "POST",
-				body: { identifier: v.identifier.trim(), password: v.password },
+				body:
+					v.way === "invite"
+						? { identifier: v.identifier.trim(), invite: true }
+						: { identifier: v.identifier.trim(), password: v.password },
 			}),
 		onSuccess: async (user) => {
 			await client.invalidateQueries({ queryKey: ["users"] });
@@ -58,11 +77,12 @@ function CreateForm() {
 		},
 	});
 	const form = useForm({
-		defaultValues: { identifier: "", password: "" },
+		defaultValues: { identifier: "", way: "password" as WayIn, password: "" },
 		validationLogic: revalidateLogic(),
 		validators: { onDynamic: createUserSchema },
 		onSubmit: ({ value }) => save.mutate(value),
 	});
+	const way = useStore(form.store, (s) => s.values.way);
 	return (
 		<form
 			noValidate
@@ -76,12 +96,47 @@ function CreateForm() {
 				<PasswordLoginNotice detail="关闭时建出来的账号没有可用的登录方式，本人进不来。" />
 			)}
 			<FieldSet disabled={off} className="gap-6">
+				<form.Field name="way">
+					{(field) => (
+						<FormField
+							field={field}
+							label="怎么把账号交给本人"
+							help={wayHelp[way]}
+						>
+							{({ id, "aria-invalid": invalid }) => (
+								<Select
+									value={field.state.value}
+									onValueChange={(v) => field.handleChange(v as WayIn)}
+								>
+									<SelectTrigger
+										id={id}
+										aria-invalid={invalid}
+										className="w-full"
+									>
+										<SelectValue>{(v: WayIn) => wayName[v]}</SelectValue>
+									</SelectTrigger>
+									<SelectContent>
+										{waysIn.map((w) => (
+											<SelectItem key={w} value={w}>
+												{wayName[w]}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							)}
+						</FormField>
+					)}
+				</form.Field>
 				<form.Field name="identifier">
 					{(field) => (
 						<FormField
 							field={field}
 							label="登录标识"
-							help="手机号、邮箱或用户名。这里填的邮箱和手机号直接算已验证，认证服务不会给本人发验证邮件，也不消耗验证码条数。"
+							help={
+								way === "invite"
+									? "邀请只发到邮箱，所以这里要填邮箱地址。填的邮箱直接算已验证，不发验证邮件、也不消耗验证码条数。"
+									: "手机号、邮箱或用户名。这里填的邮箱和手机号直接算已验证，认证服务不会给本人发验证邮件，也不消耗验证码条数。"
+							}
 						>
 							{(control) => (
 								<Input
@@ -93,23 +148,21 @@ function CreateForm() {
 						</FormField>
 					)}
 				</form.Field>
-				<form.Field name="password">
-					{(field) => (
-						<FormField
-							field={field}
-							label="初始密码"
-							help="当面或另找渠道交给本人的临时密码，至少 8 位。对方第一次登录时，必须先把它改成自己的密码。"
-						>
-							{(control) => (
-								<Input
-									{...control}
-									type="password"
-									autoComplete="new-password"
-								/>
-							)}
-						</FormField>
-					)}
-				</form.Field>
+				{way === "password" && (
+					<form.Field name="password">
+						{(field) => (
+							<FormField field={field} label="初始密码" help={wayHelp.password}>
+								{(control) => (
+									<Input
+										{...control}
+										type="password"
+										autoComplete="new-password"
+									/>
+								)}
+							</FormField>
+						)}
+					</form.Field>
+				)}
 			</FieldSet>
 			<FormError error={save.error} />
 			<Button type="submit" disabled={save.isPending || off}>

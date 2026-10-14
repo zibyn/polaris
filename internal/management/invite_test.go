@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/zibyn/stars-auth/internal/channel"
 	"github.com/zibyn/stars-auth/internal/identity"
@@ -53,6 +54,13 @@ func (e *env) mailer() *outbox {
 		e.t.Fatal(err)
 	}
 	return o
+}
+
+// inviteState is the Management API's invite field on a User: what happened
+// to their 注册邀请, and until when a link that is out there works.
+type inviteState struct {
+	State     string
+	ExpiresAt *time.Time
 }
 
 // tokenOf pulls the invite token out of a link.
@@ -265,8 +273,13 @@ func TestAFailedSendLeavesNoUsableLink(t *testing.T) {
 
 	// 创建时就带着邀请的那条路一样: 账号建好了(在用户列表里找得到, 重发即可),
 	// 但一条可用链接都没有。
-	if code := e.call("POST", owner, "/users", map[string]any{"identifier": "bob@example.com", "invite": true}, nil); code != 422 {
+	if code := e.call("POST", owner, "/users", map[string]any{"identifier": "bob@example.com", "invite": true}, &problem); code != 422 {
 		t.Fatalf("create with an invite while the mail server is down: %d", code)
+	}
+	// 说的是「账号已经建好」而不是光说邮件失败: 否则管理员会当它没建成再点一次,
+	// 那次撞上 409「已属于另一个 User」。
+	if !strings.Contains(problem.Detail, "账号已经建好") {
+		t.Errorf("没有说账号已经建好: %q", problem.Detail)
 	}
 	var list struct{ Users []user }
 	if code := e.get(owner, "/users?q=bob@example.com", &list); code != 200 || len(list.Users) != 1 {
@@ -312,5 +325,85 @@ func TestInviteNeedsTheWritePermission(t *testing.T) {
 	}
 	if code := e.call("DELETE", readonly, "/users/ADMIN/invite", nil, nil); code != 403 {
 		t.Errorf("readonly revoked an invite: %d", code)
+	}
+}
+
+// 用户详情说得出注册邀请现在是什么状态: 没发出 / 已发出(到什么时候过期) /
+// 已接受 —— 管理端据此显示状态并决定给哪几个按钮。
+func TestUserDetailShowsTheInviteState(t *testing.T) {
+	e := start(t)
+	mail := e.mailer()
+	owner := e.token(e.owner, nil)
+	ctx := context.Background()
+
+	var created struct {
+		Sub    string
+		Invite inviteState
+	}
+	if code := e.call("POST", owner, "/users", map[string]any{"identifier": "alice@example.com", "password": "password1"}, &created); code != 200 {
+		t.Fatalf("create: %d", code)
+	}
+	if created.Invite.State != "none" {
+		t.Errorf("一个没被邀请过的账号: %+v", created.Invite)
+	}
+	// 对已有的 User 发出邀请。
+	if code := e.call("POST", owner, "/users/"+created.Sub+"/invite", nil, nil); code != 204 {
+		t.Fatalf("send: %d", code)
+	}
+	var detail struct{ Invite inviteState }
+	if code := e.get(owner, "/users/"+created.Sub, &detail); code != 200 {
+		t.Fatalf("get: %d", code)
+	}
+	if detail.Invite.State != "sent" {
+		t.Fatalf("发出之后: %+v", detail.Invite)
+	}
+	// 7 天有效, 详情要说得出是什么时候。
+	if d := detail.Invite.ExpiresAt; d == nil {
+		t.Error("已发出的邀请没有说过期时间")
+	} else if until := time.Until(*d); until < 6*24*time.Hour || until > 7*24*time.Hour {
+		t.Errorf("过期时间是 %v 之后", until)
+	}
+	// 撤销之后又回到「没发出」, 也没有过期时间了。
+	if code := e.call("DELETE", owner, "/users/"+created.Sub+"/invite", nil, nil); code != 204 {
+		t.Fatalf("revoke: %d", code)
+	}
+	detail.Invite = inviteState{}
+	if code := e.get(owner, "/users/"+created.Sub, &detail); code != 200 {
+		t.Fatalf("get after revoking: %d", code)
+	}
+	if detail.Invite.State != "none" || detail.Invite.ExpiresAt != nil {
+		t.Errorf("撤销之后: %+v", detail.Invite)
+	}
+
+	// 过期的链接不算「已发出」: 清理任务一小时才扫一次, 不能等到那时候才改口,
+	// 否则页面上会写「已发出 · <一个已经过去的时刻> 过期」。
+	if code := e.call("POST", owner, "/users/"+created.Sub+"/invite", nil, nil); code != 204 {
+		t.Fatalf("send: %d", code)
+	}
+	if _, err := e.pool.Exec(ctx, "UPDATE invites SET expires_at = now() - interval '1 hour' WHERE user_id = $1", created.Sub); err != nil {
+		t.Fatal(err)
+	}
+	detail.Invite = inviteState{}
+	if code := e.get(owner, "/users/"+created.Sub, &detail); code != 200 {
+		t.Fatalf("get after the link expired: %d", code)
+	}
+	if detail.Invite.State != "none" || detail.Invite.ExpiresAt != nil {
+		t.Errorf("链接过期之后: %+v", detail.Invite)
+	}
+
+	// 本人把链接用掉之后是「已接受」。
+	if code := e.call("POST", owner, "/users/"+created.Sub+"/invite", nil, nil); code != 204 {
+		t.Fatalf("send again: %d", code)
+	}
+	_, link := mail.last()
+	if _, err := e.ids.AcceptInvite(ctx, tokenOf(t, link), "her-own-password"); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	detail.Invite = inviteState{}
+	if code := e.get(owner, "/users/"+created.Sub, &detail); code != 200 {
+		t.Fatalf("get after accepting: %d", code)
+	}
+	if detail.Invite.State != "accepted" {
+		t.Errorf("接受之后: %+v", detail.Invite)
 	}
 }

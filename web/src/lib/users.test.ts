@@ -37,6 +37,7 @@ test("the user search takes up to 100 characters", () => {
 test("creating a User takes an Identifier and a password of 8 or more", () => {
 	const ok = createUserSchema.safeParse({
 		identifier: "alice@example.com",
+		way: "password",
 		password: "password1",
 	});
 	assert.equal(ok.success, true);
@@ -44,25 +45,50 @@ test("creating a User takes an Identifier and a password of 8 or more", () => {
 	assert.equal(
 		createUserSchema.safeParse({
 			identifier: "13800001111",
+			way: "password",
 			password: " passwd1 ",
 		}).success,
 		true,
 	);
 });
 
+test("an invite needs no password at all", () => {
+	// 二选一: 选了邀请, 表单上就没有密码这一项。
+	assert.equal(
+		createUserSchema.safeParse({
+			identifier: "alice@example.com",
+			way: "invite",
+			password: "",
+		}).success,
+		true,
+	);
+	// 邀请只走邮箱, 但"这是不是邮箱"是服务端的判断: 这里只要求填了标识符。
+	assert.deepEqual(
+		createUserSchema.safeParse({ identifier: " ", way: "invite", password: "" })
+			.error?.issues[0].message,
+		"请填写登录标识。",
+	);
+});
+
 test("creating a User needs an Identifier", () => {
 	// Whitespace is not an Identifier; the kind is the server's call.
 	assert.deepEqual(
-		createUserSchema.safeParse({ identifier: "  ", password: "password1" })
-			.error?.issues[0].message,
+		createUserSchema.safeParse({
+			identifier: "  ",
+			way: "password",
+			password: "password1",
+		}).error?.issues[0].message,
 		"请填写登录标识。",
 	);
 });
 
 test("creating a User needs 8 characters of password", () => {
 	assert.deepEqual(
-		createUserSchema.safeParse({ identifier: "bob", password: "passwd1" }).error
-			?.issues[0].message,
+		createUserSchema.safeParse({
+			identifier: "bob",
+			way: "password",
+			password: "passwd1",
+		}).error?.issues[0].message,
 		"密码至少 8 位。",
 	);
 });

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
@@ -84,18 +85,26 @@ func (s *Service) createUser(ctx context.Context, in *createUserInput) (*createU
 	}
 	if in.Body.Invite {
 		if err := s.sendInvite(ctx, sub); err != nil {
-			return nil, err
+			// 邮件是外部副作用, 账号已经建好了 —— 只是手上没有能用的链接。说清
+			// 楚这一点, 管理员才不会当它没建成再点一次: 那次会撞 409「已属于另
+			// 一个 User」, 而真正的恢复动作是去用户页重发。
+			msg, ok := errors.AsType[identity.Invalid](err)
+			if !ok {
+				return nil, err
+			}
+			return nil, huma.Error422UnprocessableEntity(fmt.Sprintf(
+				"账号已经建好,只是邀请邮件没发出去(%s);去用户列表找到它,在详情页重发即可。", msg))
 		}
 	}
 	r, err := s.q.GetUser(ctx, sub)
 	if err != nil {
 		return nil, err
 	}
-	u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Status, r.Identifiers, r.Roles)
+	u, err := userDetail(r)
 	if err != nil {
 		return nil, err
 	}
-	return &createUserOutput{Body: UserDetail{User: u, HasPassword: r.HasPassword, TwoFactor: r.TwoFactor, TwoFactorOrPasskey: r.TwoFactorOrPasskey}}, nil
+	return &createUserOutput{Body: u}, nil
 }
 
 // ensureUser is the 404 for a User a path names who is not.

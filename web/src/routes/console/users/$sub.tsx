@@ -56,7 +56,12 @@ import {
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { Section } from "#/routes/console/-components/section";
 import { type Header, useCan } from "#/routes/console/route";
-import { date, rolesQuery } from "#/routes/console/users/index";
+import {
+	date,
+	PasswordLoginNotice,
+	rolesQuery,
+	usePasswordLoginOff,
+} from "#/routes/console/users/index";
 
 export const Route = createFileRoute("/console/users/$sub")({
 	staticData: { crumb: UserName, useHeader },
@@ -272,6 +277,15 @@ function UserPage() {
 					<Row label="密码">{u.hasPassword ? "已设置" : "未设置"}</Row>
 				</ItemList>
 			</Section>
+			<Section title="注册邀请">
+				<Invite
+					sub={u.sub}
+					who={name}
+					invite={u.invite}
+					email={u.identifiers.find((i) => i.kind === "email")?.value}
+					writable={writable}
+				/>
+			</Section>
 			<Section title="已绑定的外部账号">
 				<ExternalIdentities sub={u.sub} who={name} writable={writable} />
 			</Section>
@@ -453,6 +467,106 @@ function ExternalIdentities({
 				</Row>
 			))}
 		</ItemList>
+	);
+}
+
+// Invite is the User's 注册邀请 (ADR 0016): where it stands, and the three
+// things an admin does about it — 发出, 重发, 撤销. 重发 is the same call as
+// 发出 (a new link replaces the old one), so the state decides the label, and
+// 撤销 only exists while there is a link to take back. A User with no email
+// can't be invited at all, and neither can anyone while 密码登录 is off.
+function Invite({
+	sub,
+	who,
+	invite,
+	email,
+	writable,
+}: {
+	sub: string;
+	who?: string;
+	invite: UserDetail["invite"];
+	email?: string;
+	writable: boolean;
+}) {
+	const act = useUserAction(sub);
+	const off = usePasswordLoginOff();
+	const sent = invite.state === "sent";
+	const them = who ? `用户 ${who} ` : "这个用户";
+	const status = sent
+		? `已发出${invite.expiresAt ? ` · ${date(invite.expiresAt)} 过期` : ""}`
+		: invite.state === "accepted"
+			? "已接受"
+			: "未发出";
+	return (
+		<>
+			{off && (
+				<PasswordLoginNotice detail="关闭时发不出注册邀请，链接指向的设密码页也走不通。" />
+			)}
+			<ItemList>
+				<Row label="状态">
+					<span className="text-xs">{status}</span>
+					{!email ? (
+						<span className="text-muted-foreground text-xs">
+							这个用户没有邮箱，发不了邀请。
+						</span>
+					) : (
+						writable && (
+							<>
+								<ConfirmDialog
+									trigger={
+										<Button
+											size="sm"
+											variant="ghost"
+											disabled={act.isPending || off}
+										>
+											{sent ? "重发" : "发出邀请"}
+										</Button>
+									}
+									title={`${sent ? "重发" : "发出"}${them}的注册邀请？`}
+									action="发出注册邀请"
+									onConfirm={() =>
+										act.mutate({
+											method: "POST",
+											path: "/invite",
+											what: "发出注册邀请失败",
+										})
+									}
+								>
+									{sent
+										? `会往 ${email} 发一条新链接，旧的那条立刻失效，只有最新这封能用。`
+										: `会往 ${email} 发一条 7 天有效的一次性链接。`}
+									本人点开自己设密码，设完就能登录，这个密码不经过你手上。
+								</ConfirmDialog>
+								{sent && (
+									<ConfirmDialog
+										trigger={
+											<Button
+												size="sm"
+												variant="ghost"
+												disabled={act.isPending}
+											>
+												撤销
+											</Button>
+										}
+										title={`撤销${them}的注册邀请？`}
+										action="撤销注册邀请"
+										onConfirm={() =>
+											act.mutate({
+												method: "DELETE",
+												path: "/invite",
+												what: "撤销注册邀请失败",
+											})
+										}
+									>
+										撤销后那条链接立刻不能用了，本人得找你重发；已经设置好密码的账号不受影响。
+									</ConfirmDialog>
+								)}
+							</>
+						)
+					)}
+				</Row>
+			</ItemList>
+		</>
 	);
 }
 

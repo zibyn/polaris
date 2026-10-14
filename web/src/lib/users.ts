@@ -48,11 +48,29 @@ export const query = z.string().trim().max(100, "最多输入 100 个字。");
 
 export const searchSchema = z.object({ q: query });
 
-// createUserSchema checks 创建用户 (ADR 0016): one Identifier and the initial
-// password the admin hands over. Only the password's length is checked
-// here: what an Identifier is (+86 phone, email, username) the server
-// decides, in its own words, and its normaliser is the only one there is.
-export const createUserSchema = z.object({
-	identifier: z.string().trim().min(1, "请填写登录标识。"),
-	password: z.string().min(8, "密码至少 8 位。"),
-});
+// waysIn are the two ways an admin hands an account over (ADR 0016), exactly
+// one of which 创建用户 takes: an initial password they pass on themselves,
+// or a 注册邀请 that lets the User pick their own.
+export const waysIn = ["password", "invite"] as const;
+export type WayIn = (typeof waysIn)[number];
+
+export const wayName: Record<WayIn, string> = {
+	password: "设初始密码",
+	invite: "发注册邀请",
+};
+
+// createUserSchema checks 创建用户 (ADR 0016): one Identifier and the way in.
+// Only the password's length is checked here: what an Identifier is (+86
+// phone, email, username) the server decides, in its own words, and its
+// normaliser is the only one there is — as is whether that Identifier can
+// take an invite (email only, and only with an email Channel configured).
+export const createUserSchema = z
+	.object({
+		identifier: z.string().trim().min(1, "请填写登录标识。"),
+		way: z.enum(waysIn),
+		password: z.string(),
+	})
+	.refine((v) => v.way !== "password" || v.password.length >= 8, {
+		path: ["password"],
+		message: "密码至少 8 位。",
+	});

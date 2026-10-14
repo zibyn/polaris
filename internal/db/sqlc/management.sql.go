@@ -252,7 +252,15 @@ SELECT u.id, u.created_at, u.disabled_at, u.status,
                  WHERE ur.user_id = u.id), '[]')::jsonb AS roles,
        EXISTS (SELECT 1 FROM passwords p WHERE p.user_id = u.id) AS has_password,
        totp_confirmed(u.id) AS two_factor,
-       two_factor_satisfied(u.id) AS two_factor_or_passkey
+       two_factor_satisfied(u.id) AS two_factor_or_passkey,
+       -- 注册邀请现在是什么状态: 表里还挂着一条还没到期的就是「已发出」, 上
+       -- 一条被本人用掉了就是「已接受」(接受即删行, 只在审计里留下痕迹), 其余
+       -- 是「没发出过」——撤销过、过期了都算, 不等清理任务把那行扫掉。
+       (SELECT i.expires_at FROM invites i
+        WHERE i.user_id = u.id AND i.expires_at > now()) AS invite_expires_at,
+       COALESCE((SELECT a.event FROM audit_log a
+                 WHERE a.sub = u.id AND a.event IN ('invite.sent', 'invite.accepted', 'invite.revoked')
+                 ORDER BY a.at DESC, a.id DESC LIMIT 1), '')::text AS invite_event
 FROM users u
 WHERE u.id = $1
 `
@@ -267,6 +275,8 @@ type GetUserRow struct {
 	HasPassword        bool
 	TwoFactor          bool
 	TwoFactorOrPasskey bool
+	InviteExpiresAt    pgtype.Timestamptz
+	InviteEvent        string
 }
 
 func (q *Queries) GetUser(ctx context.Context, id string) (GetUserRow, error) {
@@ -282,6 +292,8 @@ func (q *Queries) GetUser(ctx context.Context, id string) (GetUserRow, error) {
 		&i.HasPassword,
 		&i.TwoFactor,
 		&i.TwoFactorOrPasskey,
+		&i.InviteExpiresAt,
+		&i.InviteEvent,
 	)
 	return i, err
 }
