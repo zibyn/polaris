@@ -20,6 +20,7 @@ export type User = {
 	sub: string;
 	createdAt: string;
 	disabledAt?: string;
+	pending: boolean; // 待激活: created by an admin, no password of their own yet
 	identifiers: Identifier[];
 	roles: Role[];
 };

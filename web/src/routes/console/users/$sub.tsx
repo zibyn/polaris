@@ -159,8 +159,10 @@ function useHeader(): Header | null {
 			<>
 				{u.disabledAt ? (
 					<Badge variant="destructive">已禁用 · {date(u.disabledAt)}</Badge>
+				) : u.pending ? (
+					<Badge variant="warning">待激活</Badge>
 				) : (
-					<Badge variant="success">正常</Badge>
+					<Badge variant="success">已激活</Badge>
 				)}
 				{can("audit:read") && (
 					<Link
@@ -173,6 +175,11 @@ function useHeader(): Header | null {
 				)}
 			</>
 		),
+		// 待激活 is what an admin needs told: the account signs in, but no
+		// token comes of it until the User sets a password of their own.
+		description:
+			u.pending &&
+			"这个用户还没设置自己的密码：能登录，但在本人设置之前拿不到任何令牌。",
 		actions: writable && (
 			<>
 				{u.disabledAt ? (

@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { avatarInitial, primaryIdentifier, searchSchema } from "./users.ts";
+import {
+	avatarInitial,
+	createUserSchema,
+	onlyAdmins,
+	primaryIdentifier,
+	searchSchema,
+} from "./users.ts";
 
 test("the primary identifier is the phone, then email, then username", () => {
 	const phone = { kind: "phone", value: "+8613800000001" } as const;
@@ -26,4 +32,62 @@ test("the user search takes up to 100 characters", () => {
 		searchSchema.safeParse({ q: "a".repeat(101) }).error?.issues[0].message,
 		"最多输入 100 个字。",
 	);
+});
+
+test("creating a User takes an Identifier and a password of 8 or more", () => {
+	const ok = createUserSchema.safeParse({
+		identifier: "alice@example.com",
+		password: "password1",
+	});
+	assert.equal(ok.success, true);
+	// A password is handed over as typed, not trimmed: the spaces count.
+	assert.equal(
+		createUserSchema.safeParse({
+			identifier: "13800001111",
+			password: " passwd1 ",
+		}).success,
+		true,
+	);
+});
+
+test("creating a User needs an Identifier", () => {
+	// Whitespace is not an Identifier; the kind is the server's call.
+	assert.deepEqual(
+		createUserSchema.safeParse({ identifier: "  ", password: "password1" })
+			.error?.issues[0].message,
+		"请填写登录标识。",
+	);
+});
+
+test("creating a User needs 8 characters of password", () => {
+	assert.deepEqual(
+		createUserSchema.safeParse({ identifier: "bob", password: "passwd1" }).error
+			?.issues[0].message,
+		"密码至少 8 位。",
+	);
+});
+
+const manager = {
+	api: "urn:stars-auth:management-api",
+	key: "admin",
+	name: "管理员",
+};
+
+test("only admins: nothing but admins have signed up yet", () => {
+	assert.equal(onlyAdmins([{ roles: [manager] }], false, false), true);
+	assert.equal(onlyAdmins([], false, false), true);
+});
+
+test("only admins: one User of your own ends it", () => {
+	assert.equal(
+		onlyAdmins([{ roles: [manager] }, { roles: [] }], false, false),
+		false,
+	);
+});
+
+test("only admins: a filtered list or another page can't say it", () => {
+	// Searching turns up admins too; that says nothing about the rest.
+	assert.equal(onlyAdmins([{ roles: [manager] }], false, true), false);
+	// More pages hold Users this page hasn't seen.
+	assert.equal(onlyAdmins([{ roles: [manager] }], true, false), false);
 });
