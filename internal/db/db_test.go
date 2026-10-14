@@ -48,32 +48,36 @@ func TestMigrateEmbedded(t *testing.T) {
 	}
 }
 
-// The password login switch went from three values to two (ADR 0017). A
-// stored 'admins' must fold to 'on': folding it to 'off' would lock out every
-// owner who signs in with a username and a password alone, at the moment they
-// upgrade. 'admins' then stops being a value the column accepts.
+// The password login switch went from three values to two (ADR 0017). Both
+// stored 'admins' and stored 'all' must fold to 'on': folding either to 'off'
+// would lock out every owner who signs in with a username and a password
+// alone, at the moment they upgrade. Neither then stops being accepted.
 func TestPasswordLoginThreeStatesFoldToTwo(t *testing.T) {
 	ctx := context.Background()
-	pool := dbtest.Fresh(t)
-	if err := migrate(ctx, pool, before24(t)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, "UPDATE settings SET password_login = 'admins'"); err != nil {
-		t.Fatal(err)
-	}
+	for _, old := range []string{"admins", "all"} {
+		t.Run(old, func(t *testing.T) {
+			pool := dbtest.Fresh(t)
+			if err := migrate(ctx, pool, before24(t)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(ctx, "UPDATE settings SET password_login = $1", old); err != nil {
+				t.Fatal(err)
+			}
 
-	if err := Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
-	var got string
-	if err := pool.QueryRow(ctx, "SELECT password_login FROM settings").Scan(&got); err != nil {
-		t.Fatal(err)
-	}
-	if got != "on" {
-		t.Errorf("stored 'admins' became %q, want on", got)
-	}
-	if _, err := pool.Exec(ctx, "UPDATE settings SET password_login = 'admins'"); err == nil {
-		t.Error("'admins' is still accepted")
+			if err := Migrate(ctx, pool); err != nil {
+				t.Fatal(err)
+			}
+			var got string
+			if err := pool.QueryRow(ctx, "SELECT password_login FROM settings").Scan(&got); err != nil {
+				t.Fatal(err)
+			}
+			if got != "on" {
+				t.Errorf("stored %q became %q, want on", old, got)
+			}
+			if _, err := pool.Exec(ctx, "UPDATE settings SET password_login = $1", old); err == nil {
+				t.Errorf("%q is still accepted", old)
+			}
+		})
 	}
 }
 
