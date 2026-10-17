@@ -613,53 +613,33 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request, as *goidc.AuthnS
 	return s.complete(w, r, as, c, "", sub, time.Now(), amr)
 }
 
-// complete grants sub, unless sub has yet to pass 两步验证, to bind the
-// phone number the instance requires or to agree to the current terms:
-// then those pages come first, in that order. Until they are done, the login
-// waits in the AuthnSession store and the browser holds no Session; session
-// is empty unless the browser already had one (whose login passed 两步验证
-// already), and the Session starts once nothing is left.
+// complete grants sub, unless 待激活, 两步验证, 同意协议 or 绑手机号 still
+// stand between them and a Session: those pages come first, in that order.
+// Until they are done, the login waits in the AuthnSession store and the
+// browser holds no Session; session is empty unless the browser already had
+// one (whose login passed 两步验证 already), and the Session starts once
+// nothing is left.
 func (s *Service) complete(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client, session, sub string, authTime time.Time, amr []string) (goidc.Status, error) {
-	// 待激活 comes before 两步验证, 绑手机号 and the terms (ADR 0016), and is
-	// identical to the direct auth API's order. The only evidence so far is
-	// that the User knows a password an admin chose, and running the rest of
-	// the login on that evidence is what this step refuses.
+	// 待激活 comes before 两步验证, 同意协议 and 绑手机号 (ADR 0016), and
+	// nextStep owns that order for the direct auth API too. The only evidence
+	// so far is that the User knows a password an admin chose, and running the
+	// rest of the login on that evidence is what this step refuses.
 	//
 	// A browser Session already signed in is not re-asked: it cannot exist
 	// for a 待激活 User, since they never got past this step.
-	pending := false
-	if session == "" {
-		var err error
-		if pending, err = s.ids.Pending(r.Context(), sub); err != nil {
-			return goidc.StatusFailure, err
-		}
+	what, err := s.nextStep(r.Context(), sub, amr, session != "")
+	if err != nil {
+		return goidc.StatusFailure, err
 	}
-	totp := false
-	if session == "" && !pending {
-		var err error
-		if totp, err = s.needsTOTP(r.Context(), sub, amr); err != nil {
-			return goidc.StatusFailure, err
-		}
-	}
-	phone, consent := false, false
-	if !pending {
-		var err error
-		if phone, err = s.q.NeedsPhone(r.Context(), sub); err != nil {
-			return goidc.StatusFailure, err
-		}
-		if consent, err = s.q.NeedsConsent(r.Context(), sub); err != nil {
-			return goidc.StatusFailure, err
-		}
-	}
-	if pending || totp || phone || consent {
+	if what != stepDone {
 		as.Store = map[string]any{storeBindSub: sub, storeAuthTime: authTime.Unix(), storeAMR: amr, storeBinder: hex.EncodeToString(hash(binder(w, r)))}
 		if session != "" {
 			as.Store[oidcstore.SessionKey] = session
 		}
-		if totp {
+		if what == stepTOTP {
 			as.Store[storeTOTPFailures] = int64(0)
 		}
-		if pending {
+		if what == stepSetPassword {
 			as.Store[storeSetPassword] = true
 		}
 		return s.render(w, r, as, c, loginPage{})
@@ -738,15 +718,19 @@ func codeAMR(kind string) goidc.AMR {
 // storedAMR reads amr back from an AuthnSession store, where it was decoded
 // from JSON.
 func storedAMR(v any) []string {
-	var out []string
-	if vs, ok := v.([]any); ok {
+	switch vs := v.(type) {
+	case []string:
+		return vs
+	case []any:
+		out := make([]string, 0, len(vs))
 		for _, x := range vs {
 			if s, ok := x.(string); ok {
 				out = append(out, s)
 			}
 		}
+		return out
 	}
-	return out
+	return nil
 }
 
 func clientIP(r *http.Request) string {
@@ -890,20 +874,26 @@ type loginPage struct {
 func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client, p loginPage) (goidc.Status, error) {
 	p.Client, p.Action = c.Name, "/authorize/"+as.ID
 	ctx := r.Context()
-	_, p.TOTP = as.Store[storeTOTPFailures]
-	p.SetPassword = as.Store[storeSetPassword] == true
-	if pending, ok := as.Store[storeBindSub].(string); ok && !p.TOTP && !p.SetPassword {
-		consent, err := s.q.NeedsConsent(ctx, pending)
+	if pending, ok := as.Store[storeBindSub].(string); ok {
+		_, signedIn := as.Store[oidcstore.SessionKey]
+		what, err := s.nextStep(ctx, pending, storedAMR(as.Store[storeAMR]), signedIn)
 		if err != nil {
 			return goidc.StatusFailure, err
 		}
-		phone, err := s.q.NeedsPhone(ctx, pending)
-		if err != nil {
-			return goidc.StatusFailure, err
+		switch what {
+		case stepSetPassword:
+			p.SetPassword = true
+		case stepTOTP:
+			p.TOTP = true
+		case stepPhone:
+			p.Bind = true
+		case stepConsent:
+			p.Consent = true
+		case stepDone:
+			// Nothing left (the admin changed the policy meanwhile): the
+			// consent page, with no terms to tick, just lets the User go on.
+			p.Consent = true
 		}
-		// Neither left (the admin changed the policy meanwhile): the consent
-		// page, with no terms to tick, just lets the User go on.
-		p.Consent, p.Bind = consent || !phone, !consent && phone
 	}
 	terms, err := s.q.Terms(ctx)
 	if err != nil {

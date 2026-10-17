@@ -188,36 +188,40 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		return answer{}, &challengeError{status: http.StatusForbidden, Code: errInsufficientAuthorization, Description: description, AuthSession: token, Next: step}
 	}
 	// signedIn ends the sign-in with an authorization code, unless sub must
-	// pass 两步验证 or bind a phone number first, in that order.
+	// pass 两步验证, agree to the terms or bind a phone number first, in that
+	// order.
 	signedIn := func(sub string, authTime time.Time, amr []string) (answer, error) {
-		// 待激活 comes before everything else (ADR 0016): the only evidence
-		// so far is that the User knows a password someone else chose, and
-		// letting that carry on through a TOTP, a phone number and the terms
-		// would build the session on it.
-		if pending, err := s.ids.Pending(ctx, sub); err != nil {
-			return answer{}, err
-		} else if pending {
-			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, Password: true}, ""
-			return next(nextPassword, "set your own password: send password")
-		}
-		if totp, err := s.needsTOTP(ctx, sub, amr); err != nil {
-			return answer{}, err
-		} else if totp {
-			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, TOTP: true}, ""
-			return next(nextTOTP, "两步验证 is on: send totp or recovery_code")
-		}
-		needs, err := s.q.NeedsPhone(ctx, sub)
+		what, err := s.nextStep(ctx, sub, amr, false)
 		if err != nil {
 			return answer{}, err
 		}
-		if needs {
-			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr}, ""
-			return next(nextPhone, "a phone number must be bound: send a code to one")
-		}
-		if terms.TermsVersion != "" {
-			if err := s.q.RecordConsent(ctx, sqlc.RecordConsentParams{UserID: sub, Version: version, ClientID: c.ID}); err != nil {
+		if what == stepConsent {
+			// The App sent the current terms_version with this request, so
+			// consent is recorded here rather than asked for as another step;
+			// then whatever is left (a phone number) is asked for.
+			if terms.TermsVersion != "" {
+				if err := s.q.RecordConsent(ctx, sqlc.RecordConsentParams{UserID: sub, Version: version, ClientID: c.ID}); err != nil {
+					return answer{}, err
+				}
+			}
+			if what, err = s.nextStep(ctx, sub, amr, false); err != nil {
 				return answer{}, err
 			}
+		}
+		switch what {
+		case stepSetPassword:
+			// 待激活 comes before everything else (ADR 0016): the only evidence
+			// so far is that the User knows a password someone else chose, and
+			// letting that carry on through 两步验证, the terms and a phone
+			// number would build the session on it.
+			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, Password: true}, ""
+			return next(nextPassword, "set your own password: send password")
+		case stepTOTP:
+			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, TOTP: true}, ""
+			return next(nextTOTP, "两步验证 is on: send totp or recovery_code")
+		case stepPhone:
+			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr}, ""
+			return next(nextPhone, "a phone number must be bound: send a code to one")
 		}
 		// Spent before the code exists: one auth_session, one code.
 		if token != "" {

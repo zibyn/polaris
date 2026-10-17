@@ -1,7 +1,6 @@
 package login
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -64,30 +63,16 @@ func (s *Service) acceptInvite(w http.ResponseWriter, r *http.Request) {
 	// anything left, the account center's own sign-in runs it — the password
 	// they just set is what they use.
 	amr := []string{string(codeAMR("email"))}
-	more, err := s.moreBeforeSession(r.Context(), sub, amr)
+	what, err := s.nextStep(r.Context(), sub, amr, false)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if !more {
+	if what == stepDone {
 		if _, err := s.newSession(w, r, AccountClientID, sub, time.Now(), amr); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 	}
 	http.Redirect(w, r, "/account", http.StatusSeeOther)
-}
-
-// moreBeforeSession reports whether 两步验证, 绑手机号 or 同意协议 still stand
-// between sub and a browser Session — the three complete() runs after a first
-// factor. A caller that has just proved one factor asks this before starting a
-// Session of its own. 待激活 is not one of them: whoever asks has cleared it.
-func (s *Service) moreBeforeSession(ctx context.Context, sub string, amr []string) (bool, error) {
-	if totp, err := s.needsTOTP(ctx, sub, amr); err != nil || totp {
-		return totp, err
-	}
-	if phone, err := s.q.NeedsPhone(ctx, sub); err != nil || phone {
-		return phone, err
-	}
-	return s.q.NeedsConsent(ctx, sub)
 }
