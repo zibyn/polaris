@@ -50,4 +50,4 @@ Stars Auth 自带的内置 API,是一套 REST 接口。管理端前端只调用�
 | `audit:read` | ✓ | ✓ | ✓ |
 
 - **管理员**:在 Management API 上持有任一 Role 的 User。首次引导创建的是「所有者」。待激活的 User 也可以持有 Role(包括 Management API 的 Role):他拿不到令牌,调不了任何接口,所以风险为零。
-- **保护规则**:最后一个所有者不能被删除、禁用或降级。
+- **保护规则**:最后一个**可用**所有者不能被删除、禁用或降级。只有 active 的 owner 算可用;待激活的 User 可以持有 owner Role,但他拿不到令牌、调不了 Management API,不算数。

@@ -95,10 +95,12 @@ func (q *Queries) Caller(ctx context.Context, arg CallerParams) (CallerRow, erro
 
 const countOwners = `-- name: CountOwners :one
 SELECT count(*) FROM user_roles ur JOIN users u ON u.id = ur.user_id
-WHERE ur.api = 'urn:stars-auth:management-api' AND ur.role = 'owner' AND u.disabled_at IS NULL
+WHERE ur.api = 'urn:stars-auth:management-api' AND ur.role = 'owner'
+  AND u.disabled_at IS NULL AND u.status = 'active'
 `
 
-// A disabled owner is no owner.
+// Only an active owner counts: a 待激活 owner can sign in but gets no token,
+// so they cannot administer the instance.
 func (q *Queries) CountOwners(ctx context.Context) (int64, error) {
 	row := q.db.QueryRow(ctx, countOwners)
 	var count int64

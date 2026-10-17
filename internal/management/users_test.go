@@ -218,6 +218,27 @@ func TestLastOwnerCannotBeDisabledOrDeleted(t *testing.T) {
 	}
 }
 
+// A 待激活 owner cannot administer the instance, so they do not stand in for
+// the last usable owner: disabling or demoting the last active owner is still
+// refused.
+func TestPendingOwnerIsNotAUsableOwner(t *testing.T) {
+	e := start(t)
+	var p pendingUser
+	if code := e.createPending("pending-owner@example.com", "password1", &p); code != 200 {
+		t.Fatalf("create pending: %d", code)
+	}
+	owner := e.token(e.owner, nil)
+	if code := e.call("PUT", owner, "/users/"+p.Sub+"/roles", map[string]any{"api": identity.ManagementAPI, "roles": []string{"owner"}}, nil); code != 204 {
+		t.Fatalf("grant owner to a 待激活 User: %d", code)
+	}
+	if code := e.call("POST", owner, "/users/"+e.owner+"/disable", nil, nil); code != 409 {
+		t.Errorf("disable the last active owner: %d, want 409", code)
+	}
+	if code := e.call("PUT", owner, "/users/"+e.owner+"/roles", map[string]any{"api": identity.ManagementAPI, "roles": []string{"admin"}}, nil); code != 409 {
+		t.Errorf("demote the last active owner: %d, want 409", code)
+	}
+}
+
 func TestAdminDeletesAUser(t *testing.T) {
 	e := start(t)
 	e.user("ALICE", []string{"readonly"}, "email:alice@example.com")

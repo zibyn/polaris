@@ -137,24 +137,14 @@ func (s *Service) mayManage(ctx context.Context, sub string) error {
 	return nil
 }
 
-// ownersGuard runs change in a transaction that fails with 409 if it leaves
-// no enabled owner.
-func (s *Service) ownersGuard(ctx context.Context, change func(*sqlc.Queries) (int64, error)) error {
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		q := s.q.WithTx(tx)
-		if err := q.LockOwners(ctx); err != nil {
-			return err
-		}
-		if _, err := change(q); err != nil {
-			return err
-		}
-		if n, err := q.CountOwners(ctx); err != nil {
-			return err
-		} else if n == 0 {
-			return huma.Error409Conflict("不能禁用或删除最后一个所有者")
-		}
-		return nil
-	})
+// guardOwners runs change under identity's last-usable-owner guard, turning
+// its refusal into a 409.
+func (s *Service) guardOwners(ctx context.Context, change func(*sqlc.Queries) error) error {
+	err := s.ids.GuardOwners(ctx, change)
+	if errors.Is(err, identity.ErrLastOwner) {
+		return huma.Error409Conflict("不能禁用、删除或降级最后一个所有者")
+	}
+	return err
 }
 
 func (s *Service) disableUser(ctx context.Context, in *subPath) (*struct{}, error) {
@@ -169,8 +159,9 @@ func (s *Service) setDisabled(ctx context.Context, sub string, disabled bool) er
 	if err := s.mayManage(ctx, sub); err != nil {
 		return err
 	}
-	return s.ownersGuard(ctx, func(q *sqlc.Queries) (int64, error) {
-		return q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: sub, Disabled: disabled, By: callerSub(ctx)})
+	return s.guardOwners(ctx, func(q *sqlc.Queries) error {
+		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: sub, Disabled: disabled, By: callerSub(ctx)})
+		return err
 	})
 }
 
@@ -181,8 +172,9 @@ func (s *Service) deleteUser(ctx context.Context, in *subPath) (*struct{}, error
 		return nil, err
 	}
 	return nil, s.providers.DeleteUser(ctx, in.Sub, func(ctx context.Context, sub string) error {
-		return s.ownersGuard(ctx, func(q *sqlc.Queries) (int64, error) {
-			return q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: callerSub(ctx)})
+		return s.guardOwners(ctx, func(q *sqlc.Queries) error {
+			_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: callerSub(ctx)})
+			return err
 		})
 	})
 }

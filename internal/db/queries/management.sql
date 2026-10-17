@@ -78,9 +78,11 @@ ORDER BY a.builtin DESC, r.api, r.builtin DESC, r.key;
 SELECT pg_advisory_xact_lock(hashtext('owners'));
 
 -- name: CountOwners :one
--- A disabled owner is no owner.
+-- Only an active owner counts: a 待激活 owner can sign in but gets no token,
+-- so they cannot administer the instance.
 SELECT count(*) FROM user_roles ur JOIN users u ON u.id = ur.user_id
-WHERE ur.api = 'urn:stars-auth:management-api' AND ur.role = 'owner' AND u.disabled_at IS NULL;
+WHERE ur.api = 'urn:stars-auth:management-api' AND ur.role = 'owner'
+  AND u.disabled_at IS NULL AND u.status = 'active';
 
 -- name: SetUserRoles :exec
 -- Makes roles a User's Roles on an API; audited with who did it.

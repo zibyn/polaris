@@ -96,4 +96,4 @@ User 无法自助找回丢失的唯一途径。由持有 `users:write` 的管理
 - **禁用**:禁止登录,并终止全部 Session;可以恢复。
 - **删除**:效果等同注销。
 - **替换 Identifier**、**解绑 External Identity**、**重置 2FA**、**下线 Session**。
-- **保护规则**:最后一个「所有者」不能被删除、禁用或降级。
+- **保护规则**:最后一个**可用**「所有者」不能被删除、禁用或降级。只有 active 的 owner 算可用;待激活的 User 可以持有 owner Role,但他拿不到令牌、调不了 Management API,不算数。

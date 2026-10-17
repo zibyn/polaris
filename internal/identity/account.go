@@ -136,9 +136,11 @@ func (s *Store) ReplaceIdentifier(ctx context.Context, sub, kind, value, by stri
 
 const ErrLastOwner Invalid = "你是最后一个所有者,不能注销"
 
-// Delete deletes the User's account with all their data, at their own
-// request; never the last owner.
-func (s *Store) Delete(ctx context.Context, sub string) error {
+// GuardOwners runs change in a transaction that fails with ErrLastOwner if it
+// takes the instance from having a usable owner to having none. Only an
+// active owner counts: a 待激活 owner can sign in but gets no token, so they
+// cannot administer the instance.
+func (s *Store) GuardOwners(ctx context.Context, change func(*sqlc.Queries) error) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if err := q.LockOwners(ctx); err != nil {
@@ -148,15 +150,26 @@ func (s *Store) Delete(ctx context.Context, sub string) error {
 		if err != nil {
 			return err
 		}
-		if _, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: sub}); err != nil {
+		if err := change(q); err != nil {
 			return err
 		}
-		if after, err := q.CountOwners(ctx); err != nil {
+		after, err := q.CountOwners(ctx)
+		if err != nil {
 			return err
-		} else if before > 0 && after == 0 {
+		}
+		if before > 0 && after == 0 {
 			return ErrLastOwner
 		}
 		return nil
+	})
+}
+
+// Delete deletes the User's account with all their data, at their own
+// request; never the last usable owner.
+func (s *Store) Delete(ctx context.Context, sub string) error {
+	return s.GuardOwners(ctx, func(q *sqlc.Queries) error {
+		_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: sub})
+		return err
 	})
 }
 
