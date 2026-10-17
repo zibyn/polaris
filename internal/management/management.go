@@ -288,7 +288,7 @@ func (s *Service) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Status, r.Identifiers, r.Roles)
+	u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Pending, r.Identifiers, r.Roles)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +335,7 @@ func (s *Service) listUsers(ctx context.Context, in *listUsersInput) (*listUsers
 			out.Body.HasMore = true
 			break
 		}
-		u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Status, r.Identifiers, r.Roles)
+		u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Pending, r.Identifiers, r.Roles)
 		if err != nil {
 			return nil, err
 		}
@@ -365,7 +365,7 @@ func (s *Service) getUser(ctx context.Context, in *struct {
 // userDetail is a User's page: the User themselves plus what only their own
 // page shows.
 func userDetail(r sqlc.GetUserRow) (UserDetail, error) {
-	u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Status, r.Identifiers, r.Roles)
+	u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Pending, r.Identifiers, r.Roles)
 	if err != nil {
 		return UserDetail{}, err
 	}
@@ -378,8 +378,8 @@ func userDetail(r sqlc.GetUserRow) (UserDetail, error) {
 	}, nil
 }
 
-func user(sub string, created time.Time, disabled pgtype.Timestamptz, status string, identifiers, roles []byte) (User, error) {
-	u := User{Sub: sub, CreatedAt: created, Pending: status == "pending" && !disabled.Valid}
+func user(sub string, created time.Time, disabled pgtype.Timestamptz, pending bool, identifiers, roles []byte) (User, error) {
+	u := User{Sub: sub, CreatedAt: created, Pending: pending}
 	if disabled.Valid {
 		u.DisabledAt = &disabled.Time
 	}

@@ -284,6 +284,7 @@ type User struct {
 	CreatedAt  pgtype.Timestamptz
 	DisabledAt pgtype.Timestamptz
 	Status     string
+	Pending    bool
 }
 
 type UserRole struct {

@@ -282,11 +282,11 @@ func (q *Queries) UserIdentifiers(ctx context.Context, userID string) ([]UserIde
 }
 
 const userPending = `-- name: UserPending :one
-SELECT (u.status = 'pending' AND u.disabled_at IS NULL)::boolean AS pending
-FROM users u WHERE u.id = $1
+SELECT pending FROM users WHERE id = $1
 `
 
-// 待激活 = pending 且未禁用; 禁用永远优先 (一个禁用的 User 根本登录不了).
+// 待激活 comes from users.pending, which defines it once (迁移 00027):
+// pending 且未禁用; 禁用永远优先 (一个禁用的 User 根本登录不了).
 func (q *Queries) UserPending(ctx context.Context, id string) (bool, error) {
 	row := q.db.QueryRow(ctx, userPending, id)
 	var pending bool

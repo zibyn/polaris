@@ -66,9 +66,9 @@ INSERT INTO consents (user_id, version, client_id) VALUES ($1, $2, $3);
 UPDATE users SET status = 'pending' WHERE id = $1;
 
 -- name: UserPending :one
--- 待激活 = pending 且未禁用; 禁用永远优先 (一个禁用的 User 根本登录不了).
-SELECT (u.status = 'pending' AND u.disabled_at IS NULL)::boolean AS pending
-FROM users u WHERE u.id = $1;
+-- 待激活 comes from users.pending, which defines it once (迁移 00027):
+-- pending 且未禁用; 禁用永远优先 (一个禁用的 User 根本登录不了).
+SELECT pending FROM users WHERE id = $1;
 
 -- name: ActivateUser :execrows
 -- 强制改密 (ADR 0016): 待激活的 User 写进自己的密码, 随即激活.

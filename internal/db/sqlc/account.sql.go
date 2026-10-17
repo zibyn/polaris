@@ -12,7 +12,7 @@ import (
 )
 
 const accountSession = `-- name: AccountSession :one
-SELECT s.auth_time, (u.status = 'pending' AND u.disabled_at IS NULL)::boolean AS pending
+SELECT s.auth_time, u.pending
 FROM sessions s JOIN users u ON u.id = s.user_id
 WHERE s.id = $1 AND s.user_id = $2 AND s.id IN (SELECT l.id FROM live_sessions l)
 `

@@ -244,7 +244,7 @@ func (q *Queries) GetSettings(ctx context.Context) (GetSettingsRow, error) {
 }
 
 const getUser = `-- name: GetUser :one
-SELECT u.id, u.created_at, u.disabled_at, u.status,
+SELECT u.id, u.created_at, u.disabled_at, u.pending,
        COALESCE((SELECT json_agg(json_build_object('kind', i.kind, 'value', i.value) ORDER BY i.kind)
                  FROM identifiers i WHERE i.user_id = u.id), '[]')::jsonb AS identifiers,
        COALESCE((SELECT json_agg(json_build_object('api', r.api, 'key', r.key, 'name', r.name) ORDER BY r.api, r.key)
@@ -269,7 +269,7 @@ type GetUserRow struct {
 	ID                 string
 	CreatedAt          pgtype.Timestamptz
 	DisabledAt         pgtype.Timestamptz
-	Status             string
+	Pending            bool
 	Identifiers        []byte
 	Roles              []byte
 	HasPassword        bool
@@ -286,7 +286,7 @@ func (q *Queries) GetUser(ctx context.Context, id string) (GetUserRow, error) {
 		&i.ID,
 		&i.CreatedAt,
 		&i.DisabledAt,
-		&i.Status,
+		&i.Pending,
 		&i.Identifiers,
 		&i.Roles,
 		&i.HasPassword,
@@ -574,7 +574,7 @@ func (q *Queries) ListSigningKeys(ctx context.Context) ([]ListSigningKeysRow, er
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT u.id, u.created_at, u.disabled_at, u.status,
+SELECT u.id, u.created_at, u.disabled_at, u.pending,
        COALESCE((SELECT json_agg(json_build_object('kind', i.kind, 'value', i.value) ORDER BY i.kind)
                  FROM identifiers i WHERE i.user_id = u.id), '[]')::jsonb AS identifiers,
        COALESCE((SELECT json_agg(json_build_object('api', r.api, 'key', r.key, 'name', r.name) ORDER BY r.api, r.key)
@@ -586,10 +586,10 @@ WHERE ($1::text = ''
        OR EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = u.id AND strpos(i.value, lower($1)) > 0))
   AND ($2::text = ''
        OR EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id AND ur.api = $3 AND ur.role = $2))
-  -- 待激活 = pending 且未禁用, 与 UserPending 同一份口径; 剩下的一律算
+  -- 待激活 by users.pending, the one definition; 剩下的一律算
   -- active, 被禁用的 User 也在那一侧 —— 他根本登录不了.
   AND ($4::text = 'any'
-       OR ($4::text = 'pending') = (u.status = 'pending' AND u.disabled_at IS NULL))
+       OR ($4::text = 'pending') = u.pending)
 ORDER BY u.created_at DESC, u.id
 LIMIT $6 OFFSET $5
 `
@@ -607,7 +607,7 @@ type ListUsersRow struct {
 	ID          string
 	CreatedAt   pgtype.Timestamptz
 	DisabledAt  pgtype.Timestamptz
-	Status      string
+	Pending     bool
 	Identifiers []byte
 	Roles       []byte
 }
@@ -635,7 +635,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 			&i.ID,
 			&i.CreatedAt,
 			&i.DisabledAt,
-			&i.Status,
+			&i.Pending,
 			&i.Identifiers,
 			&i.Roles,
 		); err != nil {

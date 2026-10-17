@@ -125,7 +125,7 @@ func (s *Service) mayManage(ctx context.Context, sub string) error {
 	} else if err != nil {
 		return err
 	}
-	target, err := user(u.ID, u.CreatedAt.Time, u.DisabledAt, u.Status, u.Identifiers, u.Roles)
+	target, err := user(u.ID, u.CreatedAt.Time, u.DisabledAt, u.Pending, u.Identifiers, u.Roles)
 	if err != nil {
 		return err
 	}
