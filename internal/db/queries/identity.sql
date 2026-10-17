@@ -21,12 +21,35 @@ SELECT u.id, r.api, r.key FROM new_user u JOIN roles r ON r.default_role;
 -- name: AddIdentifier :exec
 INSERT INTO identifiers (user_id, kind, value) VALUES ($1, $2, $3);
 
+-- name: ReplaceIdentifier :execrows
+-- Sets a User's Identifier of a kind, replacing the one they had. Audited
+-- with who did it, without the values.
+WITH put AS (
+    INSERT INTO identifiers (user_id, kind, value)
+    SELECT users.id, @kind, @value FROM users WHERE users.id = @user_id
+    ON CONFLICT (user_id, kind) DO UPDATE SET value = EXCLUDED.value
+    RETURNING identifiers.user_id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', @kind::text, 'by', @by::text) FROM put;
+
 -- name: SetPassword :exec
 INSERT INTO passwords (user_id, hash) VALUES ($1, $2)
 ON CONFLICT (user_id) DO UPDATE SET hash = EXCLUDED.hash;
 
 -- name: AssignRole :exec
 INSERT INTO user_roles (user_id, api, role) VALUES ($1, $2, $3);
+
+-- name: LockOwners :exec
+-- Serialises changes that could leave the instance without an owner.
+SELECT pg_advisory_xact_lock(hashtext('owners'));
+
+-- name: CountOwners :one
+-- Only an active owner counts: a 待激活 owner can sign in but gets no token,
+-- so they cannot administer the instance.
+SELECT count(*) FROM user_roles ur JOIN users u ON u.id = ur.user_id
+WHERE ur.api = 'urn:stars-auth:management-api' AND ur.role = 'owner'
+  AND u.disabled_at IS NULL AND u.status = 'active';
 
 -- name: PasswordByIdentifier :one
 SELECT i.user_id, p.hash, (u.disabled_at IS NOT NULL)::boolean AS disabled

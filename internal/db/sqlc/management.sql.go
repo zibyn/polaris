@@ -93,21 +93,6 @@ func (q *Queries) Caller(ctx context.Context, arg CallerParams) (CallerRow, erro
 	return i, err
 }
 
-const countOwners = `-- name: CountOwners :one
-SELECT count(*) FROM user_roles ur JOIN users u ON u.id = ur.user_id
-WHERE ur.api = 'urn:stars-auth:management-api' AND ur.role = 'owner'
-  AND u.disabled_at IS NULL AND u.status = 'active'
-`
-
-// Only an active owner counts: a 待激活 owner can sign in but gets no token,
-// so they cannot administer the instance.
-func (q *Queries) CountOwners(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countOwners)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const deleteAPI = `-- name: DeleteAPI :execrows
 DELETE FROM apis
 WHERE apis.identifier = $1 AND NOT apis.builtin
@@ -651,16 +636,6 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 	return items, nil
 }
 
-const lockOwners = `-- name: LockOwners :exec
-SELECT pg_advisory_xact_lock(hashtext('owners'))
-`
-
-// Serialises changes that could leave the instance without an owner.
-func (q *Queries) LockOwners(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, lockOwners)
-	return err
-}
-
 const m2MCaller = `-- name: M2MCaller :one
 SELECT EXISTS (SELECT 1 FROM applications a WHERE a.client_id = $1 AND a.type = 'm2m') AS is_m2m_application,
        count(*) > 0 AS admin,
@@ -778,39 +753,6 @@ func (q *Queries) PutRole(ctx context.Context, arg PutRoleParams) (int64, error)
 		arg.Key,
 		arg.Name,
 		arg.DefaultRole,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const replaceIdentifier = `-- name: ReplaceIdentifier :execrows
-WITH put AS (
-    INSERT INTO identifiers (user_id, kind, value)
-    SELECT users.id, $1, $3 FROM users WHERE users.id = $4
-    ON CONFLICT (user_id, kind) DO UPDATE SET value = EXCLUDED.value
-    RETURNING identifiers.user_id
-)
-INSERT INTO audit_log (event, sub, detail)
-SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', $1::text, 'by', $2::text) FROM put
-`
-
-type ReplaceIdentifierParams struct {
-	Kind   string
-	By     string
-	Value  string
-	UserID string
-}
-
-// Sets a User's Identifier of a kind, replacing the one they had. Audited
-// with who did it, without the values.
-func (q *Queries) ReplaceIdentifier(ctx context.Context, arg ReplaceIdentifierParams) (int64, error) {
-	result, err := q.db.Exec(ctx, replaceIdentifier,
-		arg.Kind,
-		arg.By,
-		arg.Value,
-		arg.UserID,
 	)
 	if err != nil {
 		return 0, err

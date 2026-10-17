@@ -205,9 +205,9 @@ func (s *Service) replaceIdentifier(ctx context.Context, in *replaceIdentifierIn
 	if err != nil {
 		return nil, huma.Error422UnprocessableEntity(err.Error())
 	}
-	_, err = s.q.ReplaceIdentifier(ctx, sqlc.ReplaceIdentifierParams{UserID: in.Sub, Kind: in.Kind, Value: value, By: callerSub(ctx)})
-	if isUniqueViolation(err) {
-		return nil, huma.Error409Conflict(identity.ErrIdentifierTaken.Error())
+	err = s.ids.ReplaceIdentifier(ctx, in.Sub, in.Kind, value, callerSub(ctx))
+	if errors.Is(err, identity.ErrIdentifierTaken) {
+		return nil, huma.Error409Conflict(err.Error())
 	}
 	return nil, err
 }

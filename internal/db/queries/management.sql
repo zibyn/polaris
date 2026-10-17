@@ -73,17 +73,6 @@ SELECT r.api, a.name AS api_name, r.key, r.name, r.builtin
 FROM roles r JOIN apis a ON a.identifier = r.api
 ORDER BY a.builtin DESC, r.api, r.builtin DESC, r.key;
 
--- name: LockOwners :exec
--- Serialises changes that could leave the instance without an owner.
-SELECT pg_advisory_xact_lock(hashtext('owners'));
-
--- name: CountOwners :one
--- Only an active owner counts: a 待激活 owner can sign in but gets no token,
--- so they cannot administer the instance.
-SELECT count(*) FROM user_roles ur JOIN users u ON u.id = ur.user_id
-WHERE ur.api = 'urn:stars-auth:management-api' AND ur.role = 'owner'
-  AND u.disabled_at IS NULL AND u.status = 'active';
-
 -- name: SetUserRoles :exec
 -- Makes roles a User's Roles on an API; audited with who did it.
 WITH gone AS (
@@ -275,18 +264,6 @@ WITH gone AS (
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'user.deleted', gone.id, jsonb_build_object('by', @by::text) FROM gone;
-
--- name: ReplaceIdentifier :execrows
--- Sets a User's Identifier of a kind, replacing the one they had. Audited
--- with who did it, without the values.
-WITH put AS (
-    INSERT INTO identifiers (user_id, kind, value)
-    SELECT users.id, @kind, @value FROM users WHERE users.id = @user_id
-    ON CONFLICT (user_id, kind) DO UPDATE SET value = EXCLUDED.value
-    RETURNING identifiers.user_id
-)
-INSERT INTO audit_log (event, sub, detail)
-SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', @kind::text, 'by', @by::text) FROM put;
 
 -- name: ListAudit :many
 -- Newest first. sub matches the User an event is about or whoever did it

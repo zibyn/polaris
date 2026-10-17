@@ -78,6 +78,21 @@ func (q *Queries) CloseSetup(ctx context.Context) error {
 	return err
 }
 
+const countOwners = `-- name: CountOwners :one
+SELECT count(*) FROM user_roles ur JOIN users u ON u.id = ur.user_id
+WHERE ur.api = 'urn:stars-auth:management-api' AND ur.role = 'owner'
+  AND u.disabled_at IS NULL AND u.status = 'active'
+`
+
+// Only an active owner counts: a 待激活 owner can sign in but gets no token,
+// so they cannot administer the instance.
+func (q *Queries) CountOwners(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countOwners)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createUser = `-- name: CreateUser :exec
 WITH new_user AS (
     INSERT INTO users (id) VALUES ($1)
@@ -92,6 +107,16 @@ SELECT u.id, r.api, r.key FROM new_user u JOIN roles r ON r.default_role
 // and the set is whatever the default Roles are at that moment.
 func (q *Queries) CreateUser(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, createUser, id)
+	return err
+}
+
+const lockOwners = `-- name: LockOwners :exec
+SELECT pg_advisory_xact_lock(hashtext('owners'))
+`
+
+// Serialises changes that could leave the instance without an owner.
+func (q *Queries) LockOwners(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockOwners)
 	return err
 }
 
@@ -181,6 +206,39 @@ type RecordConsentParams struct {
 func (q *Queries) RecordConsent(ctx context.Context, arg RecordConsentParams) error {
 	_, err := q.db.Exec(ctx, recordConsent, arg.UserID, arg.Version, arg.ClientID)
 	return err
+}
+
+const replaceIdentifier = `-- name: ReplaceIdentifier :execrows
+WITH put AS (
+    INSERT INTO identifiers (user_id, kind, value)
+    SELECT users.id, $1, $3 FROM users WHERE users.id = $4
+    ON CONFLICT (user_id, kind) DO UPDATE SET value = EXCLUDED.value
+    RETURNING identifiers.user_id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', $1::text, 'by', $2::text) FROM put
+`
+
+type ReplaceIdentifierParams struct {
+	Kind   string
+	By     string
+	Value  string
+	UserID string
+}
+
+// Sets a User's Identifier of a kind, replacing the one they had. Audited
+// with who did it, without the values.
+func (q *Queries) ReplaceIdentifier(ctx context.Context, arg ReplaceIdentifierParams) (int64, error) {
+	result, err := q.db.Exec(ctx, replaceIdentifier,
+		arg.Kind,
+		arg.By,
+		arg.Value,
+		arg.UserID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setPassword = `-- name: SetPassword :exec

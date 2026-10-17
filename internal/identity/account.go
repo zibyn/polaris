@@ -56,11 +56,11 @@ func (s *Store) RemoveIdentifier(ctx context.Context, sub, kind string) error {
 }
 
 // RemoveExternalIdentity unbinds the User's External Identity at provider,
-// unless it is their last way to sign in, and returns what it was. Audited
-// as done by by.
-func (s *Store) RemoveExternalIdentity(ctx context.Context, sub, provider, by string) (sqlc.RemoveExternalIdentityRow, error) {
+// unless it is their last way to sign in, and returns the Provider's subject
+// and the binding's sealed token. Audited as done by by.
+func (s *Store) RemoveExternalIdentity(ctx context.Context, sub, provider, by string) (subject string, sealedToken []byte, err error) {
 	var row sqlc.RemoveExternalIdentityRow
-	err := s.changeLoginPaths(ctx, sub, func(q *sqlc.Queries) error {
+	err = s.changeLoginPaths(ctx, sub, func(q *sqlc.Queries) error {
 		var err error
 		row, err = q.RemoveExternalIdentity(ctx, sqlc.RemoveExternalIdentityParams{UserID: sub, Provider: provider, By: by})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -71,7 +71,7 @@ func (s *Store) RemoveExternalIdentity(ctx context.Context, sub, provider, by st
 	if errors.Is(err, pgx.ErrNoRows) { // no such User
 		err = ErrNotBound
 	}
-	return row, err
+	return row.Subject, row.Token, err
 }
 
 func bound(n int64, err error) error {
@@ -81,13 +81,19 @@ func bound(n int64, err error) error {
 	return err
 }
 
-// OtherLoginPath reports whether a User with these login paths can sign in
-// without a password: a phone number or an email, or an External Identity at
-// an enabled Provider. A username on its own does not count — it only works
-// with a password. This is half of invariant 1 (changeLoginPaths below), and
+// OtherLoginPath reports whether the User can sign in without a password: a
+// phone number or an email, or an External Identity at an enabled Provider. A
+// username on its own does not count — it only works with a password. This is
 // the whole of what a password-login switch must leave in place before it may
 // go off (management.putSettings).
-func OtherLoginPath(paths sqlc.LoginPathsRow) bool {
+func (s *Store) OtherLoginPath(ctx context.Context, sub string) (bool, error) {
+	paths, err := s.q.LoginPaths(ctx, sub)
+	return otherLoginPath(paths), err
+}
+
+// otherLoginPath is the predicate shared by OtherLoginPath and
+// changeLoginPaths' invariant-1 check.
+func otherLoginPath(paths sqlc.LoginPathsRow) bool {
 	if paths.HasExternalIdentity {
 		return true
 	}
@@ -116,7 +122,7 @@ func (s *Store) changeLoginPaths(ctx context.Context, sub string, change func(*s
 		if err != nil {
 			return err
 		}
-		if OtherLoginPath(paths) || paths.HasPassword && slices.Contains(paths.Identifiers, "username") {
+		if otherLoginPath(paths) || paths.HasPassword && slices.Contains(paths.Identifiers, "username") {
 			return nil
 		}
 		return ErrLastLoginPath

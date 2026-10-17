@@ -407,11 +407,11 @@ func (s *Store) build(ctx context.Context, id string, enabledOnly bool) (Redirec
 // is their last way to sign in, then runs the Provider's unlink hook.
 // Audited as done by by: the User, or an admin.
 func (s *Store) Unbind(ctx context.Context, userID, id, by string) error {
-	row, err := identity.New(s.pool, s.keyring).RemoveExternalIdentity(ctx, userID, id, by)
+	subject, sealedToken, err := identity.New(s.pool, s.keyring).RemoveExternalIdentity(ctx, userID, id, by)
 	if err != nil {
 		return err
 	}
-	s.unlink(ctx, userID, id, row.Subject, row.Token)
+	s.unlink(ctx, userID, id, subject, sealedToken)
 	return nil
 }
 

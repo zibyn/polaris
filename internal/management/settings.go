@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zibyn/stars-auth/internal/db/sqlc"
-	"github.com/zibyn/stars-auth/internal/identity"
 )
 
 // Policy is the login policy (docs/spec/consoles.md, 安全).
@@ -52,11 +51,11 @@ func (s *Service) putSettings(ctx context.Context, in *policyBody) (*struct{}, e
 	// is out of the console for good; refuse rather than let them do it. An
 	// M2M Application holds no Identifiers, so it has nothing to lose.
 	if b.PasswordLogin == "off" && !c.application {
-		paths, err := s.q.LoginPaths(ctx, c.sub)
+		otherPath, err := s.ids.OtherLoginPath(ctx, c.sub)
 		if err != nil {
 			return nil, err
 		}
-		if !identity.OtherLoginPath(paths) {
+		if !otherPath {
 			return nil, huma.Error422UnprocessableEntity("请先为自己绑定邮箱、手机号或外部账号,关闭密码登录后你就进不了管理端了")
 		}
 	}
