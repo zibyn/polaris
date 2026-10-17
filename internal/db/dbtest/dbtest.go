@@ -4,6 +4,8 @@ package dbtest
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -24,7 +26,12 @@ func Fresh(t *testing.T) *pgxpool.Pool {
 		t.Fatal(err)
 	}
 	defer admin.Close(ctx) //nolint:errcheck
-	name := "t_" + t.Name()
+	// t.Name() is unique inside one test binary, not across them: `go test
+	// ./...` runs packages in parallel against the same server, so two tests
+	// with the same name would drop each other's database (DROP ... WITH
+	// FORCE). Prefix the package directory.
+	_, file, _, _ := runtime.Caller(1)
+	name := "t_" + filepath.Base(filepath.Dir(file)) + "_" + t.Name()
 	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)"); err != nil {
 		t.Fatal(err)
 	}
