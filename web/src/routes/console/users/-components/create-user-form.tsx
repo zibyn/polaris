@@ -12,16 +12,9 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select";
-import { Separator } from "#/components/ui/separator";
-import {
-	Sheet,
-	SheetContent,
-	SheetDescription,
-	SheetHeader,
-	SheetTitle,
-} from "#/components/ui/sheet";
 import { api, type UserDetail } from "#/lib/console-api";
 import { createUserSchema, type WayIn, wayName, waysIn } from "#/lib/users";
+import { FormSheet } from "#/routes/console/-components/form-sheet";
 import { PasswordLoginNotice, usePasswordLoginOff } from "./password-login";
 
 // wayHelp is what each way in is, said under the choice.
@@ -164,19 +157,13 @@ export function CreateUserSheet({
 	onOpenChange: (open: boolean) => void;
 }) {
 	return (
-		<Sheet open={open} onOpenChange={onOpenChange}>
-			<SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
-				<SheetHeader className="pr-12">
-					<SheetTitle>创建用户</SheetTitle>
-					<SheetDescription>
-						建好的账号是待激活：本人能登录，但在自己设置密码之前拿不到任何令牌。
-					</SheetDescription>
-				</SheetHeader>
-				<Separator />
-				<div className="px-4 pb-4">
-					<CreateUserForm />
-				</div>
-			</SheetContent>
-		</Sheet>
+		<FormSheet
+			open={open}
+			onOpenChange={onOpenChange}
+			title="创建用户"
+			description="建好的账号是待激活：本人能登录，但在自己设置密码之前拿不到任何令牌。"
+		>
+			<CreateUserForm />
+		</FormSheet>
 	);
 }

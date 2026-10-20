@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { createColumnHelper } from "@tanstack/react-table";
+import { useState } from "react";
 import { DataTable, type features } from "#/components/data-table";
 import { FormError, FormField } from "#/components/form";
 import { Badge } from "#/components/ui/badge";
@@ -21,7 +22,7 @@ import { Input } from "#/components/ui/input";
 import { apiSchema } from "#/lib/apis";
 import { onlyBuiltin } from "#/lib/apps";
 import { type APIDef, api, apiPath } from "#/lib/console-api";
-import { SectionHeading } from "#/routes/console/-components/section";
+import { FormSheet } from "#/routes/console/-components/form-sheet";
 import { useCan } from "#/routes/console/route";
 
 export const Route = createFileRoute("/console/apis/")({
@@ -86,44 +87,46 @@ function APIs() {
 	const can = useCan();
 	const { apis } = useSuspenseQuery(apisQuery).data;
 	const writable = can("applications:write");
+	const [creating, setCreating] = useState(false);
+	const add = <Button onClick={() => setCreating(true)}>添加 API 资源</Button>;
+	// The empty state carries the button; the toolbar's would be a duplicate.
+	const empty = onlyBuiltin(apis);
 	return (
-		<div className="flex flex-col gap-10">
-			<div className="flex flex-col gap-6">
-				{onlyBuiltin(apis) && (
-					<Empty className="border">
-						<EmptyHeader>
-							<EmptyTitle>还没有你自己的 API 资源</EmptyTitle>
-							<EmptyDescription>
-								如果你的后端要校验用户能做什么，在这里登记它，再定义权限和角色。只用登录、不需要权限控制的话，可以不建。
-							</EmptyDescription>
-						</EmptyHeader>
-						<EmptyContent>
-							{writable ? (
-								<Button
-									onClick={() =>
-										document
-											.querySelector<HTMLInputElement>("#new-api input")
-											?.focus()
-									}
-								>
-									添加 API 资源
-								</Button>
-							) : (
-								<span className="text-muted-foreground">
-									需要「管理员」角色才能创建。
-								</span>
-							)}
-						</EmptyContent>
-					</Empty>
-				)}
-				<DataTable
-					data={apis}
-					columns={columns}
-					filterPlaceholder="搜索 API 资源名称或标识符"
-					empty="没有匹配的 API 资源"
-				/>
-			</div>
-			{writable && <CreateForm />}
+		<div className="flex flex-col gap-6">
+			{empty && (
+				<Empty className="border">
+					<EmptyHeader>
+						<EmptyTitle>还没有你自己的 API 资源</EmptyTitle>
+						<EmptyDescription>
+							如果你的后端要校验用户能做什么，在这里登记它，再定义权限和角色。只用登录、不需要权限控制的话，可以不建。
+						</EmptyDescription>
+					</EmptyHeader>
+					<EmptyContent>
+						{writable ? (
+							add
+						) : (
+							<span className="text-muted-foreground">
+								需要「管理员」角色才能创建。
+							</span>
+						)}
+					</EmptyContent>
+				</Empty>
+			)}
+			<DataTable
+				data={apis}
+				columns={columns}
+				filterPlaceholder="搜索 API 资源名称或标识符"
+				empty="没有匹配的 API 资源"
+				actions={!empty && writable && add}
+			/>
+			<FormSheet
+				open={creating}
+				onOpenChange={setCreating}
+				title="添加 API 资源"
+				description="API 资源标识符是你的后端校验令牌时认的名字，即 access token 的 aud。登记后不能更改。"
+			>
+				<CreateForm />
+			</FormSheet>
 		</div>
 	);
 }
@@ -150,57 +153,38 @@ function CreateForm() {
 			}),
 	});
 	return (
-		<section>
-			<SectionHeading
-				title="添加 API 资源"
-				intro="API 资源标识符是你的后端校验令牌时认的名字，即 access token 的 aud。登记后不能更改。"
-			/>
-			<form
-				id="new-api"
-				noValidate
-				className="mt-4 flex flex-col gap-3"
-				onSubmit={(e) => {
-					e.preventDefault();
-					form.handleSubmit();
-				}}
-			>
-				<div className="flex flex-wrap items-start gap-2">
-					<div className="w-72">
-						<form.Field name="identifier">
-							{(field) => (
-								<FormField field={field} label="API 资源标识符">
-									{(control) => (
-										<Input
-											{...control}
-											placeholder="https://api.example.com"
-											className="font-mono"
-										/>
-									)}
-								</FormField>
-							)}
-						</form.Field>
-					</div>
-					<div className="w-40">
-						<form.Field name="name">
-							{(field) => (
-								<FormField field={field} label="名称">
-									{(control) => (
-										<Input {...control} placeholder="如：订单 API" />
-									)}
-								</FormField>
-							)}
-						</form.Field>
-					</div>
-				</div>
-				<FormError error={create.error} />
-				<Button
-					type="submit"
-					disabled={create.isPending}
-					className="self-start"
-				>
-					添加 API 资源
-				</Button>
-			</form>
-		</section>
+		<form
+			noValidate
+			className="flex flex-col gap-5"
+			onSubmit={(e) => {
+				e.preventDefault();
+				form.handleSubmit();
+			}}
+		>
+			<form.Field name="identifier">
+				{(field) => (
+					<FormField field={field} label="API 资源标识符">
+						{(control) => (
+							<Input
+								{...control}
+								placeholder="https://api.example.com"
+								className="font-mono"
+							/>
+						)}
+					</FormField>
+				)}
+			</form.Field>
+			<form.Field name="name">
+				{(field) => (
+					<FormField field={field} label="名称">
+						{(control) => <Input {...control} placeholder="如：订单 API" />}
+					</FormField>
+				)}
+			</form.Field>
+			<FormError error={create.error} />
+			<Button type="submit" disabled={create.isPending} className="self-start">
+				添加 API 资源
+			</Button>
+		</form>
 	);
 }

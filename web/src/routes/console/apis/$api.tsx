@@ -54,6 +54,7 @@ import {
 	type RoleDef,
 } from "#/lib/console-api";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
+import { FormSheet } from "#/routes/console/-components/form-sheet";
 import { DangerZone } from "#/routes/console/-components/section";
 import { apisQuery } from "#/routes/console/apis/index";
 import { applicationsQuery } from "#/routes/console/apps/index";
@@ -233,7 +234,7 @@ function Permissions({ def }: { def: APIDef }) {
 					内置 API 资源的权限由认证服务定义，不能添加。
 				</p>
 			)}
-			{def.permissions.length === 0 && !def.builtin && !adding && (
+			{def.permissions.length === 0 && !def.builtin && (
 				<Empty className="border">
 					<EmptyHeader>
 						<EmptyTitle>还没有权限</EmptyTitle>
@@ -283,11 +284,15 @@ function Permissions({ def }: { def: APIDef }) {
 					);
 				})}
 			</ItemList>
-			{adding ? (
+			{def.permissions.length > 0 && editable && add}
+			<FormSheet
+				open={adding}
+				onOpenChange={setAdding}
+				title="添加权限"
+				description="权限是你的后端检查的最小单位，比如“导出订单”。先定义权限，再把它们组合成角色。"
+			>
 				<PermissionForm save={put} onDone={() => setAdding(false)} />
-			) : (
-				def.permissions.length > 0 && editable && add
-			)}
+			</FormSheet>
 		</div>
 	);
 }
@@ -317,44 +322,38 @@ function PermissionForm({
 	return (
 		<form
 			noValidate
-			className="space-y-3"
+			className="flex flex-col gap-5"
 			onSubmit={(e) => {
 				e.preventDefault();
 				form.handleSubmit();
 			}}
 		>
-			<div className="flex flex-wrap items-start gap-2">
-				<div className="w-56">
-					<form.Field name="key">
-						{(field) => (
-							<FormField field={field} label="权限 key">
-								{(control) => (
-									<Input
-										{...control}
-										placeholder="如：orders:export"
-										className="font-mono"
-									/>
-								)}
-							</FormField>
+			<form.Field name="key">
+				{(field) => (
+					<FormField field={field} label="权限 key">
+						{(control) => (
+							<Input
+								{...control}
+								placeholder="如：orders:export"
+								className="font-mono"
+							/>
 						)}
-					</form.Field>
-				</div>
-				<div className="w-40">
-					<form.Field name="name">
-						{(field) => (
-							<FormField field={field} label="名称">
-								{(control) => <Input {...control} placeholder="如：导出订单" />}
-							</FormField>
-						)}
-					</form.Field>
-				</div>
-			</div>
+					</FormField>
+				)}
+			</form.Field>
+			<form.Field name="name">
+				{(field) => (
+					<FormField field={field} label="名称">
+						{(control) => <Input {...control} placeholder="如：导出订单" />}
+					</FormField>
+				)}
+			</form.Field>
 			<FormError error={save.error} />
 			<div className="flex gap-2">
-				<Button type="submit" size="sm" disabled={save.isPending}>
+				<Button type="submit" disabled={save.isPending}>
 					添加权限
 				</Button>
-				<Button type="button" size="sm" variant="ghost" onClick={onDone}>
+				<Button type="button" variant="ghost" onClick={onDone}>
 					取消
 				</Button>
 			</div>
@@ -373,9 +372,10 @@ function Roles({
 	// Management API Roles hand out admin Permissions: owners only.
 	const editable =
 		can("applications:write") && (!def.builtin || can("admin-roles:assign"));
-	const [adding, setAdding] = useState(false);
+	const [editing, setEditing] = useState<RoleDef | "new" | null>(null);
+	const close = () => setEditing(null);
 	const add = editable ? (
-		<Button size="sm" onClick={() => setAdding(true)}>
+		<Button size="sm" onClick={() => setEditing("new")}>
 			添加角色
 		</Button>
 	) : (
@@ -392,7 +392,7 @@ function Roles({
 					</AlertDescription>
 				</Alert>
 			)}
-			{def.roles.length === 0 && !adding && (
+			{def.roles.length === 0 && (
 				<Empty className="border">
 					<EmptyHeader>
 						<EmptyTitle>还没有角色</EmptyTitle>
@@ -405,14 +405,34 @@ function Roles({
 			)}
 			<ItemList>
 				{def.roles.map((r) => (
-					<RoleRow key={r.key} def={def} role={r} editable={editable} />
+					<RoleRow
+						key={r.key}
+						def={def}
+						role={r}
+						editable={editable}
+						onEdit={() => setEditing(r)}
+					/>
 				))}
 			</ItemList>
-			{adding ? (
-				<RoleForm def={def} onDone={() => setAdding(false)} />
-			) : (
-				def.roles.length > 0 && editable && add
-			)}
+			{def.roles.length > 0 && editable && add}
+			<FormSheet
+				open={editing !== null}
+				onOpenChange={(open) => !open && close()}
+				title={
+					editing === null || editing === "new"
+						? "添加角色"
+						: `编辑角色「${editing.name}」`
+				}
+				description="角色是一组权限，分给用户后，他们登录拿到的令牌里就带着这些权限。"
+			>
+				{editing !== null && (
+					<RoleForm
+						def={def}
+						role={editing === "new" ? undefined : editing}
+						onDone={close}
+					/>
+				)}
+			</FormSheet>
 		</div>
 	);
 }
@@ -424,18 +444,20 @@ const holders = (role: RoleDef): string[] =>
 		role.applications ? `${role.applications} 个 Application` : "",
 	].filter(Boolean);
 
-// RoleRow shows a Role and edits it in place; built-in Roles stay as they are.
+// RoleRow shows a Role; 编辑 opens it in the drawer. Built-in Roles stay as
+// they are.
 function RoleRow({
 	def,
 	role,
 	editable: canEdit,
+	onEdit,
 }: {
 	def: APIDef;
 	role: RoleDef;
 	editable: boolean;
+	onEdit: () => void;
 }) {
 	const editable = canEdit && !role.builtin;
-	const [editing, setEditing] = useState(false);
 	const remove = useAPIMutation(
 		(force: boolean) =>
 			api(
@@ -457,13 +479,6 @@ function RoleRow({
 			}),
 		failed("设置默认角色失败"),
 	);
-	if (editing) {
-		return (
-			<Item>
-				<RoleForm def={def} role={role} onDone={() => setEditing(false)} />
-			</Item>
-		);
-	}
 	const held = holders(role);
 	// 默认 Role reaches every new User, which only makes sense per API resource.
 	const canMark = !def.builtin;
@@ -508,7 +523,7 @@ function RoleRow({
 							默认
 						</Label>
 					)}
-					<Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+					<Button size="sm" variant="ghost" onClick={onEdit}>
 						编辑
 					</Button>
 					<ConfirmDialog
@@ -576,70 +591,70 @@ function RoleForm({
 	return (
 		<form
 			noValidate
-			className="w-full space-y-3"
+			className="flex flex-col gap-5"
 			onSubmit={(e) => {
 				e.preventDefault();
 				form.handleSubmit();
 			}}
 		>
-			<div className="flex flex-wrap items-start gap-2">
-				{!role && (
-					<div className="w-40">
-						<form.Field name="key">
-							{(field) => (
-								<FormField field={field} label="角色 key">
-									{(control) => (
-										<Input
-											{...control}
-											placeholder="如：editor"
-											className="font-mono"
-										/>
-									)}
-								</FormField>
+			{!role && (
+				<form.Field name="key">
+					{(field) => (
+						<FormField field={field} label="角色 key">
+							{(control) => (
+								<Input
+									{...control}
+									placeholder="如：editor"
+									className="font-mono"
+								/>
 							)}
-						</form.Field>
-					</div>
+						</FormField>
+					)}
+				</form.Field>
+			)}
+			<form.Field name="name">
+				{(field) => (
+					<FormField field={field} label="名称">
+						{(control) => <Input {...control} placeholder="如：编辑" />}
+					</FormField>
 				)}
-				<div className="w-40">
-					<form.Field name="name">
-						{(field) => (
-							<FormField field={field} label="名称">
-								{(control) => <Input {...control} placeholder="如：编辑" />}
-							</FormField>
-						)}
-					</form.Field>
-				</div>
-			</div>
+			</form.Field>
 			<form.Field name="permissions">
 				{(field) => (
 					<FieldSet>
 						<FieldLegend variant="label">权限</FieldLegend>
-						<div className="flex flex-wrap gap-x-4 gap-y-1">
-							{def.permissions.map((p) => (
-								<Label key={p.key} className="font-normal">
-									<Checkbox
-										checked={field.state.value.includes(p.key)}
-										onCheckedChange={(on) =>
-											field.handleChange(
-												on
-													? [...field.state.value, p.key]
-													: field.state.value.filter((k) => k !== p.key),
-											)
-										}
-									/>
-									{p.name}
-								</Label>
-							))}
-						</div>
+						{def.permissions.length === 0 ? (
+							<p className="text-muted-foreground text-[13px]">
+								这个 API 资源还没有权限，先到「权限」标签定义。
+							</p>
+						) : (
+							<div className="flex max-h-64 flex-wrap gap-x-4 gap-y-2 overflow-y-auto">
+								{def.permissions.map((p) => (
+									<Label key={p.key} className="font-normal">
+										<Checkbox
+											checked={field.state.value.includes(p.key)}
+											onCheckedChange={(on) =>
+												field.handleChange(
+													on
+														? [...field.state.value, p.key]
+														: field.state.value.filter((k) => k !== p.key),
+												)
+											}
+										/>
+										{p.name}
+									</Label>
+								))}
+							</div>
+						)}
 					</FieldSet>
 				)}
 			</form.Field>
 			<FormError error={put.error} />
 			<div className="flex gap-2">
-				<Button type="submit" size="sm" disabled={put.isPending}>
+				<Button type="submit" disabled={put.isPending}>
 					保存
 				</Button>
-				<Button type="button" size="sm" variant="ghost" onClick={onDone}>
+				<Button type="button" variant="ghost" onClick={onDone}>
 					取消
 				</Button>
 			</div>

@@ -66,11 +66,13 @@ export function DataTable<TData extends RowData>({
 	columns,
 	filterPlaceholder,
 	empty = "没有数据",
+	actions,
 }: {
 	data: TData[];
 	columns: DataTableColumn<TData>[];
 	filterPlaceholder?: string;
 	empty?: ReactNode;
+	actions?: ReactNode; // the page's create button, on the filter row
 }) {
 	const table = useTable({
 		features,
@@ -82,16 +84,21 @@ export function DataTable<TData extends RowData>({
 	const rows = table.getRowModel().rows;
 	return (
 		<div className="flex flex-col gap-3">
-			{filterPlaceholder && (
+			{(filterPlaceholder || actions) && (
 				<>
-					<Input
-						type="search"
-						aria-label={filterPlaceholder}
-						placeholder={filterPlaceholder}
-						value={filter}
-						onChange={(e) => table.setGlobalFilter(e.target.value)}
-						className="max-w-sm"
-					/>
+					<div className="flex flex-wrap items-center gap-3">
+						{filterPlaceholder && (
+							<Input
+								type="search"
+								aria-label={filterPlaceholder}
+								placeholder={filterPlaceholder}
+								value={filter}
+								onChange={(e) => table.setGlobalFilter(e.target.value)}
+								className="max-w-sm flex-1"
+							/>
+						)}
+						{actions && <div className="ml-auto">{actions}</div>}
+					</div>
 					<Separator />
 				</>
 			)}

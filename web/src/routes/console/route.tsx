@@ -298,8 +298,9 @@ function Console() {
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</aside>
-			<Panel className="min-w-0 flex-1 px-14 py-11">
-				<div className="max-w-4xl space-y-6">
+			<Panel className="min-w-0 flex-1 p-6 sm:p-8 xl:p-14">
+				{/* Lists use the whole panel; form fields stop at a readable width. */}
+				<div className="space-y-6 [&_[data-slot=field]]:max-w-2xl">
 					<Crumbs />
 					<Page
 						key={leaf.routeId}
