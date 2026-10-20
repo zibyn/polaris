@@ -39,7 +39,7 @@ docker compose logs polaris | grep setup
 # WARN no admin yet: open the setup page to create the owner url="https://auth.example.com/setup?token=..."
 ```
 
-打开这个链接,设置「所有者」的用户名和密码。完成后引导页永久关闭;所有者在 `https://auth.example.com/console` 登录管理端。
+打开这个链接,设置「所有者」的用户名和密码。完成后引导页永久关闭,浏览器直接跳到管理端(`/console`)的登录页,用刚才设置的账号登录。
 
 ## 环境变量
 

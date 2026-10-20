@@ -42,6 +42,8 @@ func (s *Service) setup(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	default:
-		page(w, http.StatusOK, "message", "所有者已创建。用这个用户名和密码登录管理端。")
+		// The owner is made and the setup page is closed; the console starts
+		// its sign-in, which is the login page they just set a password for.
+		http.Redirect(w, r, "/console", http.StatusSeeOther)
 	}
 }

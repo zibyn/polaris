@@ -240,9 +240,10 @@ func (e *env) bootstrap(username, password string) {
 	if !strings.Contains(page, `autocomplete="new-password"`) {
 		e.t.Errorf("setup page lacks autocomplete hints")
 	}
+	// Creating the owner lands on the console, which starts its sign-in.
 	resp, page = e.do("POST", "/setup", url.Values{"token": {token}, "username": {username}, "password": {password}})
-	if resp.StatusCode != 200 || strings.Contains(page, "<form") {
-		e.t.Fatalf("setup: %d %s", resp.StatusCode, page)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/console" {
+		e.t.Fatalf("setup: %d %q %s", resp.StatusCode, resp.Header.Get("Location"), page)
 	}
 }
 

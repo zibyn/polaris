@@ -75,7 +75,12 @@ export const Route = createFileRoute("/console")({
 			{needsTwoFactor(props.error) ? (
 				<TwoFactorFirst />
 			) : props.error instanceof APIError && props.error.status === 403 ? (
-				<p className="text-center">你不是管理员,无法使用管理端</p>
+				<div className="space-y-4 text-center">
+					<p>你不是管理员,无法使用管理端</p>
+					<Button size="sm" onClick={logout}>
+						退出登录
+					</Button>
+				</div>
 			) : (
 				<RouteError {...props} />
 			)}
