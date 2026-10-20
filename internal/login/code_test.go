@@ -225,3 +225,61 @@ func TestNoSessionWhileBindingPhone(t *testing.T) {
 	resp, _ = e.authorizeAs(login.ConsoleClientID, redirect, "&prompt=none")
 	e.code(resp)
 }
+
+// TestResendCode: 重新获取 sends again from the code page, without a second
+// PoW and always to the Identifier this login sent to first. The 60-second
+// per-Identifier limit still applies, and a login that never sent a code
+// cannot use it.
+func TestResendCode(t *testing.T) {
+	e := start(t)
+	ctx := context.Background()
+	const phone = "+8613800138000"
+
+	_, page := e.authorize("&scope=openid+phone")
+	resp, page := e.post(page, url.Values{"op": {"send"}, "identifier": {"138 0013 8000"}, "altcha": {e.solve()}})
+	if resp.StatusCode != 200 || !strings.Contains(page, `value="resend"`) {
+		t.Fatalf("code page lacks 重新获取: %d %s", resp.StatusCode, page)
+	}
+	if e.inbox.take(phone) == "" {
+		t.Fatal("first send delivered nothing")
+	}
+
+	// Too soon: the server refuses, the page stays on the code step, and no
+	// code goes out.
+	resp, body := e.post(page, url.Values{"op": {"resend"}})
+	if !strings.Contains(body, otp.ErrTooSoon.Error()) || !strings.Contains(body, `name="code"`) {
+		t.Fatalf("early resend: %d %s", resp.StatusCode, body)
+	}
+	if e.inbox.take(phone) != "" {
+		t.Fatal("early resend delivered a code")
+	}
+
+	// After the minute it sends again, and it ignores an identifier in the
+	// form: the phone from the first send gets the code, the other does not.
+	if _, err := e.pool.Exec(ctx, "UPDATE sends SET sent_at = sent_at - interval '1 minute'"); err != nil {
+		t.Fatal(err)
+	}
+	const other = "someone@example.com"
+	resp, body = e.post(page, url.Values{"op": {"resend"}, "identifier": {other}})
+	if resp.StatusCode != 200 || !strings.Contains(body, `name="code"`) {
+		t.Fatalf("resend: %d %s", resp.StatusCode, body)
+	}
+	if e.inbox.take(other) != "" {
+		t.Error("resend went to the identifier posted with it")
+	}
+	code := e.inbox.take(phone)
+	if code == "" {
+		t.Fatal("resend delivered nothing to the original phone")
+	}
+
+	// The resent code signs in as usual.
+	resp, _ = e.post(body, url.Values{"op": {"verify"}, "identifier": {phone}, "code": {code}})
+	e.code(resp)
+
+	// A fresh login has sent nothing, so 重新获取 draws the first step.
+	e.newBrowser()
+	_, fresh := e.authorize("")
+	if _, body := e.post(fresh, url.Values{"op": {"resend"}}); strings.Contains(body, `name="code"`) {
+		t.Errorf("resend without a send reached the code step:\n%s", body)
+	}
+}

@@ -12,17 +12,26 @@
   --primary: #7048e8; --primary-hover: #5f37d6; --primary-soft: #f5f0ff; --primary-ink: #6236d9; --primary-foreground: #fff;
   --star: #f0609e; --nebula: #b197fc; --canvas: #f7f4fa; --panel: #fff;
   --ink: #211b2c; --muted: #6e677d; --faint: #a8a1b6; --line: #efebf4; --danger: #d33;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
   font: 14px/1.5 Inter, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-  color: var(--ink); background: var(--panel); -webkit-font-smoothing: antialiased;
+  color: var(--ink); background: var(--panel); color-scheme: light; -webkit-font-smoothing: antialiased;
 }
 * { box-sizing: border-box; }
+::selection { background: var(--primary-soft); color: var(--ink); }
 body { margin: 0; min-height: 100svh; display: grid; grid-template-columns: 1fr 1fr; }
 .brand { position: relative; overflow: hidden; background: var(--primary-soft); padding: 48px; }
+/* The nebula settles in once on load; it is the one thing on the page that
+   moves without a pointer behind it, so it pays for itself here. */
+.brand .glow { transform-box: fill-box; transform-origin: center; animation: settle 1.4s var(--ease-out) both; }
+.brand .glow + .glow { animation-delay: .18s; }
+@keyframes settle { from { opacity: 0; transform: scale(1.07); } }
 .brand > div { position: relative; display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; }
 .brand .sky { position: absolute; inset: 0; width: 100%; height: 100%; }
 .star { fill: var(--star); width: 24px; height: 24px; }
 .form { display: grid; place-items: center; padding: 56px 32px; }
-main { width: 100%; max-width: 340px; }
+/* The form arrives with the page; no element moves on its own after that. */
+main { width: 100%; max-width: 340px; animation: rise .42s var(--ease-out) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 main > .star { width: 32px; height: 32px; }
 h1 { margin: 24px 0 0; font-size: 24px; font-weight: 600; letter-spacing: -.01em; }
 h1 + p { margin-top: 4px; }
@@ -32,12 +41,39 @@ p b { color: var(--ink); font-weight: 500; }
 form { display: grid; gap: 16px; margin-top: 32px; }
 label { display: grid; gap: 4px; font-size: 13px; font-weight: 500; }
 input, button { font: inherit; font-size: 14px; color: inherit; border-radius: 8px; }
-input:not([type=checkbox]) { padding: 9px 12px; border: 1px solid var(--line); outline: none; }
-input:not([type=checkbox]):focus { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
-button { cursor: pointer; padding: 10px 12px; font-weight: 500; border: 0; background: var(--primary); color: var(--primary-foreground); }
+input:not([type=checkbox]) {
+  padding: 9px 12px; border: 1px solid var(--line); outline: none; background: var(--panel);
+  transition: border-color .15s, box-shadow .2s var(--ease-out);
+}
+input:not([type=checkbox]):focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent); }
+/* Keep Chrome's autofill from painting over the field's own surface. */
+input:-webkit-autofill { -webkit-box-shadow: 0 0 0 100px var(--panel) inset; -webkit-text-fill-color: var(--ink); }
+/* One-time codes read as one group of six, not six characters. */
+input[name=code], input[name=totp] { letter-spacing: .3em; font-variant-numeric: tabular-nums; }
+button {
+  cursor: pointer; padding: 10px 12px; font-weight: 500; border: 0; background: var(--primary); color: var(--primary-foreground);
+  transition: background-color .15s, color .15s, border-color .15s, transform .1s;
+}
+button:not(:disabled):active { transform: translateY(1px); }
+button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 button:hover { background: var(--primary-hover); }
 a { color: var(--primary-ink); }
 form > a { font-size: 13px; justify-self: start; }
+/* 重新获取 is a text action under the primary button; it waits out the
+   60-second per-Identifier send limit instead of inviting a refused click. */
+form > button.resend { justify-self: start; padding: 0; background: transparent; color: var(--primary-ink); font-size: 13px; font-weight: 400; }
+form > button.resend:hover { background: transparent; text-decoration: underline; }
+form > button.resend:disabled { color: var(--faint); text-decoration: none; cursor: default; }
+.wait { color: var(--faint); font-variant-numeric: tabular-nums; }
+/* A password can be shown while it is typed; the button names the state it
+   switches to and sits outside the label, so it never joins the field's
+   accessible name. */
+.field-group { display: grid; gap: 4px; font-size: 13px; font-weight: 500; }
+.field { position: relative; display: block; }
+.field input { width: 100%; padding-inline-end: 56px; }
+.field button.reveal { position: absolute; inset-block: 2px; inset-inline-end: 2px; min-height: 0; padding: 0 8px; border-radius: 6px; background: transparent; color: var(--primary-ink); font-size: 12px; font-weight: 500; }
+.field button.reveal:hover { background: var(--primary-soft); }
+.field button.reveal:focus-visible { outline-offset: -2px; }
 .who { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px; background: var(--canvas); overflow-wrap: anywhere; }
 .who a { font-size: 13px; flex: none; }
 .error { color: var(--danger); font-size: 13px; }
@@ -70,18 +106,75 @@ form.providers button.microsoft { border-color: #8c8c8c; color: #5e5e5e; }
 form.providers button.google:hover, form.providers button.microsoft:hover, form.providers button.github:hover { background: var(--panel); }
 /* GitHub allows its mark in black on a light button; the wording is ours. */
 form.providers button.github svg { fill: #181717; }
+/* Submitting swaps in a spinner, so a slow network or PoW solve never looks
+   like the click was missed. altcha-widget reports its own progress and the
+   script skips forms that carry one. */
+button.pending { display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: progress; }
+button.pending::after { content: ""; flex: none; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(1turn); } }
 .by { margin-top: 40px; text-align: center; font-size: 12px; color: var(--faint); }
 @media (max-width: 767px) {
   body { grid-template-columns: 1fr; }
   .brand { display: none; }
   .form { padding: 40px 16px; }
+  /* Safari zooms the page when a focused field is under 16px. */
+  input:not([type=checkbox]) { font-size: 16px; }
+  /* 44px is the smallest comfortable touch target. */
+  input:not([type=checkbox]), button { min-height: 44px; }
+}
+/* Decorative motion goes; the spinner stays because it is load feedback. */
+@media (prefers-reduced-motion: reduce) {
+  main, .brand .glow { animation: none; }
+  *, *::before, *::after { transition-duration: .01ms !important; }
 }
 </style>
+<script>
+// Submit feedback: the pressed button waits with a spinner, so a slow
+// network or PoW solve never looks like a missed click. altcha-widget
+// reports its own progress, so forms carrying one are left to it.
+addEventListener("submit", e => {
+  const form = e.target;
+  if (form.tagName !== "FORM" || form.querySelector("altcha-widget")) return;
+  form.classList.add("pending");
+  const button = e.submitter || form.querySelector("button:not([type=button])");
+  if (button) button.classList.add("pending");
+}, true);
+// Returning from the back/forward cache means nothing was submitted.
+addEventListener("pageshow", () => {
+  for (const form of document.querySelectorAll("form.pending")) {
+    form.classList.remove("pending");
+    for (const button of form.querySelectorAll("button.pending")) button.classList.remove("pending");
+  }
+});
+// 显示/隐藏 only flips the input's type; the value and autocomplete stay,
+// and the label names the state the click moves to.
+addEventListener("click", e => {
+  const button = e.target.closest("button.reveal");
+  if (!button) return;
+  const input = button.parentElement.querySelector("input");
+  if (!input) return;
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  button.textContent = show ? "隐藏" : "显示";
+  button.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
+});
+// A six-digit code submits itself once the last digit lands: one less click
+// on the step users hit most, and it works with SMS autofill.
+addEventListener("DOMContentLoaded", () => {
+  for (const input of document.querySelectorAll('input[maxlength="6"][inputmode="numeric"]')) {
+    input.addEventListener("input", () => {
+      if (input.value.length !== 6) return;
+      const form = input.form;
+      form.requestSubmit(form.querySelector('button[value="verify"]') || form.querySelector("button:not([formnovalidate])"));
+    });
+  }
+});
+</script>
 </head>
 <body>
 <div class="brand" aria-hidden="true">
 <svg class="sky"><defs><radialGradient id="nebula1"><stop offset="0" style="stop-color: var(--nebula)" stop-opacity=".55"/><stop offset="1" style="stop-color: var(--nebula)" stop-opacity="0"/></radialGradient><radialGradient id="nebula2"><stop offset="0" style="stop-color: var(--star)" stop-opacity=".35"/><stop offset="1" style="stop-color: var(--star)" stop-opacity="0"/></radialGradient></defs>
-<ellipse cx="35%" cy="40%" rx="55%" ry="32%" fill="url(#nebula1)"/><ellipse cx="68%" cy="64%" rx="42%" ry="26%" fill="url(#nebula2)"/>
+<ellipse class="glow" cx="35%" cy="40%" rx="55%" ry="32%" fill="url(#nebula1)"/><ellipse class="glow" cx="68%" cy="64%" rx="42%" ry="26%" fill="url(#nebula2)"/>
 <g fill="var(--star)"><circle cx="65.8%" cy="77.8%" r="0.30" opacity="0.33"/><circle cx="9.5%" cy="23.5%" r="0.65" opacity="0.38"/><circle cx="67.3%" cy="91.8%" r="0.37" opacity="0.47"/><circle cx="17.3%" cy="26.7%" r="0.30" opacity="0.49"/><circle cx="3.8%" cy="91.7%" r="0.35" opacity="0.35"/><circle cx="43.4%" cy="94.5%" r="0.30" opacity="0.49"/><circle cx="63.5%" cy="46.0%" r="0.31" opacity="0.32"/><circle cx="50.6%" cy="55.2%" r="0.30" opacity="0.56"/><circle cx="23.7%" cy="68.0%" r="0.34" opacity="0.49"/><circle cx="78.2%" cy="95.5%" r="0.31" opacity="0.57"/><circle cx="91.3%" cy="61.3%" r="0.32" opacity="0.55"/><circle cx="36.3%" cy="15.8%" r="0.32" opacity="0.39"/><circle cx="18.2%" cy="83.2%" r="0.36" opacity="0.37"/><circle cx="37.5%" cy="79.6%" r="0.31" opacity="0.57"/><circle cx="48.8%" cy="54.6%" r="0.40" opacity="0.34"/><circle cx="52.3%" cy="58.1%" r="0.47" opacity="0.47"/><circle cx="47.0%" cy="33.1%" r="1.28" opacity="0.40"/><circle cx="36.9%" cy="50.4%" r="0.78" opacity="0.61"/><circle cx="56.9%" cy="64.9%" r="0.37" opacity="0.35"/><circle cx="25.0%" cy="80.8%" r="0.72" opacity="0.58"/><circle cx="62.7%" cy="7.9%" r="0.30" opacity="0.40"/><circle cx="14.8%" cy="68.1%" r="0.35" opacity="0.48"/><circle cx="44.3%" cy="16.6%" r="1.49" opacity="0.44"/><circle cx="56.6%" cy="95.6%" r="0.82" opacity="0.30"/><circle cx="20.8%" cy="34.7%" r="0.30" opacity="0.23"/><circle cx="34.0%" cy="43.6%" r="0.69" opacity="0.60"/><circle cx="85.8%" cy="1.2%" r="0.84" opacity="0.27"/><circle cx="49.2%" cy="77.7%" r="0.66" opacity="0.53"/><circle cx="45.4%" cy="12.4%" r="0.85" opacity="0.29"/><circle cx="6.4%" cy="57.4%" r="0.91" opacity="0.49"/><circle cx="37.3%" cy="1.5%" r="0.41" opacity="0.23"/><circle cx="54.9%" cy="68.9%" r="0.30" opacity="0.29"/><circle cx="58.8%" cy="43.5%" r="1.19" opacity="0.32"/><circle cx="40.7%" cy="92.9%" r="0.81" opacity="0.62"/><circle cx="73.8%" cy="93.6%" r="0.45" opacity="0.30"/><circle cx="77.7%" cy="78.1%" r="1.33" opacity="0.53"/><circle cx="4.4%" cy="70.9%" r="1.22" opacity="0.57"/><circle cx="44.3%" cy="32.0%" r="0.32" opacity="0.56"/><circle cx="99.9%" cy="59.6%" r="0.60" opacity="0.27"/><circle cx="25.6%" cy="10.8%" r="0.61" opacity="0.21"/><circle cx="38.2%" cy="94.7%" r="0.32" opacity="0.21"/><circle cx="50.8%" cy="13.2%" r="0.30" opacity="0.52"/><circle cx="5.2%" cy="65.6%" r="0.78" opacity="0.39"/><circle cx="81.1%" cy="35.5%" r="0.42" opacity="0.57"/><circle cx="67.6%" cy="91.6%" r="0.32" opacity="0.32"/><circle cx="26.2%" cy="4.5%" r="0.80" opacity="0.50"/><circle cx="7.6%" cy="39.8%" r="0.32" opacity="0.45"/><circle cx="30.4%" cy="35.6%" r="0.32" opacity="0.44"/><circle cx="8.8%" cy="77.9%" r="0.30" opacity="0.34"/><circle cx="16.4%" cy="19.7%" r="0.82" opacity="0.26"/><circle cx="51.1%" cy="93.6%" r="0.41" opacity="0.55"/><circle cx="44.7%" cy="68.7%" r="0.32" opacity="0.46"/><circle cx="7.0%" cy="88.4%" r="0.47" opacity="0.37"/><circle cx="64.9%" cy="34.6%" r="0.31" opacity="0.46"/><circle cx="53.3%" cy="70.9%" r="0.30" opacity="0.24"/><circle cx="62.5%" cy="31.7%" r="0.40" opacity="0.35"/><circle cx="44.5%" cy="33.8%" r="0.52" opacity="0.38"/><circle cx="58.3%" cy="32.9%" r="1.49" opacity="0.40"/><circle cx="69.6%" cy="25.2%" r="0.75" opacity="0.63"/><circle cx="23.0%" cy="57.9%" r="0.30" opacity="0.46"/><circle cx="19.9%" cy="33.8%" r="0.38" opacity="0.21"/><circle cx="5.8%" cy="99.6%" r="0.98" opacity="0.55"/><circle cx="8.2%" cy="0.3%" r="0.30" opacity="0.20"/><circle cx="63.7%" cy="59.6%" r="1.08" opacity="0.24"/><circle cx="40.3%" cy="2.6%" r="0.38" opacity="0.28"/><circle cx="14.4%" cy="47.3%" r="0.49" opacity="0.38"/><circle cx="14.8%" cy="6.9%" r="0.96" opacity="0.23"/><circle cx="94.4%" cy="76.1%" r="0.38" opacity="0.53"/><circle cx="34.6%" cy="46.1%" r="1.33" opacity="0.39"/><circle cx="91.9%" cy="11.2%" r="1.13" opacity="0.38"/><circle cx="5.7%" cy="95.9%" r="1.39" opacity="0.61"/><circle cx="9.9%" cy="68.2%" r="0.31" opacity="0.65"/><circle cx="88.4%" cy="14.2%" r="0.30" opacity="0.55"/><circle cx="28.6%" cy="16.8%" r="1.30" opacity="0.43"/><circle cx="17.4%" cy="48.0%" r="0.30" opacity="0.64"/><circle cx="76.5%" cy="34.8%" r="0.43" opacity="0.28"/><circle cx="99.1%" cy="13.5%" r="0.33" opacity="0.47"/><circle cx="58.7%" cy="81.3%" r="0.45" opacity="0.48"/><circle cx="94.0%" cy="64.8%" r="0.85" opacity="0.43"/><circle cx="80.8%" cy="42.7%" r="0.74" opacity="0.34"/><circle cx="78.4%" cy="69.5%" r="0.30" opacity="0.46"/><circle cx="64.3%" cy="55.4%" r="0.67" opacity="0.62"/><circle cx="15.4%" cy="29.4%" r="0.55" opacity="0.58"/><circle cx="23.4%" cy="37.9%" r="1.38" opacity="0.62"/><circle cx="39.1%" cy="84.9%" r="0.37" opacity="0.32"/><circle cx="38.1%" cy="57.0%" r="0.36" opacity="0.49"/><circle cx="72.4%" cy="30.3%" r="0.56" opacity="0.52"/><circle cx="30.2%" cy="58.6%" r="0.57" opacity="0.34"/><circle cx="2.8%" cy="93.3%" r="0.30" opacity="0.54"/><circle cx="71.9%" cy="70.9%" r="0.35" opacity="0.48"/><circle cx="7.5%" cy="37.1%" r="0.30" opacity="0.30"/><circle cx="58.9%" cy="33.3%" r="0.77" opacity="0.58"/><circle cx="22.0%" cy="47.0%" r="0.32" opacity="0.33"/><circle cx="11.0%" cy="80.4%" r="0.30" opacity="0.44"/><circle cx="18.3%" cy="91.2%" r="0.49" opacity="0.54"/><circle cx="47.8%" cy="39.8%" r="1.35" opacity="0.55"/><circle cx="2.1%" cy="47.8%" r="1.05" opacity="0.38"/><circle cx="51.7%" cy="91.5%" r="0.95" opacity="0.53"/><circle cx="3.2%" cy="92.4%" r="0.31" opacity="0.47"/><circle cx="72.0%" cy="94.9%" r="0.34" opacity="0.24"/><circle cx="13.4%" cy="29.5%" r="1.26" opacity="0.45"/><circle cx="40.1%" cy="8.0%" r="0.70" opacity="0.59"/><circle cx="55.1%" cy="4.7%" r="0.40" opacity="0.43"/><circle cx="87.9%" cy="10.3%" r="0.57" opacity="0.32"/><circle cx="80.1%" cy="61.9%" r="0.35" opacity="0.42"/><circle cx="38.9%" cy="28.6%" r="0.32" opacity="0.47"/><circle cx="75.2%" cy="43.0%" r="0.32" opacity="0.28"/><circle cx="88.9%" cy="40.6%" r="0.43" opacity="0.50"/><circle cx="93.4%" cy="71.2%" r="0.33" opacity="0.20"/><circle cx="14.7%" cy="88.8%" r="0.33" opacity="0.40"/><circle cx="69.5%" cy="39.7%" r="1.12" opacity="0.51"/><circle cx="61.3%" cy="86.7%" r="0.31" opacity="0.62"/><circle cx="7.1%" cy="3.8%" r="0.82" opacity="0.48"/><circle cx="77.0%" cy="78.5%" r="0.84" opacity="0.29"/><circle cx="29.5%" cy="25.8%" r="1.09" opacity="0.25"/><circle cx="49.0%" cy="22.3%" r="0.30" opacity="0.56"/><circle cx="25.9%" cy="31.8%" r="0.43" opacity="0.35"/><circle cx="4.8%" cy="56.8%" r="0.54" opacity="0.53"/><circle cx="88.0%" cy="99.7%" r="0.30" opacity="0.27"/><circle cx="43.7%" cy="87.7%" r="0.38" opacity="0.28"/><circle cx="86.7%" cy="14.8%" r="0.58" opacity="0.38"/><circle cx="84.7%" cy="67.0%" r="0.43" opacity="0.31"/><circle cx="84.6%" cy="50.0%" r="0.91" opacity="0.54"/><circle cx="40.8%" cy="78.4%" r="0.36" opacity="0.28"/><circle cx="10.8%" cy="81.3%" r="0.30" opacity="0.32"/><circle cx="85.7%" cy="12.4%" r="0.30" opacity="0.28"/><circle cx="83.0%" cy="72.1%" r="0.32" opacity="0.56"/><circle cx="31.0%" cy="62.5%" r="0.32" opacity="0.54"/><circle cx="10.5%" cy="57.0%" r="0.39" opacity="0.24"/><circle cx="60.9%" cy="48.3%" r="1.39" opacity="0.32"/><circle cx="59.6%" cy="86.0%" r="0.31" opacity="0.35"/><circle cx="88.6%" cy="33.9%" r="0.31" opacity="0.49"/><circle cx="71.6%" cy="2.7%" r="0.31" opacity="0.59"/><circle cx="69.9%" cy="82.4%" r="1.07" opacity="0.32"/><circle cx="61.9%" cy="63.2%" r="0.35" opacity="0.56"/><circle cx="52.6%" cy="20.8%" r="0.54" opacity="0.58"/><circle cx="63.6%" cy="56.8%" r="0.30" opacity="0.60"/><circle cx="79.1%" cy="18.3%" r="0.36" opacity="0.42"/><circle cx="67.6%" cy="2.8%" r="1.31" opacity="0.56"/><circle cx="27.5%" cy="0.8%" r="0.71" opacity="0.29"/><circle cx="10.8%" cy="36.2%" r="0.39" opacity="0.40"/><circle cx="8.2%" cy="1.0%" r="0.47" opacity="0.49"/><circle cx="31.8%" cy="21.9%" r="0.35" opacity="0.45"/><circle cx="91.4%" cy="40.5%" r="0.34" opacity="0.33"/><circle cx="97.7%" cy="45.7%" r="0.31" opacity="0.21"/><circle cx="32.3%" cy="12.6%" r="0.34" opacity="0.62"/><circle cx="67.0%" cy="97.9%" r="0.96" opacity="0.53"/><circle cx="3.0%" cy="31.9%" r="1.05" opacity="0.53"/><circle cx="54.8%" cy="12.9%" r="0.42" opacity="0.28"/><circle cx="64.7%" cy="1.0%" r="0.60" opacity="0.27"/><circle cx="20.7%" cy="76.7%" r="0.31" opacity="0.58"/><circle cx="59.7%" cy="64.6%" r="0.34" opacity="0.25"/><circle cx="44.5%" cy="49.8%" r="0.30" opacity="0.44"/><circle cx="30.9%" cy="55.8%" r="0.43" opacity="0.60"/><circle cx="16.3%" cy="18.0%" r="0.30" opacity="0.36"/><circle cx="88.6%" cy="22.3%" r="0.33" opacity="0.28"/><circle cx="15.8%" cy="76.6%" r="0.58" opacity="0.63"/><circle cx="64.8%" cy="16.0%" r="0.30" opacity="0.51"/><circle cx="1.8%" cy="93.7%" r="0.30" opacity="0.58"/><circle cx="33.8%" cy="55.8%" r="0.32" opacity="0.53"/><circle cx="19.8%" cy="34.0%" r="1.46" opacity="0.50"/><circle cx="7.7%" cy="70.8%" r="0.41" opacity="0.59"/><circle cx="72.6%" cy="10.7%" r="0.91" opacity="0.55"/><circle cx="71.8%" cy="55.0%" r="0.31" opacity="0.42"/><circle cx="11.2%" cy="80.7%" r="0.55" opacity="0.33"/><circle cx="37.3%" cy="68.6%" r="0.54" opacity="0.42"/><circle cx="96.0%" cy="35.5%" r="0.30" opacity="0.53"/><circle cx="70.4%" cy="60.6%" r="0.34" opacity="0.25"/><circle cx="93.0%" cy="83.7%" r="1.18" opacity="0.26"/><circle cx="81.2%" cy="56.8%" r="0.41" opacity="0.37"/><circle cx="62.8%" cy="64.8%" r="1.33" opacity="0.27"/><circle cx="15.6%" cy="59.6%" r="0.48" opacity="0.20"/><circle cx="59.7%" cy="45.4%" r="0.58" opacity="0.56"/><circle cx="87.2%" cy="36.6%" r="1.12" opacity="0.50"/><circle cx="33.5%" cy="48.7%" r="0.44" opacity="0.53"/><circle cx="34.0%" cy="47.6%" r="0.30" opacity="0.59"/><circle cx="20.7%" cy="75.6%" r="1.31" opacity="0.43"/><circle cx="15.8%" cy="25.8%" r="0.64" opacity="0.47"/><circle cx="17.5%" cy="22.6%" r="0.56" opacity="0.44"/><circle cx="75.9%" cy="98.6%" r="1.22" opacity="0.22"/><circle cx="86.0%" cy="56.6%" r="0.67" opacity="0.40"/><circle cx="48.5%" cy="3.8%" r="0.32" opacity="0.40"/><circle cx="55.2%" cy="67.1%" r="0.38" opacity="0.37"/><circle cx="40.1%" cy="51.7%" r="0.30" opacity="0.49"/><circle cx="17.7%" cy="6.7%" r="0.70" opacity="0.64"/><circle cx="60.1%" cy="40.7%" r="1.22" opacity="0.25"/><circle cx="15.1%" cy="71.8%" r="0.61" opacity="0.42"/><circle cx="25.8%" cy="2.4%" r="0.32" opacity="0.51"/><circle cx="29.4%" cy="39.5%" r="0.36" opacity="0.54"/><circle cx="61.5%" cy="8.2%" r="0.48" opacity="0.43"/><circle cx="53.9%" cy="83.1%" r="0.31" opacity="0.42"/><circle cx="72.3%" cy="48.5%" r="0.31" opacity="0.55"/><circle cx="65.4%" cy="27.8%" r="0.70" opacity="0.59"/><circle cx="1.2%" cy="57.2%" r="0.39" opacity="0.59"/><circle cx="45.9%" cy="83.7%" r="0.34" opacity="0.21"/><circle cx="79.8%" cy="28.9%" r="0.94" opacity="0.54"/><circle cx="90.3%" cy="41.9%" r="0.35" opacity="0.25"/><circle cx="25.6%" cy="54.2%" r="0.30" opacity="0.34"/><circle cx="48.8%" cy="59.7%" r="0.30" opacity="0.43"/><circle cx="85.4%" cy="86.2%" r="1.04" opacity="0.27"/><circle cx="61.1%" cy="30.8%" r="0.30" opacity="0.37"/><circle cx="93.4%" cy="94.6%" r="0.35" opacity="0.23"/><circle cx="69.9%" cy="10.0%" r="0.60" opacity="0.60"/><circle cx="40.4%" cy="69.0%" r="0.80" opacity="0.63"/><circle cx="59.5%" cy="39.6%" r="0.74" opacity="0.36"/><circle cx="39.5%" cy="79.7%" r="0.50" opacity="0.40"/><circle cx="8.4%" cy="48.2%" r="0.93" opacity="0.37"/><circle cx="6.5%" cy="39.1%" r="0.94" opacity="0.58"/><circle cx="48.3%" cy="39.2%" r="0.31" opacity="0.39"/><circle cx="88.7%" cy="91.3%" r="0.52" opacity="0.40"/><circle cx="38.4%" cy="71.7%" r="0.57" opacity="0.37"/><circle cx="19.0%" cy="95.5%" r="0.49" opacity="0.60"/><circle cx="40.6%" cy="54.3%" r="0.30" opacity="0.57"/><circle cx="97.1%" cy="14.4%" r="0.33" opacity="0.37"/><circle cx="41.9%" cy="25.4%" r="0.44" opacity="0.42"/><circle cx="66.4%" cy="50.1%" r="0.72" opacity="0.53"/><circle cx="40.2%" cy="86.2%" r="0.50" opacity="0.22"/><circle cx="81.6%" cy="16.7%" r="0.31" opacity="0.65"/><circle cx="98.2%" cy="69.6%" r="0.63" opacity="0.60"/><circle cx="92.8%" cy="16.4%" r="0.31" opacity="0.58"/>
 <svg x="40%" y="38%" width="18" height="18" viewBox="0 0 24 24" overflow="visible" opacity="0.9"><path transform="translate(-12 -12)" d="M12 1.5c.7 6.2 4.3 9.8 10.5 10.5-6.2.7-9.8 4.3-10.5 10.5-.7-6.2-4.3-9.8-10.5-10.5C7.7 11.3 11.3 7.7 12 1.5Z"/></svg><svg x="66%" y="62%" width="12" height="12" viewBox="0 0 24 24" overflow="visible" opacity="0.8"><path transform="translate(-12 -12)" d="M12 1.5c.7 6.2 4.3 9.8 10.5 10.5-6.2.7-9.8 4.3-10.5 10.5-.7-6.2-4.3-9.8-10.5-10.5C7.7 11.3 11.3 7.7 12 1.5Z"/></svg><svg x="24%" y="70%" width="9" height="9" viewBox="0 0 24 24" overflow="visible" opacity="0.7"><path transform="translate(-12 -12)" d="M12 1.5c.7 6.2 4.3 9.8 10.5 10.5-6.2.7-9.8 4.3-10.5 10.5-.7-6.2-4.3-9.8-10.5-10.5C7.7 11.3 11.3 7.7 12 1.5Z"/></svg></g></svg>
 <div><svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5c.7 6.2 4.3 9.8 10.5 10.5-6.2.7-9.8 4.3-10.5 10.5-.7-6.2-4.3-9.8-10.5-10.5C7.7 11.3 11.3 7.7 12 1.5Z"/></svg>Stars</div>
@@ -111,9 +204,13 @@ form.providers button.github svg { fill: #181717; }
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="set-password">
-  <label>新密码
-    <input name="password" type="password" autocomplete="new-password" required minlength="8" autofocus>
-  </label>
+  <span class="field-group">
+    <label for="password">新密码</label>
+    <span class="field">
+      <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" autofocus>
+      <button type="button" class="reveal" aria-label="显示密码">显示</button>
+    </span>
+  </span>
   <button>设置并继续</button>
 </form>
 <form method="post" action="{{.Action}}">
@@ -157,7 +254,6 @@ form.providers button.github svg { fill: #181717; }
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 {{if .CodeSent}}
 <form method="post" action="{{.Action}}">
-  <input type="hidden" name="op" value="verify">
   <input type="hidden" name="identifier" value="{{.Identifier}}">
   {{template "agreed" .}}
   <div class="who"><span>{{.Identifier}}</span><a href="{{.Action}}">更换{{if .Bind}}手机号{{else}}账号{{end}}</a></div>
@@ -165,18 +261,41 @@ form.providers button.github svg { fill: #181717; }
   <label>验证码
     <input name="code" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autofocus>
   </label>
-  <button>{{if .Bind}}绑定{{else}}登录{{end}}</button>
-  <a href="{{.Action}}?identifier={{.Identifier}}">重新获取</a>
+  <button name="op" value="verify">{{if .Bind}}绑定{{else}}登录{{end}}</button>
+  <button name="op" value="resend" class="resend" formnovalidate>重新获取<span class="wait" aria-hidden="true"></span></button>
 </form>
+<script>
+// 重新获取 posts without a second PoW; the first 60 seconds are the
+// per-Identifier send limit, so the button waits them out.
+(() => {
+  const button = document.querySelector("form button.resend");
+  if (!button) return;
+  const wait = button.querySelector(".wait");
+  let left = 60;
+  const draw = () => {
+    wait.textContent = left > 0 ? `（${left} 秒）` : "";
+    button.disabled = left > 0;
+  };
+  draw();
+  const timer = setInterval(() => {
+    if (--left <= 0) clearInterval(timer);
+    draw();
+  }, 1000);
+})();
+</script>
 {{else if and .Username (not .PasswordForm)}}
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="password">
   <input type="hidden" name="username" value="{{.Username}}">
   {{template "agreed" .}}
   <div class="who"><span>{{.Username}}</span><a href="{{.Action}}">更换账号</a></div>
-  <label>密码
-    <input name="password" type="password" autocomplete="current-password" required autofocus>
-  </label>
+  <span class="field-group">
+    <label for="password">密码</label>
+    <span class="field">
+      <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+      <button type="button" class="reveal" aria-label="显示密码">显示</button>
+    </span>
+  </span>
   <button>登录</button>
 </form>
 {{else if and (not .Bind) (or .PasswordForm (not .CodeKinds))}}
@@ -186,9 +305,13 @@ form.providers button.github svg { fill: #181717; }
   <label>用户名、手机号或邮箱
     <input name="username" autocomplete="username{{if .Passkey}} webauthn{{end}}" autocapitalize="none" required autofocus value="{{.Username}}">
   </label>
-  <label>密码
-    <input name="password" type="password" autocomplete="current-password" required>
-  </label>
+  <span class="field-group">
+    <label for="password">密码</label>
+    <span class="field">
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="button" class="reveal" aria-label="显示密码">显示</button>
+    </span>
+  </span>
   {{template "agree" .Terms}}
   <button>登录</button>
   {{if .CodeKinds}}<a href="{{.Action}}">改用验证码登录</a>{{end}}
@@ -285,9 +408,13 @@ addEventListener("DOMContentLoaded", () => {
   <label>用户名
     <input name="username" autocomplete="username" autocapitalize="none" required minlength="3" maxlength="32" pattern="[A-Za-z0-9._\-]+" value="{{.Username}}">
   </label>
-  <label>密码
-    <input name="password" type="password" autocomplete="new-password" required minlength="8">
-  </label>
+  <span class="field-group">
+    <label for="password">密码</label>
+    <span class="field">
+      <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8">
+      <button type="button" class="reveal" aria-label="显示密码">显示</button>
+    </span>
+  </span>
   {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
   <button>创建</button>
 </form>
@@ -299,9 +426,13 @@ addEventListener("DOMContentLoaded", () => {
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <form method="post" action="/invite">
   <input type="hidden" name="token" value="{{.Token}}">
-  <label>新密码
-    <input name="password" type="password" autocomplete="new-password" required minlength="8" autofocus>
-  </label>
+  <span class="field-group">
+    <label for="password">新密码</label>
+    <span class="field">
+      <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" autofocus>
+      <button type="button" class="reveal" aria-label="显示密码">显示</button>
+    </span>
+  </span>
   <button>设置并继续</button>
 </form>
 {{template "foot"}}{{end}}

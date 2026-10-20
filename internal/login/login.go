@@ -68,6 +68,10 @@ const (
 	// Set with pending_sub or federated_sub: the hash of the binder of the
 	// browser the login is for.
 	storeBinder = "binder"
+	// The Identifier a code was sent to in this login. 重新获取 sends to it
+	// again without a new PoW: the value is fixed, and the per-Identifier
+	// send limits still apply.
+	storeCodeSent = "code_sent"
 )
 
 // totpTries is how many wrong TOTP codes or 恢复码 end a login.
@@ -472,7 +476,28 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		if err != nil {
 			return fail(err)
 		}
+		if as.Store == nil {
+			as.Store = map[string]any{}
+		}
+		as.Store[storeCodeSent] = value
 		form.Identifier, form.CodeSent = value, true
+		return s.render(w, r, as, c, form)
+
+	case "resend":
+		// 重新获取 sends again to the Identifier this login already had a
+		// code sent to. No second PoW: the value is fixed, and the
+		// per-Identifier send limits still apply. Whatever identifier the
+		// form posted is ignored, so a resend cannot be turned into a send
+		// to someone else.
+		sent, _ := as.Store[storeCodeSent].(string)
+		kind, value, err := identity.ParseIdentifier(sent)
+		if err != nil {
+			return s.render(w, r, as, c, loginPage{})
+		}
+		form.Identifier, form.CodeSent = value, true
+		if err := s.codes.Send(ctx, kind, value, clientIP(r)); err != nil {
+			return fail(err)
+		}
 		return s.render(w, r, as, c, form)
 
 	case "verify":
