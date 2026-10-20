@@ -6,9 +6,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/provider"
-	"github.com/zibyn/stars-auth/internal/provider/google"
-	"github.com/zibyn/stars-auth/internal/provider/oidc/oidctest"
+	"github.com/zibyn/polaris/internal/provider"
+	"github.com/zibyn/polaris/internal/provider/google"
+	"github.com/zibyn/polaris/internal/provider/oidc/oidctest"
 )
 
 // TestGoogleAsksForCredentialsOnly: the issuer and the brand are in the

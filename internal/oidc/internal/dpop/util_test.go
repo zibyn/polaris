@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/dpop"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/oidc"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/dpop"
+	"github.com/zibyn/polaris/internal/oidc/internal/oidc"
 )
 
 func TestValidateJWT(t *testing.T) {

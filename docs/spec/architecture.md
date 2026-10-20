@@ -30,7 +30,7 @@
 
 - **核心能力不做成插件**:验证码登录、密码、Passkey、TOTP。
 - **三个免写代码的通用插件**:
-  - **Webhook Channel**:把 `{"to": 目标, "code": 验证码}` POST 到管理员指定的 URL,返回 2xx 即视为送达;注册邀请不带验证码,送的是 `{"to": 目标, "link": 链接}`;请求头 `X-Stars-Signature: t=<秒>,v1=<hex HMAC-SHA256(密钥, "<t>.<body>")>`,接收方应拒绝过旧的 `t` 以防重放;
+  - **Webhook Channel**:把 `{"to": 目标, "code": 验证码}` POST 到管理员指定的 URL,返回 2xx 即视为送达;注册邀请不带验证码,送的是 `{"to": 目标, "link": 链接}`;请求头 `X-Polaris-Signature: t=<秒>,v1=<hex HMAC-SHA256(密钥, "<t>.<body>")>`,接收方应拒绝过旧的 `t` 以防重放;
   - **通用 OIDC Provider 类型**:填 issuer、client_id、secret 即可接入,见下文;
   - **通用 OAuth2 Provider 类型**:填 authorization、token、userinfo 三个 endpoint、scope 与用户 ID 字段即可接入,见下文。
 - **Provider 的交互形态**:每个 Provider 类型声明自己支持哪种,或两种都支持。
@@ -73,13 +73,13 @@
 
 - **环境变量**只放启动必需项,不使用配置文件:
   - PG 连接串;
-  - 主密钥:`STARS_AUTH_MASTER_KEY` 或 `STARS_AUTH_MASTER_KEY_FILE`;
+  - 主密钥:`POLARIS_MASTER_KEY` 或 `POLARIS_MASTER_KEY_FILE`;
   - 对外 URL(即 issuer);
   - 监听地址;
   - 信任的代理。
 - **其余配置全部存 PG**,由管理端经 Management API 修改,包括插件配置、登录策略、Application、API、Role 等。多副本之间以秒级缓存同步。
 - **加密**:插件的密钥字段、OIDC 签名私钥、TOTP 密钥用主密钥做 AES-256-GCM 加密后入库,密文带密钥版本号。密码和恢复码只做哈希。
-- **主密钥轮换**:离线命令 `stars-auth rotate-master-key`,同时给出新旧两把密钥,一次性重新加密全部数据(二期)。
+- **主密钥轮换**:离线命令 `polaris rotate-master-key`,同时给出新旧两把密钥,一次性重新加密全部数据(二期)。
 - **主密钥丢失**:所有加密数据都无法还原,部署文档须醒目提示备份。
 - **签名私钥**:首次启动时自动生成 RS256 私钥,不支持导入;由管理员在管理端手动轮换,轮换期间 JWKS 新旧两把密钥并存。
 

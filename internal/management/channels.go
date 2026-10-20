@@ -11,8 +11,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/zibyn/stars-auth/internal/channel"
-	"github.com/zibyn/stars-auth/internal/identity"
+	"github.com/zibyn/polaris/internal/channel"
+	"github.com/zibyn/polaris/internal/identity"
 )
 
 type listChannelsOutput struct {

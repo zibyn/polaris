@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/joseutil"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/strutil"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/joseutil"
+	"github.com/zibyn/polaris/internal/oidc/internal/strutil"
 )
 
 type Context struct {

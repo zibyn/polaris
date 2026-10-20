@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/db"
-	"github.com/zibyn/stars-auth/internal/db/dbtest"
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
-	"github.com/zibyn/stars-auth/internal/twofactor"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
+	"github.com/zibyn/polaris/internal/db/dbtest"
+	"github.com/zibyn/polaris/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/twofactor"
 )
 
 // code is what an authenticator shows for a Base32 secret at t (RFC 6238).

@@ -7,8 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
 
 // An App Session is its refresh token chain: revoking the token ends it.
@@ -20,14 +20,14 @@ func TestRevokingAnAppSessionsRefreshTokenEndsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess, err := q.CreateSession(ctx, sqlc.CreateSessionParams{
-		ClientID: "stars-auth-console", UserID: "ALICE", Amr: []string{"sms"},
+		ClientID: "polaris-console", UserID: "ALICE", Amr: []string{"sms"},
 		AuthTime: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := New(pool, keyring)
-	g := &goidc.Grant{ID: "g", Subject: "ALICE", ClientID: "stars-auth-console", RefreshToken: "rt",
+	g := &goidc.Grant{ID: "g", Subject: "ALICE", ClientID: "polaris-console", RefreshToken: "rt",
 		Store: map[string]any{SessionKey: sess.ID}}
 	if err := s.SaveGrant(ctx, g); err != nil {
 		t.Fatal(err)

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/db/sqlc"
 )
 
 // signIn logs the owner in through the password form and redeems the code.

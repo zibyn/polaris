@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/provider/github"
-	"github.com/zibyn/stars-auth/internal/provider/oauth2/oauth2test"
+	"github.com/zibyn/polaris/internal/provider/github"
+	"github.com/zibyn/polaris/internal/provider/oauth2/oauth2test"
 )
 
 // addGitHub adds a fake GitHub as the Provider "github": GitHub's endpoints

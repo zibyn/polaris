@@ -250,13 +250,13 @@ function Console() {
 	return (
 		<div className="flex min-h-svh bg-canvas p-2 text-sm">
 			<aside className="sticky top-2 flex h-[calc(100svh-1rem)] w-60 shrink-0 flex-col p-4">
-				{/* Room to switch to other Stars products later; not clickable yet. */}
+				{/* Room to switch to other products later; not clickable yet. */}
 				<div className="flex items-center gap-3 px-2 py-2">
 					<span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
 						<Star className="size-4" />
 					</span>
 					<span className="leading-tight">
-						<span className="block font-semibold">Stars</span>
+						<span className="block font-semibold">Polaris</span>
 						<span className="block text-muted-foreground text-xs">Auth</span>
 					</span>
 				</div>

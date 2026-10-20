@@ -29,7 +29,7 @@ export const typeWhy: Record<Application["type"], string> = {
 
 // accountAPI is the built-in API the account center calls; no Application
 // may use it as its default API.
-export const accountAPI = "urn:stars-auth:account-api";
+export const accountAPI = "urn:polaris:account-api";
 
 // m2mAPIs are the APIs an M2M Application may choose as its default API: any
 // registered one, the Management API included (ADR 0015), but not the

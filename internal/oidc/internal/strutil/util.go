@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
 
 const charset string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"

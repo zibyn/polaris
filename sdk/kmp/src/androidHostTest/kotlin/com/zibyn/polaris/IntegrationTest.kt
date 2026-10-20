@@ -1,4 +1,4 @@
-package com.starsdom.auth
+package com.zibyn.polaris
 
 import com.sun.net.httpserver.HttpServer
 import io.ktor.client.HttpClient
@@ -35,8 +35,8 @@ import kotlin.test.assertTrue
  * sets the environment. Skipped without it.
  */
 class IntegrationTest {
-  private val url = System.getenv("STARS_AUTH_TEST_URL")
-  private val config by lazy { StarsAuthConfig(url!!, System.getenv("STARS_AUTH_TEST_CLIENT")!!) }
+  private val url = System.getenv("POLARIS_TEST_URL")
+  private val config by lazy { PolarisConfig(url!!, System.getenv("POLARIS_TEST_CLIENT")!!) }
   private var tokenCalls = 0
   private val http = HttpClient().apply {
     plugin(HttpSend).intercept { req ->
@@ -46,7 +46,7 @@ class IntegrationTest {
   }
   private val codes = LinkedBlockingQueue<String>()
 
-  private fun auth(store: TokenStore = MemoryTokenStore()) = StarsAuth(config, store, http)
+  private fun auth(store: TokenStore = MemoryTokenStore()) = Polaris(config, store, http)
 
   @Test
   fun signInRefreshSignOutAndDelete() = runBlocking {
@@ -57,7 +57,7 @@ class IntegrationTest {
     // API) point the email Channel at codes, below.
     val ownerStore = MemoryTokenStore()
     val owner = auth(ownerStore)
-    assertEquals(SignInStep.SignedIn, owner.signInWithPassword(System.getenv("STARS_AUTH_TEST_USERNAME")!!, System.getenv("STARS_AUTH_TEST_PASSWORD")!!, terms))
+    assertEquals(SignInStep.SignedIn, owner.signInWithPassword(System.getenv("POLARIS_TEST_USERNAME")!!, System.getenv("POLARIS_TEST_PASSWORD")!!, terms))
     val catcher = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
       createContext("/") { ex ->
         val body = Json.parseToJsonElement(ex.requestBody.readBytes().decodeToString()).jsonObject
@@ -104,7 +104,7 @@ class IntegrationTest {
       assertNull(again.value)
 
       // The last owner can't leave.
-      val refused = assertFailsWith<StarsAuthException> { owner.deleteAccount() }
+      val refused = assertFailsWith<PolarisException> { owner.deleteAccount() }
       assertEquals("invalid_request", refused.error)
       assertNotNull(refused.description)
       assertNotNull(ownerStore.value)
@@ -119,14 +119,14 @@ class IntegrationTest {
     }
   }
 
-  private suspend fun signInByCode(auth: StarsAuth, terms: String) {
+  private suspend fun signInByCode(auth: Polaris, terms: String) {
     val sent = auth.sendCode("sdk-${System.nanoTime()}@example.com", terms)
     val code = codes.poll(10, TimeUnit.SECONDS) ?: error("no code arrived")
     assertIs<SignInStep.SignedIn>(auth.verifyCode(sent.session, code))
   }
 
-  private suspend fun assertSignedOut(auth: StarsAuth) {
-    assertEquals(StarsAuthException.SIGNED_OUT, assertFailsWith<StarsAuthException> { auth.accessToken() }.error)
+  private suspend fun assertSignedOut(auth: Polaris) {
+    assertEquals(PolarisException.SIGNED_OUT, assertFailsWith<PolarisException> { auth.accessToken() }.error)
   }
 
   private fun expire(store: MemoryTokenStore) {

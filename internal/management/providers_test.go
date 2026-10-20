@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/provider"
-	_ "github.com/zibyn/stars-auth/internal/provider/oidc"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/provider"
+	_ "github.com/zibyn/polaris/internal/provider/oidc"
 )
 
 type providerField struct {

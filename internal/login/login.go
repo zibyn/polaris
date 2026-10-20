@@ -24,18 +24,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/zibyn/stars-auth/internal/channel"
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
-	"github.com/zibyn/stars-auth/internal/identity"
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	oidcop "github.com/zibyn/stars-auth/internal/oidc/provider"
-	"github.com/zibyn/stars-auth/internal/oidcstore"
-	"github.com/zibyn/stars-auth/internal/otp"
-	"github.com/zibyn/stars-auth/internal/passkey"
-	"github.com/zibyn/stars-auth/internal/pow"
-	"github.com/zibyn/stars-auth/internal/provider"
-	"github.com/zibyn/stars-auth/internal/twofactor"
+	"github.com/zibyn/polaris/internal/channel"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	oidcop "github.com/zibyn/polaris/internal/oidc/provider"
+	"github.com/zibyn/polaris/internal/oidcstore"
+	"github.com/zibyn/polaris/internal/otp"
+	"github.com/zibyn/polaris/internal/passkey"
+	"github.com/zibyn/polaris/internal/pow"
+	"github.com/zibyn/polaris/internal/provider"
+	"github.com/zibyn/polaris/internal/twofactor"
 )
 
 //go:embed pages.html altcha challenge.openapi.json passkey.js
@@ -98,10 +98,10 @@ type Service struct {
 }
 
 // ConsoleClientID is the built-in Application the admin console signs in as.
-const ConsoleClientID = "stars-auth-console"
+const ConsoleClientID = "polaris-console"
 
 // AccountClientID is the built-in Application the account center signs in as.
-const AccountClientID = "stars-auth-account"
+const AccountClientID = "polaris-account"
 
 // New builds the provider and points the redirect URIs of the console and
 // the account center at issuer, which only the running instance knows.

@@ -28,20 +28,20 @@ import (
 	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/zibyn/stars-auth/internal/account"
-	"github.com/zibyn/stars-auth/internal/channel"
-	_ "github.com/zibyn/stars-auth/internal/channel/webhook"
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/db"
-	"github.com/zibyn/stars-auth/internal/db/dbtest"
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
-	"github.com/zibyn/stars-auth/internal/identity"
-	"github.com/zibyn/stars-auth/internal/login"
-	"github.com/zibyn/stars-auth/internal/oidcstore"
-	"github.com/zibyn/stars-auth/internal/provider"
-	"github.com/zibyn/stars-auth/internal/provider/apple/appletest"
-	"github.com/zibyn/stars-auth/internal/server"
-	"github.com/zibyn/stars-auth/internal/webhook"
+	"github.com/zibyn/polaris/internal/account"
+	"github.com/zibyn/polaris/internal/channel"
+	_ "github.com/zibyn/polaris/internal/channel/webhook"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
+	"github.com/zibyn/polaris/internal/db/dbtest"
+	"github.com/zibyn/polaris/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/login"
+	"github.com/zibyn/polaris/internal/oidcstore"
+	"github.com/zibyn/polaris/internal/provider"
+	"github.com/zibyn/polaris/internal/provider/apple/appletest"
+	"github.com/zibyn/polaris/internal/server"
+	"github.com/zibyn/polaris/internal/webhook"
 )
 
 type env struct {
@@ -143,7 +143,7 @@ func (e *env) signIn(sub string, ago time.Duration) string {
 	idHash := sha256.Sum256([]byte(cookie))
 	if err := e.pool.QueryRow(context.Background(), `
 		INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr)
-		VALUES ($3, 'stars-auth-account', $1, now() - $2 * interval '1 second', '{sms}') RETURNING id`,
+		VALUES ($3, 'polaris-account', $1, now() - $2 * interval '1 second', '{sms}') RETURNING id`,
 		sub, ago.Seconds(), idHash[:]).Scan(&sid); err != nil {
 		e.t.Fatal(err)
 	}

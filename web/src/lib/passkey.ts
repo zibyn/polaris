@@ -6,7 +6,7 @@
 
 declare global {
 	interface Window {
-		stars: {
+		polaris: {
 			b64url: {
 				encode(buf: ArrayBuffer | Uint8Array): string;
 				decode(s: string): Uint8Array<ArrayBuffer>;
@@ -75,13 +75,13 @@ export type AssertionResponse = {
 // passkeySupported is whether this browser can make one at all.
 export const passkeySupported = typeof PublicKeyCredential !== "undefined";
 
-let b64urlModule: Promise<Window["stars"]["b64url"]> | null = null;
+let b64urlModule: Promise<Window["polaris"]["b64url"]> | null = null;
 
-function loadB64url(): Promise<Window["stars"]["b64url"]> {
+function loadB64url(): Promise<Window["polaris"]["b64url"]> {
 	b64urlModule ??= new Promise((resolve, reject) => {
 		const s = document.createElement("script");
 		s.src = "/login/passkey.js";
-		s.onload = () => resolve(window.stars.b64url);
+		s.onload = () => resolve(window.polaris.b64url);
 		s.onerror = () => {
 			b64urlModule = null; // a retry gets another chance
 			reject(new Error("base64url 模块加载失败"));

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/oidctest"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/oidctest"
 )
 
 func TestValidatePoP_NoConfirmation(t *testing.T) {

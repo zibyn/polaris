@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
 
 // TestResponseTypeContains verifies that ResponseType.Contains correctly

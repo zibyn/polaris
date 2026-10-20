@@ -16,14 +16,14 @@ curl -X POST "$ISSUER/v1/management/applications" \
     "type": "m2m",
     "settings": {
       "name": "部署脚本",
-      "defaultApi": "urn:stars-auth:management-api"
+      "defaultApi": "urn:polaris:management-api"
     }
   }'
 ```
 
 - 需要 `applications:write`。管理员在管理端登录后拿到的 access token 也能调这个接口。
 - 响应里的 `secret` 是它的 client secret,**只回显这一次**,记下来。丢了用 `POST /applications/{clientId}/secret` 换一把新的。
-- `urn:stars-auth:management-api` 是内置 Management API 的标识符,也是它签发的 access token 的 `aud`。
+- `urn:polaris:management-api` 是内置 Management API 的标识符,也是它签发的 access token 的 `aud`。
 - 也可以在管理端「应用」列表里用「后端服务(M2M)」卡片创建,再回来分配角色。
 
 再给它分配 Role。它必须在 Management API 上持有至少一个 Role,否则任何接口(包括 `GET /me`)都返回 `403`:
@@ -127,4 +127,4 @@ curl -X DELETE "$ISSUER/v1/management/users/$SUB/invite" -H "Authorization: Bear
 
 ## 版本与兼容
 
-**0.x 期间不承诺兼容**:接口、请求体、Permission 都可能在任何小版本里变。升级前先看 [Releases](https://github.com/zibyn/stars-auth/releases) 的 changelog。1.0 起接口冻结。
+**0.x 期间不承诺兼容**:接口、请求体、Permission 都可能在任何小版本里变。升级前先看 [Releases](https://github.com/zibyn/polaris/releases) 的 changelog。1.0 起接口冻结。

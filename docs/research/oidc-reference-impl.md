@@ -1,7 +1,7 @@
 # OIDC 协议层参考实现选型：并入 `luikyv/go-oidc`，还是以 panva `oidc-provider` 为蓝本自写
 
 - 调研日期：2026-10-06
-- 对应 issue：[#16](https://github.com/zibyn/stars-auth/issues/16)（map：#1）
+- 对应 issue：[#16](https://github.com/zibyn/polaris/issues/16)（map：#1）
 - 背景：[ADR 0001](../adr/0001-self-owned-oidc-layer.md)。协议层是自有代码，从一份已获认证的实现起步；必须通过 Basic OP + Config OP 认证，RP-Initiated Logout 可选；JOSE 与密码学用成熟库；不引入 AGPL 代码。
 - 对照的版本：`luikyv/go-oidc` v0.25.0（main @ 2026-07-22），`panva/node-oidc-provider` v9.12.2（main @ 2026-10-01）。两个仓库都浅克隆到本地实测。
 - 写法约定：每条事实都附一手来源（仓库源码、GitHub API、openid.net、IETF datatracker）；我自己的判断标 **【推断】**；没能核实的标 **未验证**。

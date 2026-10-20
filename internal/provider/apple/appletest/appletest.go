@@ -21,7 +21,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 
-	"github.com/zibyn/stars-auth/internal/provider/apple"
+	"github.com/zibyn/polaris/internal/provider/apple"
 )
 
 const (

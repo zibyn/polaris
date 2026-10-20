@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
 
 var _ goidc.AuthManager = &Manager{}

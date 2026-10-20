@@ -5,9 +5,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/client"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/oidc"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/client"
+	"github.com/zibyn/polaris/internal/oidc/internal/oidc"
 )
 
 func generateClientCredentialsToken(ctx oidc.Context, req request) (response, error) {

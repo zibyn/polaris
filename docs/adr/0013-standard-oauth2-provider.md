@@ -12,7 +12,7 @@
 
 - 修订 ADR 0004:免写代码的路从两条(通用 OIDC Provider、Webhook Channel)变成三条,加上通用 OAuth2 Provider。
 - `docs/spec/architecture.md` 里"只接真正的 OIDC 上游……纯 OAuth2 服务(如 GitHub)不支持"的措辞作废。
-- **重新认证打了折扣**:OAuth2 没有 `prompt=login`、`max_age`,也不返回 `auth_time`,上游记着登录状态时不必再输密码。用它重新认证只证明"此刻仍控制这个外部账号"。我们接受这一点,而不是禁止它重新认证:偷到 Stars Session 的人多半也在同一浏览器里登着上游,禁止换来的安全有限,却会让只绑了 GitHub 的 User 连注销都做不了。
+- **重新认证打了折扣**:OAuth2 没有 `prompt=login`、`max_age`,也不返回 `auth_time`,上游记着登录状态时不必再输密码。用它重新认证只证明"此刻仍控制这个外部账号"。我们接受这一点,而不是禁止它重新认证:偷到 Polaris Session 的人多半也在同一浏览器里登着上游,禁止换来的安全有限,却会让只绑了 GitHub 的 User 连注销都做不了。
 - 上游没有 discovery,无从得知 token 端点要哪种 client 认证,固定用 `client_secret_post`;请求都带 `Accept: application/json`。用户 ID 字段只取 userinfo 的顶层字段,数字按原样转成字符串。
 - 非 OIDC 上游拿不到邮箱;而认证结果里的邮箱本来就被丢弃(`provider.Identity` 只有 Subject / AuthTime / Token),所以不受影响。
 - 通用 OAuth2 只做重定向型,不做客户端令牌型。

@@ -59,7 +59,7 @@ test("each platform gets its own integration code", () => {
 		redirectUri: "https://shop.example.com/callback",
 	};
 	const code = (p: Platform) => snippet(p, at).code;
-	assert.match(code("app"), /StarsAuthConfig\(/);
+	assert.match(code("app"), /PolarisConfig\(/);
 	assert.match(
 		code("mini"),
 		/POST https:\/\/auth\.example\.com\/v1\/auth\/challenge/,
@@ -71,7 +71,7 @@ test("each platform gets its own integration code", () => {
 	);
 	assert.match(code("web"), /client_secret/);
 	assert.match(code("m2m"), /grant_type=client_credentials/);
-	assert.match(code("m2m"), /-u "app_1:\$STARS_CLIENT_SECRET"/);
+	assert.match(code("m2m"), /-u "app_1:\$POLARIS_CLIENT_SECRET"/);
 	for (const p of ["app", "mini", "spa", "web", "m2m"] as const) {
 		assert.match(code(p), /app_1/);
 	}

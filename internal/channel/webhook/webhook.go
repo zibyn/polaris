@@ -2,7 +2,7 @@
 // for: it POSTs {"to", "code"} to the admin's URL, or {"to", "link"} for a
 // 注册邀请, signed with a shared secret.
 //
-// X-Stars-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>
+// X-Polaris-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>
 //
 // The receiver should reject stale t to stop replays.
 package webhook
@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/channel"
+	"github.com/zibyn/polaris/internal/channel"
 )
 
 func init() {
@@ -31,7 +31,7 @@ func init() {
 		Fields: []channel.Field{
 			{Key: "url", Label: "URL", Type: "url", Help: `收到 POST {"to", "code"}(注册邀请为 {"to", "link"}),返回 2xx 即视为送达`},
 			{Key: "secret", Label: "签名密钥", Type: "text", Secret: true,
-				Help: "X-Stars-Signature: t=<秒>,v1=<hex HMAC-SHA256(密钥, \"<t>.<body>\")>"},
+				Help: "X-Polaris-Signature: t=<秒>,v1=<hex HMAC-SHA256(密钥, \"<t>.<body>\")>"},
 		},
 		New: func(c map[string]string) (channel.Channel, error) {
 			return &webhook{url: c["url"], secret: []byte(c["secret"])}, nil
@@ -69,7 +69,7 @@ func (w *webhook) post(ctx context.Context, payload map[string]string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Stars-Signature", "t="+t+",v1="+hex.EncodeToString(mac.Sum(nil)))
+	req.Header.Set("X-Polaris-Signature", "t="+t+",v1="+hex.EncodeToString(mac.Sum(nil)))
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

@@ -85,8 +85,8 @@ export function snippet(
 		case "app":
 			return {
 				help: "在 App 里接入 KMP SDK。登录界面由你的 App 自己实现，SDK 负责发验证码、校验和换取令牌。",
-				code: `StarsAuth(
-  StarsAuthConfig(
+				code: `Polaris(
+  PolarisConfig(
     issuer = "${issuer}",
     clientId = "${clientId}",
   ),
@@ -120,7 +120,7 @@ client_secret = （刚才保存的那个）`,
 		case "m2m":
 			return {
 				help: "用 client_credentials 换令牌：client_id 和 client_secret 走 HTTP Basic 认证。令牌 10 分钟过期，没有 refresh token，过期就再换一张。",
-				code: `curl -u "${clientId}:$STARS_CLIENT_SECRET" \\
+				code: `curl -u "${clientId}:$POLARIS_CLIENT_SECRET" \\
   -d grant_type=client_credentials \\
   ${issuer}/token`,
 			};

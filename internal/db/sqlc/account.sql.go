@@ -116,7 +116,7 @@ func (q *Queries) LoginPaths(ctx context.Context, userID string) (LoginPathsRow,
 
 const mustKeepPasskey = `-- name: MustKeepPasskey :one
 SELECT (s.passkey_login AND s.admins_need_two_factor AND NOT totp_confirmed($1) AND EXISTS (
-    SELECT 1 FROM user_roles r WHERE r.user_id = $1 AND r.api = 'urn:stars-auth:management-api')
+    SELECT 1 FROM user_roles r WHERE r.user_id = $1 AND r.api = 'urn:polaris:management-api')
     AND EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = $1 AND p.id = $2)
     AND NOT EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = $1 AND p.id <> $2))::boolean AS must
 FROM settings s
@@ -139,7 +139,7 @@ func (q *Queries) MustKeepPasskey(ctx context.Context, arg MustKeepPasskeyParams
 
 const mustKeepTwoFactor = `-- name: MustKeepTwoFactor :one
 SELECT (s.admins_need_two_factor AND NOT (s.passkey_login AND has_passkey($1)) AND EXISTS (
-    SELECT 1 FROM user_roles r WHERE r.user_id = $1 AND r.api = 'urn:stars-auth:management-api'))::boolean AS must
+    SELECT 1 FROM user_roles r WHERE r.user_id = $1 AND r.api = 'urn:polaris:management-api'))::boolean AS must
 FROM settings s
 `
 

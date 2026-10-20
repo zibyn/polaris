@@ -6,7 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/zibyn/stars-auth/internal/passkey"
+	"github.com/zibyn/polaris/internal/passkey"
 )
 
 type listPasskeysOutput struct {

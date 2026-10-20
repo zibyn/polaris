@@ -1,4 +1,4 @@
-package com.starsdom.auth
+package com.zibyn.polaris
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
@@ -16,7 +16,7 @@ import javax.crypto.spec.GCMParameterSpec
  * be decrypted (the key was wiped, e.g. by a backup restored to another
  * device) reads as signed out.
  */
-public class KeystoreTokenStore(context: Context, private val alias: String = "stars-auth-tokens") : TokenStore {
+public class KeystoreTokenStore(context: Context, private val alias: String = "polaris-tokens") : TokenStore {
   private val prefs = context.getSharedPreferences(alias, Context.MODE_PRIVATE)
 
   override fun read(): String? {

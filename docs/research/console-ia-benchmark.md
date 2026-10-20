@@ -1,7 +1,7 @@
 # 主流认证平台管理端的信息架构与引导方式
 
 - 调研日期：2026-10-07
-- 问题（[#41](https://github.com/zibyn/stars-auth/issues/41)，属于地图 [#40](https://github.com/zibyn/stars-auth/issues/40)）：Logto、Auth0、Authing、Clerk、Zitadel 的管理端各自是怎么做的？具体看这几项：
+- 问题（[#41](https://github.com/zibyn/polaris/issues/41)，属于地图 [#40](https://github.com/zibyn/polaris/issues/40)）：Logto、Auth0、Authing、Clerk、Zitadel 的管理端各自是怎么做的？具体看这几项：
   - 顶层导航怎么分组；Application、API、登录方式、通道、安全策略分别放在哪一层；
   - 创建 Application 时是否按类型分步引导；
   - 技术字段怎么命名、怎么解释；

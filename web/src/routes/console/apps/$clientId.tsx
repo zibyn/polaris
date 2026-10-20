@@ -783,7 +783,7 @@ function WebhookTab({ app, editable }: TabProps) {
 								{...control}
 								type="url"
 								className="font-mono"
-								placeholder="https://shop.example.com/hooks/stars"
+								placeholder="https://shop.example.com/hooks/polaris"
 							/>
 						)}
 					</FormField>

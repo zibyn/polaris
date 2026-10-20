@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/channel"
-	"github.com/zibyn/stars-auth/internal/provider"
+	"github.com/zibyn/polaris/internal/channel"
+	"github.com/zibyn/polaris/internal/provider"
 )
 
 func init() {

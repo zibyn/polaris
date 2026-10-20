@@ -12,9 +12,9 @@ var key = base64.StdEncoding.EncodeToString(make([]byte, 32))
 
 func env(m map[string]string) func(string) string {
 	base := map[string]string{
-		"STARS_AUTH_DATABASE_URL": "postgres://x",
-		"STARS_AUTH_MASTER_KEY":   key,
-		"STARS_AUTH_ISSUER":       "https://auth.example.com",
+		"POLARIS_DATABASE_URL": "postgres://x",
+		"POLARIS_MASTER_KEY":   key,
+		"POLARIS_ISSUER":       "https://auth.example.com",
 	}
 	for k, v := range m {
 		base[k] = v
@@ -34,17 +34,17 @@ func TestLoadDefaults(t *testing.T) {
 
 func TestLoadRejects(t *testing.T) {
 	for name, m := range map[string]map[string]string{
-		"http issuer":     {"STARS_AUTH_ISSUER": "http://auth.example.com"},
-		"issuer query":    {"STARS_AUTH_ISSUER": "https://auth.example.com?x=1"},
-		"issuer fragment": {"STARS_AUTH_ISSUER": "https://auth.example.com#x"},
-		"issuer userinfo": {"STARS_AUTH_ISSUER": "https://u:p@auth.example.com"},
-		"no issuer":       {"STARS_AUTH_ISSUER": ""},
-		"no database":     {"STARS_AUTH_DATABASE_URL": ""},
-		"no key":          {"STARS_AUTH_MASTER_KEY": ""},
-		"short key":       {"STARS_AUTH_MASTER_KEY": base64.StdEncoding.EncodeToString(make([]byte, 16))},
-		"bad base64":      {"STARS_AUTH_MASTER_KEY": "!!"},
-		"both keys":       {"STARS_AUTH_MASTER_KEY_FILE": "/k"},
-		"bad proxy":       {"STARS_AUTH_TRUSTED_PROXIES": "10.0.0.0/8,nope"},
+		"http issuer":     {"POLARIS_ISSUER": "http://auth.example.com"},
+		"issuer query":    {"POLARIS_ISSUER": "https://auth.example.com?x=1"},
+		"issuer fragment": {"POLARIS_ISSUER": "https://auth.example.com#x"},
+		"issuer userinfo": {"POLARIS_ISSUER": "https://u:p@auth.example.com"},
+		"no issuer":       {"POLARIS_ISSUER": ""},
+		"no database":     {"POLARIS_DATABASE_URL": ""},
+		"no key":          {"POLARIS_MASTER_KEY": ""},
+		"short key":       {"POLARIS_MASTER_KEY": base64.StdEncoding.EncodeToString(make([]byte, 16))},
+		"bad base64":      {"POLARIS_MASTER_KEY": "!!"},
+		"both keys":       {"POLARIS_MASTER_KEY_FILE": "/k"},
+		"bad proxy":       {"POLARIS_TRUSTED_PROXIES": "10.0.0.0/8,nope"},
 	} {
 		if _, err := Load(env(m)); err == nil {
 			t.Errorf("%s: want error", name)
@@ -58,9 +58,9 @@ func TestLoadKeyFileAndProxies(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, err := Load(env(map[string]string{
-		"STARS_AUTH_MASTER_KEY":      "",
-		"STARS_AUTH_MASTER_KEY_FILE": f,
-		"STARS_AUTH_TRUSTED_PROXIES": "10.0.0.0/8, 192.168.1.1 ,::1",
+		"POLARIS_MASTER_KEY":      "",
+		"POLARIS_MASTER_KEY_FILE": f,
+		"POLARIS_TRUSTED_PROXIES": "10.0.0.0/8, 192.168.1.1 ,::1",
 	}))
 	if err != nil {
 		t.Fatal(err)

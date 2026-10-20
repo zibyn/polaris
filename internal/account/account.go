@@ -20,15 +20,15 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/zibyn/stars-auth/internal/channel"
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
-	"github.com/zibyn/stars-auth/internal/identity"
-	"github.com/zibyn/stars-auth/internal/oidcstore"
-	"github.com/zibyn/stars-auth/internal/otp"
-	"github.com/zibyn/stars-auth/internal/passkey"
-	"github.com/zibyn/stars-auth/internal/provider"
-	"github.com/zibyn/stars-auth/internal/twofactor"
+	"github.com/zibyn/polaris/internal/channel"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/oidcstore"
+	"github.com/zibyn/polaris/internal/otp"
+	"github.com/zibyn/polaris/internal/passkey"
+	"github.com/zibyn/polaris/internal/provider"
+	"github.com/zibyn/polaris/internal/twofactor"
 )
 
 // Prefix is where the Account API lives; its OpenAPI document is at

@@ -10,8 +10,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	oidcop "github.com/zibyn/stars-auth/internal/oidc/provider"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	oidcop "github.com/zibyn/polaris/internal/oidc/provider"
 )
 
 // Upstream signs whoever the browser is in as Sub, with no questions asked.
@@ -25,7 +25,7 @@ type Upstream struct {
 	Last goidc.AuthorizationParameters
 }
 
-// Start runs an Upstream with the client "stars" (secret "shh") that may
+// Start runs an Upstream with the client "upstream" (secret "shh") that may
 // redirect to redirectURI.
 func Start(t *testing.T, redirectURI string) *Upstream {
 	t.Helper()
@@ -43,7 +43,7 @@ func Start(t *testing.T, redirectURI string) *Upstream {
 			},
 			IDTokenAlgs: []goidc.SignatureAlgorithm{goidc.SigAlgRS256},
 		},
-		oidcop.WithStaticClients(&goidc.Client{ID: "stars", Secret: "shh", ClientMeta: goidc.ClientMeta{
+		oidcop.WithStaticClients(&goidc.Client{ID: "upstream", Secret: "shh", ClientMeta: goidc.ClientMeta{
 			RedirectURIs: []string{redirectURI}, TokenAuthnMethod: goidc.AuthnMethodSecretBasic,
 			GrantTypes: []goidc.GrantType{goidc.GrantAuthorizationCode}, ResponseTypes: []goidc.ResponseType{goidc.ResponseTypeCode},
 			ScopeIDs: "openid",

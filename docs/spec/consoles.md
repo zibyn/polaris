@@ -63,7 +63,7 @@
   - **登录**:回调地址;「高级」折叠区里放退出后跳转地址、「闲置多久需重新登录」、「允许 App 保持登录」。无后端应用多一组「原生 App 关联」:iOS 的 Team ID + Bundle ID、Android 的包名 + SHA-256 签名指纹,各按行登记在文本框里,可以增删;保存后认证服务据此生成 `/.well-known/` 关联文件(见 [authentication.md](authentication.md#密码管理器适配)),iOS 和 Android 就允许这些 App 使用这个域名的通行密钥和密码自动填充。有后端应用不显示这一组。后端服务不登录,没有这个标签。
   - **角色**(后端服务):勾选它在其默认 API 资源上持有的 Role,它换到的 access token 带上这些角色与权限(见 [rbac.md](rbac.md))。默认 API 资源是管理 API 时,需要 `admin-roles:assign`;该 API 资源还没有角色时,链到 API 资源详情去建。
   - **用户删除通知**:通知地址与 Webhook 密钥,有一句导语说明用途。
-- 样页(应用详情的全部改写文案)见原型 [`prototype/console-copy`](https://github.com/zibyn/stars-auth/blob/prototype/console-copy/prototypes/console-copy/index.html) 的 A 版,以其 `NEW` 对象为准;删除区用 C 版的红框独立区块。
+- 样页(应用详情的全部改写文案)见原型 [`prototype/console-copy`](https://github.com/zibyn/polaris/blob/prototype/console-copy/prototypes/console-copy/index.html) 的 A 版,以其 `NEW` 对象为准;删除区用 C 版的红框独立区块。
 
 #### API 资源
 
@@ -157,7 +157,7 @@ Passkey 开关默认打开,关它时若自己只剩 Passkey(既没开两步验�
 
 ### 视觉规范
 
-管理端、账号中心和登录页共用一套视觉语言:Stars 品牌,取"满天繁星"之意,配色名「星云」。Stars 是一组产品的总品牌,认证服务是它们共用的底座,所以这套规范也是以后各产品的起点。原型(一次性)见分支 `prototype/console-style`,三轮依次为整体风格、品牌表达、配色,选中的是 `stars-palette` 的方案 D。本次只做浅色。
+管理端、账号中心和登录页共用一套视觉语言:Polaris 品牌,取北极星之意,配色名「星云」。Polaris 是各 Application 共用的身份底座,这套规范也是以后界面的起点。原型(一次性)见分支 `prototype/console-style`,三轮依次为整体风格、品牌表达、配色,选中的是方案 D。本次只做浅色。
 
 **一体感来自一致,而不是装饰。**下面每一条都是能逐页检查的规则。
 
@@ -184,7 +184,7 @@ Passkey 开关默认打开,关它时若自己只剩 Passkey(既没开两步验�
 
 #### 外壳与分组
 
-- **外壳**:画布底色,左侧导航(星标 + 「Stars / Auth」字样,下列七个分组,底部是当前管理员),右侧是**一整块**白色面板:圆角 16px,1px 分隔线描边,极淡阴影。导航顶部的产品字样为以后切换其他 Stars 产品留位置,现在不可点。
+- **外壳**:画布底色,左侧导航(星标 + 「Polaris / Auth」字样,下列七个分组,底部是当前管理员),右侧是**一整块**白色面板:圆角 16px,1px 分隔线描边,极淡阴影。导航顶部的产品字样为以后切换其他产品留位置,现在不可点。
 - **页头**:每个页面都用同一个页头,依次为:
   1. **面包屑**:在面板顶部,13px 次要色,每页都有,只到页面这一级,不含 Tab。列表页只有一级(「应用」),详情页两级(「应用 / 订单 App」),最后一级是当前页、不可点。由路由的 `staticData.crumb` 给出,布局路由收集后渲染。
   2. **标题行**:与面包屑相隔 24px。标题 24px 半粗,后接徽章(类型、内置、状态),操作按钮靠右。
@@ -213,9 +213,9 @@ Passkey 开关默认打开,关它时若自己只剩 Passkey(既没开两步验�
 登录、绑定、协议同意、首次引导、退出登录、**邀请接受页**(`/invite`,设完密码当场登录,再回到 Application 就不用登了)等页面(`internal/login/pages.html`)用同一套 token。
 
 - 宽屏左右两栏:左半是品牌区,右半是表单,最宽 340px。窄屏只留表单。
-- 品牌区是「星云」:主色浅底上叠两团径向渐变光晕(星云色、星标色),撒星标色星点和几颗四角星,左上角是星标和「Stars」。原型(一次性)见分支 `prototype/login-layout`,选中的是方案 D。
-- 表单区以 Application 为主角:标题「登录」,下一行「继续前往 <Application 名>」。Stars 只出现在星标和底部的「由 Stars 提供安全登录」。
-- 「是否对外宣传统一的 Stars 账号」尚未决定,所以品牌区**不写**口号,只放标志、星云和星点。
+- 品牌区是「星云」:主色浅底上叠两团径向渐变光晕(星云色、星标色),撒星标色星点和几颗四角星,左上角是星标和「Polaris」。原型(一次性)见分支 `prototype/login-layout`,选中的是方案 D。
+- 表单区以 Application 为主角:标题「登录」,下一行「继续前往 <Application 名>」。Polaris 只出现在星标和底部的「由 Polaris 提供安全登录」。
+- 「是否对外宣传统一的 Polaris 账号」尚未决定,所以品牌区**不写**口号,只放标志、星云和星点。
 - **先输标识**:任何时候页面上只有一套表单。
   1. 第一步只有一个标识输入框、协议勾选和「继续」,下面是「使用密码登录」链接。
   2. 手机号或邮箱:「继续」时才运行 PoW,发码后进入填码页。用户名:不发码、不运行 PoW,直接进入密码步骤。
@@ -228,7 +228,7 @@ Passkey 开关默认打开,关它时若自己只剩 Passkey(既没开两步验�
 
 ### 创建应用与接入清单
 
-原型见 [`prototype/app-create`](https://github.com/zibyn/stars-auth/blob/prototype/app-create/prototypes/app-create/index.html):创建页取 A 版,接入清单取 C 版。
+原型见 [`prototype/app-create`](https://github.com/zibyn/polaris/blob/prototype/app-create/prototypes/app-create/index.html):创建页取 A 版,接入清单取 C 版。
 
 **创建**
 

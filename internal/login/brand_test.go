@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/zibyn/stars-auth/internal/provider/github"
-	_ "github.com/zibyn/stars-auth/internal/provider/google"
-	_ "github.com/zibyn/stars-auth/internal/provider/microsoft"
+	_ "github.com/zibyn/polaris/internal/provider/github"
+	_ "github.com/zibyn/polaris/internal/provider/google"
+	_ "github.com/zibyn/polaris/internal/provider/microsoft"
 )
 
 // The named providers get a button of their own, as each one's brand

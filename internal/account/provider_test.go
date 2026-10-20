@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/channel"
-	"github.com/zibyn/stars-auth/internal/provider"
-	_ "github.com/zibyn/stars-auth/internal/provider/oauth2"
-	"github.com/zibyn/stars-auth/internal/provider/oauth2/oauth2test"
-	_ "github.com/zibyn/stars-auth/internal/provider/oidc"
-	"github.com/zibyn/stars-auth/internal/provider/providertest"
+	"github.com/zibyn/polaris/internal/channel"
+	"github.com/zibyn/polaris/internal/provider"
+	_ "github.com/zibyn/polaris/internal/provider/oauth2"
+	"github.com/zibyn/polaris/internal/provider/oauth2/oauth2test"
+	_ "github.com/zibyn/polaris/internal/provider/oidc"
+	"github.com/zibyn/polaris/internal/provider/providertest"
 )
 
 // addGoogle adds an in-process upstream as the Provider "google".
@@ -24,7 +24,7 @@ func (e *env) addGoogle() *providertest.Upstream {
 	e.t.Helper()
 	up := providertest.Start(e.t, provider.CallbackURL(e.issuer, "google"))
 	if err := provider.NewStore(e.pool, e.keyring).Create(context.Background(), "google", "oidc", "Google",
-		map[string]string{"issuer": up.Issuer, "client_id": "stars", "client_secret": "shh"}); err != nil {
+		map[string]string{"issuer": up.Issuer, "client_id": "upstream", "client_secret": "shh"}); err != nil {
 		e.t.Fatal(err)
 	}
 	return up

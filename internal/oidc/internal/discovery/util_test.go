@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/oidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/oidctest"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/oidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/oidctest"
 )
 
 func TestOIDCConfig(t *testing.T) {

@@ -15,11 +15,11 @@ import (
 
 	altcha "github.com/altcha-org/altcha-lib-go/v2"
 
-	_ "github.com/zibyn/stars-auth/internal/channel/webhook"
-	"github.com/zibyn/stars-auth/internal/identity"
-	"github.com/zibyn/stars-auth/internal/login"
-	"github.com/zibyn/stars-auth/internal/otp"
-	"github.com/zibyn/stars-auth/internal/pow"
+	_ "github.com/zibyn/polaris/internal/channel/webhook"
+	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/login"
+	"github.com/zibyn/polaris/internal/otp"
+	"github.com/zibyn/polaris/internal/pow"
 )
 
 // inbox is the Webhook Channel's receiver: the last code sent to each

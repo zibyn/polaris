@@ -3,7 +3,7 @@ package authorize
 import (
 	"encoding/json"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
 
 type redirectionError struct {

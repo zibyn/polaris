@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/oidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/strutil"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/oidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/strutil"
 )
 
 func redirectError(ctx oidc.Context, err error, c *goidc.Client) error {

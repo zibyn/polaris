@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
-	"github.com/zibyn/stars-auth/internal/provider"
-	"github.com/zibyn/stars-auth/internal/provider/apple/appletest"
+	"github.com/zibyn/polaris/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/provider"
+	"github.com/zibyn/polaris/internal/provider/apple/appletest"
 )
 
 // addApple adds a fake Apple as the Provider "apple".

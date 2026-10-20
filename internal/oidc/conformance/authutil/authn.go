@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/zibyn/stars-auth/internal/oidc/conformance/ui"
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/timeutil"
+	"github.com/zibyn/polaris/internal/oidc/conformance/ui"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/timeutil"
 )
 
 func Policy() goidc.AuthnPolicy {

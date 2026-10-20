@@ -13,12 +13,12 @@ import (
 )
 
 // Fresh creates an empty database named after the test on
-// STARS_AUTH_TEST_DATABASE_URL's server, or skips the test when it is unset.
+// POLARIS_TEST_DATABASE_URL's server, or skips the test when it is unset.
 func Fresh(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	url := os.Getenv("STARS_AUTH_TEST_DATABASE_URL")
+	url := os.Getenv("POLARIS_TEST_DATABASE_URL")
 	if url == "" {
-		t.Skip("STARS_AUTH_TEST_DATABASE_URL not set")
+		t.Skip("POLARIS_TEST_DATABASE_URL not set")
 	}
 	ctx := context.Background()
 	admin, err := pgx.Connect(ctx, url)

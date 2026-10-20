@@ -94,7 +94,7 @@ test("creating a User needs 8 characters of password", () => {
 });
 
 const manager = {
-	api: "urn:stars-auth:management-api",
+	api: "urn:polaris:management-api",
 	key: "admin",
 	name: "管理员",
 };

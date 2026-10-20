@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/identity"
+	"github.com/zibyn/polaris/internal/identity"
 )
 
 type inviteForm struct {

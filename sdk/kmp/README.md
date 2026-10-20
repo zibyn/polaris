@@ -9,10 +9,10 @@ SDK 0.x 支持服务端 API v1。
 Android / KMP:
 
 ```kotlin
-implementation("com.starsdom.auth:stars-auth:0.1.0")
+implementation("com.zibyn.polaris:polaris:0.1.0")
 ```
 
-iOS:KMP 工程直接依赖;纯 Swift 工程用 `./gradlew assembleStarsAuthXCFramework` 产出的 `StarsAuth.xcframework`。
+iOS:KMP 工程直接依赖;纯 Swift 工程用 `./gradlew assemblePolarisXCFramework` 产出的 `Polaris.xcframework`。
 
 ## 接入
 
@@ -20,9 +20,9 @@ iOS:KMP 工程直接依赖;纯 Swift 工程用 `./gradlew assembleStarsAuthXCFra
 
 ```kotlin
 // Android
-val auth = StarsAuth(StarsAuthConfig("https://auth.example.com", clientId = "nav-app"), KeystoreTokenStore(context))
+val auth = Polaris(PolarisConfig("https://auth.example.com", clientId = "nav-app"), KeystoreTokenStore(context))
 // iOS (Kotlin);Swift 中同名
-val auth = StarsAuth(StarsAuthConfig("https://auth.example.com", clientId = "nav-app"), KeychainTokenStore())
+val auth = Polaris(PolarisConfig("https://auth.example.com", clientId = "nav-app"), KeychainTokenStore())
 ```
 
 整个 App 只建一个实例:single-flight 刷新只在同一实例内成立。
@@ -57,7 +57,7 @@ let step = try await auth.signInWithProvider(provider: "apple", authorizationCod
 
 结果同验证码登录。抛出 `error == "invalid_grant"` 表示 Apple 没认这个 code(用过、过期或不属于这个 App),让 User 重新点一次 Apple 登录。
 
-出错抛 `StarsAuthException`:`error == "invalid_request"` 时 `description` 可直接展示(验证码错误、发送太频繁等);`error == StarsAuthException.UNSUPPORTED_STEP` 表示服务端要求了这个 SDK 版本不认识的步骤,提示 User 升级 App。
+出错抛 `PolarisException`:`error == "invalid_request"` 时 `description` 可直接展示(验证码错误、发送太频繁等);`error == PolarisException.UNSUPPORTED_STEP` 表示服务端要求了这个 SDK 版本不认识的步骤,提示 User 升级 App。
 
 ### 调用业务后端
 
@@ -65,18 +65,18 @@ let step = try await auth.signInWithProvider(provider: "apple", authorizationCod
 client.get(url) { bearerAuth(auth.accessToken()) }
 ```
 
-`accessToken()` 自动刷新,并发调用只刷新一次。抛出 `error == StarsAuthException.SIGNED_OUT` 时回到登录页。
+`accessToken()` 自动刷新,并发调用只刷新一次。抛出 `error == PolarisException.SIGNED_OUT` 时回到登录页。
 
 ### Passkey
 
-系统的凭证界面(Android Credential Manager / iOS ASAuthorization)由 SDK 弹,App 不带界面,只把 `PasskeyPrompt` 交给 `StarsAuth`:
+系统的凭证界面(Android Credential Manager / iOS ASAuthorization)由 SDK 弹,App 不带界面,只把 `PasskeyPrompt` 交给 `Polaris`:
 
 ```kotlin
 // Android:传 Activity 的 context,系统界面弹在它上面
 val prompt = passkeyPrompt(this)
 // iOS
 val prompt = passkeyPrompt()
-val auth = StarsAuth(config, store, passkeys = prompt)
+val auth = Polaris(config, store, passkeys = prompt)
 ```
 
 前提(缺一不可,否则系统界面不会出现):
@@ -112,7 +112,7 @@ val passkey = auth.addPasskey()                        // 系统弹出「创建 
 ### 登出与注销
 
 - 登出:`auth.signOut()`,离线也会清空本地令牌。
-- 注销(应用商店要求 App 内提供入口):二次确认后让 User 重新登录一次,再调 `auth.deleteAccount()`;超过 10 分钟未登录会抛 `StarsAuthException.REAUTHENTICATE`。
+- 注销(应用商店要求 App 内提供入口):二次确认后让 User 重新登录一次,再调 `auth.deleteAccount()`;超过 10 分钟未登录会抛 `PolarisException.REAUTHENTICATE`。
 
 ### 自动填充验证码
 
@@ -122,7 +122,7 @@ val passkey = auth.addPasskey()                        // 系统弹出「创建 
 
 ### 自定义存储
 
-实现 `TokenStore`(`read()` / `write(value)`,`null` 表示登出),传给 `StarsAuth`。
+实现 `TokenStore`(`read()` / `write(value)`,`null` 表示登出),传给 `Polaris`。
 
 ## 业务后端校验 access token
 

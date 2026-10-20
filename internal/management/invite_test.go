@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/channel"
-	"github.com/zibyn/stars-auth/internal/identity"
+	"github.com/zibyn/polaris/internal/channel"
+	"github.com/zibyn/polaris/internal/identity"
 )
 
 // outbox is a Webhook email Channel endpoint: it keeps the last 注册邀请 the

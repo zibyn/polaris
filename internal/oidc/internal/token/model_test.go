@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/oidctest"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/oidctest"
 )
 
 func TestNewGrant_NonExpiringRefreshToken(t *testing.T) {

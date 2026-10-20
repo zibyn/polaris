@@ -1,4 +1,4 @@
-package com.starsdom.auth
+package com.zibyn.polaris
 
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.CPointer
@@ -46,7 +46,7 @@ import platform.Security.kSecValueData
  * device.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-public class KeychainTokenStore(private val service: String = "com.starsdom.auth") : TokenStore {
+public class KeychainTokenStore(private val service: String = "com.zibyn.polaris") : TokenStore {
   override fun read(): String? = memScoped {
     val result = alloc<CFTypeRefVar>()
     val status = query(kSecReturnData to kCFBooleanTrue, kSecMatchLimit to kSecMatchLimitOne) { SecItemCopyMatching(it, result.ptr) }

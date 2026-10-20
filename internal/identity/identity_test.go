@@ -7,9 +7,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/db"
-	"github.com/zibyn/stars-auth/internal/db/dbtest"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
+	"github.com/zibyn/polaris/internal/db/dbtest"
 )
 
 func setup(t *testing.T) *Store {

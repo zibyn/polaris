@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/zibyn/stars-auth/internal/channel"
-	"github.com/zibyn/stars-auth/internal/provider"
-	"github.com/zibyn/stars-auth/internal/provider/oidc"
+	"github.com/zibyn/polaris/internal/channel"
+	"github.com/zibyn/polaris/internal/provider"
+	"github.com/zibyn/polaris/internal/provider/oidc"
 )
 
 // Endpoint is where Microsoft's endpoints live; tests point it at a fake.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/identity"
+	"github.com/zibyn/polaris/internal/identity"
 )
 
 // createPending makes a User the way an admin does (ADR 0016): an Identifier,

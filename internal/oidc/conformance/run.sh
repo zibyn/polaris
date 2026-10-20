@@ -18,7 +18,7 @@ export CS_DIR=$(realpath "${CS_DIR:-$root/conformance-suite}")
 export ISSUER=${ISSUER:-https://auth.localhost}
 out=$(realpath -m "${OUT_DIR:-$root/conformance-results}")
 mkdir -p "$out"
-compose=(docker compose -p stars-auth-conformance -f "$here/compose.yaml")
+compose=(docker compose -p polaris-conformance -f "$here/compose.yaml")
 
 wait_for() { # url
   for _ in $(seq 60); do
@@ -49,7 +49,7 @@ cp "$here/failures.json" "$here/skips.json" "$out/"
 
 # The runner talks to the suite over the compose network, so the host needs
 # no Python environment.
-docker run --rm --network stars-auth-conformance_default \
+docker run --rm --network polaris-conformance_default \
   -v "$CS_DIR/scripts:/scripts:ro" -v "$out:/out" -w /out \
   -e CONFORMANCE_SERVER=https://nginx:8443/ -e CONFORMANCE_DEV_MODE=1 \
   python:3.13-slim sh -c '

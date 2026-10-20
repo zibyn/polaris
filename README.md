@@ -1,20 +1,17 @@
 # Polaris
 
-[![ci](https://github.com/zibyn/stars-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/zibyn/stars-auth/actions/workflows/ci.yml)
-[![conformance](https://github.com/zibyn/stars-auth/actions/workflows/conformance.yml/badge.svg)](https://github.com/zibyn/stars-auth/actions/workflows/conformance.yml)
+[![ci](https://github.com/zibyn/polaris/actions/workflows/ci.yml/badge.svg)](https://github.com/zibyn/polaris/actions/workflows/ci.yml)
+[![conformance](https://github.com/zibyn/polaris/actions/workflows/conformance.yml/badge.svg)](https://github.com/zibyn/polaris/actions/workflows/conformance.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **Self-hosted, single-tenant identity for the apps you build.** One user pool, one
 sign-in for all of them — your applications stop implementing authentication
 themselves.
 
-Polaris is the shared identity foundation of the Stars family. It ships as a
+Polaris is the shared identity foundation for your applications. It ships as a
 single Go binary whose only external dependency is PostgreSQL, speaks OIDC to
 web apps, a direct API to native apps, and issues JWTs your backends verify
 locally with JWKS.
-
-> The binary, Go module, environment variables and images keep the original
-> `stars-auth` / `STARS_AUTH_*` names; Polaris is the product name.
 
 ## What you get
 
@@ -63,30 +60,30 @@ Production, with Caddy issuing HTTPS certificates:
 
 ```bash
 mkdir polaris && cd polaris
-curl -fLO https://raw.githubusercontent.com/zibyn/stars-auth/main/compose.yaml
-curl -fLO https://raw.githubusercontent.com/zibyn/stars-auth/main/Caddyfile
+curl -fLO https://raw.githubusercontent.com/zibyn/polaris/main/compose.yaml
+curl -fLO https://raw.githubusercontent.com/zibyn/polaris/main/Caddyfile
 
 cat > .env <<END
-STARS_AUTH_DOMAIN=auth.example.com
-STARS_AUTH_VERSION=0.1.0
-STARS_AUTH_MASTER_KEY=$(openssl rand -base64 32)
+POLARIS_DOMAIN=auth.example.com
+POLARIS_VERSION=0.1.0
+POLARIS_MASTER_KEY=$(openssl rand -base64 32)
 POSTGRES_PASSWORD=$(openssl rand -hex 16)
 END
 chmod 600 .env
 
 docker compose up -d
-docker compose logs stars-auth | grep setup
+docker compose logs polaris | grep setup
 # WARN no admin yet: open the setup page to create the owner url="https://auth.example.com/setup?token=..."
 ```
 
 Open the setup link and create the owner account. The setup page closes for
 good afterwards; the owner signs in to the console at `/console`.
 
-> **Back up `STARS_AUTH_MASTER_KEY`.** Signing keys, TOTP secrets and
+> **Back up `POLARIS_MASTER_KEY`.** Signing keys, TOTP secrets and
 > Channel/Provider secrets are encrypted with it. Lose it and no database
 > backup can recover them.
 
-Without a domain, leave `STARS_AUTH_DOMAIN` unset to try it on
+Without a domain, leave `POLARIS_DOMAIN` unset to try it on
 `https://localhost` with Caddy's local CA. Deployment, backups, upgrades and
 recovery are covered in [docs/deploy.md](docs/deploy.md).
 
@@ -98,16 +95,16 @@ docker run -d --name polaris-pg -e POSTGRES_PASSWORD=pg \
 
 cd web && pnpm install && pnpm dev          # Vite on :3000
 
-STARS_AUTH_DATABASE_URL=postgres://postgres:pg@127.0.0.1:5432/postgres?sslmode=disable \
-STARS_AUTH_MASTER_KEY=$(openssl rand -base64 32) \
-STARS_AUTH_ISSUER=https://localhost \
-STARS_AUTH_DEV_WEB_URL=http://localhost:3000 \
-  go run ./cmd/stars-auth                   # browse http://localhost:8080
+POLARIS_DATABASE_URL=postgres://postgres:pg@127.0.0.1:5432/postgres?sslmode=disable \
+POLARIS_MASTER_KEY=$(openssl rand -base64 32) \
+POLARIS_ISSUER=https://localhost \
+POLARIS_DEV_WEB_URL=http://localhost:3000 \
+  go run ./cmd/polaris                   # browse http://localhost:8080
 ```
 
-Without `STARS_AUTH_DEV_WEB_URL` the binary serves the SPA embedded from
+Without `POLARIS_DEV_WEB_URL` the binary serves the SPA embedded from
 `web/dist/client`, so run `pnpm build` before `go build`. Tests that need
-PostgreSQL run when `STARS_AUTH_TEST_DATABASE_URL` is set (for example
+PostgreSQL run when `POLARIS_TEST_DATABASE_URL` is set (for example
 `postgres://postgres:pg@127.0.0.1:5432/postgres?sslmode=disable`); they create
 their own databases.
 

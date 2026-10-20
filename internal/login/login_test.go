@@ -23,14 +23,14 @@ import (
 	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/zibyn/stars-auth/internal/channel"
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/db"
-	"github.com/zibyn/stars-auth/internal/db/dbtest"
-	"github.com/zibyn/stars-auth/internal/identity"
-	"github.com/zibyn/stars-auth/internal/login"
-	"github.com/zibyn/stars-auth/internal/oidcstore"
-	"github.com/zibyn/stars-auth/internal/server"
+	"github.com/zibyn/polaris/internal/channel"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
+	"github.com/zibyn/polaris/internal/db/dbtest"
+	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/login"
+	"github.com/zibyn/polaris/internal/oidcstore"
+	"github.com/zibyn/polaris/internal/server"
 )
 
 const (

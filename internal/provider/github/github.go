@@ -5,9 +5,9 @@
 package github
 
 import (
-	"github.com/zibyn/stars-auth/internal/channel"
-	"github.com/zibyn/stars-auth/internal/provider"
-	"github.com/zibyn/stars-auth/internal/provider/oauth2"
+	"github.com/zibyn/polaris/internal/channel"
+	"github.com/zibyn/polaris/internal/provider"
+	"github.com/zibyn/polaris/internal/provider/oauth2"
 )
 
 // Endpoint is where GitHub's OAuth endpoints live and API where its user

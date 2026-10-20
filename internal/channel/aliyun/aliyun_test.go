@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/channel"
+	"github.com/zibyn/polaris/internal/channel"
 )
 
 // The worked example from Aliyun's RPC signature (v1) documentation.

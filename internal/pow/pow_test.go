@@ -9,9 +9,9 @@ import (
 
 	altcha "github.com/altcha-org/altcha-lib-go/v2"
 
-	"github.com/zibyn/stars-auth/internal/db"
-	"github.com/zibyn/stars-auth/internal/db/dbtest"
-	"github.com/zibyn/stars-auth/internal/pow"
+	"github.com/zibyn/polaris/internal/db"
+	"github.com/zibyn/polaris/internal/db/dbtest"
+	"github.com/zibyn/polaris/internal/pow"
 )
 
 func TestVerify(t *testing.T) {

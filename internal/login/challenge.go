@@ -13,13 +13,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
-	"github.com/zibyn/stars-auth/internal/identity"
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidcstore"
-	"github.com/zibyn/stars-auth/internal/passkey"
-	"github.com/zibyn/stars-auth/internal/provider"
-	"github.com/zibyn/stars-auth/internal/twofactor"
+	"github.com/zibyn/polaris/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidcstore"
+	"github.com/zibyn/polaris/internal/passkey"
+	"github.com/zibyn/polaris/internal/provider"
+	"github.com/zibyn/polaris/internal/twofactor"
 )
 
 // ChallengePath is the direct auth API's authorization challenge endpoint

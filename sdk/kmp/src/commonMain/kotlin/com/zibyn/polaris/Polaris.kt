@@ -1,4 +1,4 @@
-package com.starsdom.auth
+package com.zibyn.polaris
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
@@ -30,7 +30,7 @@ import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
-public class StarsAuthConfig(
+public class PolarisConfig(
   /** Polaris's address, e.g. `https://auth.example.com`. */
   public val issuer: String,
   /** The App's Application (public) in Polaris. */
@@ -41,9 +41,9 @@ public class StarsAuthConfig(
     /**
      * The built-in Application the account center signs in as. Tokens issued
      * to it are for the Account API, which is what adding a Passkey needs;
-     * [StarsAuth.signInForAccountWithPasskey] and friends sign in to it.
+     * [Polaris.signInForAccountWithPasskey] and friends sign in to it.
      */
-    public const val ACCOUNT_CLIENT_ID: String = "stars-auth-account"
+    public const val ACCOUNT_CLIENT_ID: String = "polaris-account"
   }
 }
 
@@ -82,11 +82,11 @@ public class AuthSession internal constructor(
 
 public sealed interface SignInStep {
   public data object SignedIn : SignInStep
-  /** A code went out: ask for it and call [StarsAuth.verifyCode]. */
+  /** A code went out: ask for it and call [Polaris.verifyCode]. */
   public class CodeSent(public val session: AuthSession) : SignInStep
-  /** The instance wants a phone number the User has not bound: [StarsAuth.sendCode] to one with this session. */
+  /** The instance wants a phone number the User has not bound: [Polaris.sendCode] to one with this session. */
   public class PhoneRequired(public val session: AuthSession) : SignInStep
-  /** The User has 两步验证 on: ask for a code from their authenticator ([StarsAuth.verifyTotp]) or a 恢复码 ([StarsAuth.verifyRecoveryCode]). */
+  /** The User has 两步验证 on: ask for a code from their authenticator ([Polaris.verifyTotp]) or a 恢复码 ([Polaris.verifyRecoveryCode]). */
   public class TotpRequired(public val session: AuthSession) : SignInStep
 }
 
@@ -95,7 +95,7 @@ public sealed interface SignInStep {
  * one of the constants below; for `invalid_request` [description] says what
  * the User got wrong in words fit to show.
  */
-public class StarsAuthException(public val error: String, public val description: String? = null) :
+public class PolarisException(public val error: String, public val description: String? = null) :
   Exception(if (description == null) error else "$error: $description") {
   public companion object {
     /** No User is signed in, or their Session ended (signed out elsewhere, refresh token reused, deleted). Sign in again. */
@@ -115,8 +115,8 @@ public class StarsAuthException(public val error: String, public val description
  * Signs a User in through the direct auth API and holds their tokens.
  * Behaviour (single-flight refresh, reuse, sign-out): docs/sdk-behavior.md.
  */
-public class StarsAuth(
-  private val config: StarsAuthConfig,
+public class Polaris(
+  private val config: PolarisConfig,
   private val store: TokenStore,
   private val http: HttpClient = HttpClient(),
   // The system's Passkey sheet; without it Passkey sign-in and adding both
@@ -125,7 +125,7 @@ public class StarsAuth(
 ) {
   // Swift never sees the defaults above: Kotlin/Native exports one initializer
   // with every parameter, so the plain two-argument form is spelled out here.
-  public constructor(config: StarsAuthConfig, store: TokenStore) : this(config, store, HttpClient())
+  public constructor(config: PolarisConfig, store: TokenStore) : this(config, store, HttpClient())
 
   private val issuer = config.issuer.trimEnd('/')
   private val json = Json { ignoreUnknownKeys = true }
@@ -166,7 +166,7 @@ public class StarsAuth(
     return challenge(session, termsVersion, asAccount) {
       append("identifier", identifier)
       append("altcha", altcha)
-    } as? SignInStep.CodeSent ?: throw StarsAuthException("unexpected_response", "sending a code signed in")
+    } as? SignInStep.CodeSent ?: throw PolarisException("unexpected_response", "sending a code signed in")
   }
 
   @Throws(Exception::class)
@@ -228,7 +228,7 @@ public class StarsAuth(
    * Signs in with a Passkey in two round trips: the SDK asks Polaris for
    * the assertion options, hands them to the system sheet, and submits what
    * the sheet produced. The User sees one system prompt and nothing else.
-   * Dismissing it throws [StarsAuthException.PASSKEY_CANCELLED], which is not
+   * Dismissing it throws [PolarisException.PASSKEY_CANCELLED], which is not
    * a failure: leave the sign-in as it was.
    */
   @Throws(Exception::class)
@@ -254,8 +254,8 @@ public class StarsAuth(
    * Adds a Passkey to the User's account, through the system sheet. Needs an
    * account center session — [signInForAccountWithPasskey], [sendAccountCode]
    * or [signInForAccountWithPassword] — from the last 10 minutes; without one
-   * it throws [StarsAuthException.REAUTHENTICATE]. Dismissing the sheet
-   * throws [StarsAuthException.PASSKEY_CANCELLED].
+   * it throws [PolarisException.REAUTHENTICATE]. Dismissing the sheet
+   * throws [PolarisException.PASSKEY_CANCELLED].
    */
   @Throws(Exception::class)
   public suspend fun addPasskey(): Passkey {
@@ -264,7 +264,7 @@ public class StarsAuth(
     val begin = http.post("$issuer/v1/account/passkeys/options") { bearerAuth(token) }
     if (begin.status == HttpStatusCode.Forbidden) throw reauthenticated(begin)
     val options = decode<PasskeyOptionsResponse>(begin).options.underPublicKey()
-    val registration = prompt.create(options) ?: throw StarsAuthException(StarsAuthException.PASSKEY_CANCELLED)
+    val registration = prompt.create(options) ?: throw PolarisException(PolarisException.PASSKEY_CANCELLED)
     val r = http.post("$issuer/v1/account/passkeys") {
       bearerAuth(token)
       contentType(ContentType.Application.Json)
@@ -283,7 +283,7 @@ public class StarsAuth(
     })
     val started = decode<PasskeyBeginResponse>(begin)
     val assertion = prompt.get(started.options.underPublicKey())
-      ?: throw StarsAuthException(StarsAuthException.PASSKEY_CANCELLED)
+      ?: throw PolarisException(PolarisException.PASSKEY_CANCELLED)
     return challenge(AuthSession(started.authSession, verifier, termsVersion, asAccount), termsVersion) {
       append("passkey", assertion)
     }
@@ -291,7 +291,7 @@ public class StarsAuth(
 
   private fun systemPasskeys(): PasskeyPrompt =
     passkeys?.takeIf { it.available }
-      ?: throw StarsAuthException(StarsAuthException.PASSKEY_UNAVAILABLE, "this device has no system Passkey sheet")
+      ?: throw PolarisException(PolarisException.PASSKEY_UNAVAILABLE, "this device has no system Passkey sheet")
 
   // The first request of a sign-in: everything but the credentials themselves.
   private fun ParametersBuilder.firstStep(verifier: String, termsVersion: String, asAccount: Boolean) {
@@ -304,7 +304,7 @@ public class StarsAuth(
   }
 
   private fun clientId(asAccount: Boolean): String =
-    if (asAccount) StarsAuthConfig.ACCOUNT_CLIENT_ID else config.clientId
+    if (asAccount) PolarisConfig.ACCOUNT_CLIENT_ID else config.clientId
 
   private suspend fun challenge(
     session: AuthSession?,
@@ -334,7 +334,7 @@ public class StarsAuth(
           "code" -> SignInStep.CodeSent(next)
           "phone" -> SignInStep.PhoneRequired(next)
           "totp" -> SignInStep.TotpRequired(next)
-          else -> throw StarsAuthException(StarsAuthException.UNSUPPORTED_STEP, "next step not supported by this SDK version: ${e.next}")
+          else -> throw PolarisException(PolarisException.UNSUPPORTED_STEP, "next step not supported by this SDK version: ${e.next}")
         }
       }
       throw errorOf(r, body)
@@ -355,7 +355,7 @@ public class StarsAuth(
   /**
    * A live access token, refreshed when it has under 30 seconds left. While
    * one refresh is under way, other callers wait for it rather than refresh
-   * again. Throws [StarsAuthException.SIGNED_OUT] once the Session is gone.
+   * again. Throws [PolarisException.SIGNED_OUT] once the Session is gone.
    */
   @Throws(Exception::class)
   public suspend fun accessToken(): String = mutex.withLock { freshAccessToken() }
@@ -373,7 +373,7 @@ public class StarsAuth(
           append("grant_type", "refresh_token")
           append("refresh_token", refresh)
         }
-      } catch (e: StarsAuthException) {
+      } catch (e: PolarisException) {
         // The refresh token is dead: revoked, expired, or reused (which ends
         // the Session on the server). Other failures keep it for a retry.
         if (e.error == "invalid_grant") { save(null); throw signedOut() }
@@ -406,7 +406,7 @@ public class StarsAuth(
 
   /**
    * Deletes the User's account at once and signs out. Needs a sign-in in
-   * the last 10 minutes, else throws [StarsAuthException.REAUTHENTICATE]:
+   * the last 10 minutes, else throws [PolarisException.REAUTHENTICATE]:
    * confirm with the User, sign them in again, and call this again.
    */
   @Throws(Exception::class)
@@ -418,7 +418,7 @@ public class StarsAuth(
         r.status.isSuccess() -> { save(null); account = null }
         r.status == HttpStatusCode.Unauthorized -> {
           val why = r.headers[HttpHeaders.WWWAuthenticate].orEmpty()
-          if ("insufficient_user_authentication" in why) throw StarsAuthException(StarsAuthException.REAUTHENTICATE)
+          if ("insufficient_user_authentication" in why) throw PolarisException(PolarisException.REAUTHENTICATE)
           save(null)
           account = null
           throw signedOut()
@@ -470,9 +470,9 @@ public class StarsAuth(
 
   // The direct auth API answers OAuth errors (error / error_description), the
   // Account API Huma errors (title / detail).
-  private fun errorOf(r: HttpResponse, body: String): StarsAuthException {
+  private fun errorOf(r: HttpResponse, body: String): PolarisException {
     val e = runCatching { json.decodeFromString<ErrorResponse>(body) }.getOrNull()
-    return StarsAuthException(
+    return PolarisException(
       e?.error ?: "http_${r.status.value}",
       e?.description ?: e?.detail ?: e?.title,
     )
@@ -481,10 +481,10 @@ public class StarsAuth(
   // The Account API refuses a sign-in older than 10 minutes with a 403.
   private suspend fun reauthenticated(r: HttpResponse) = reauthenticate(errorOf(r, r.bodyAsText()))
 
-  private fun reauthenticate(from: StarsAuthException? = null) =
-    StarsAuthException(StarsAuthException.REAUTHENTICATE, from?.description ?: "sign in to the account center first")
+  private fun reauthenticate(from: PolarisException? = null) =
+    PolarisException(PolarisException.REAUTHENTICATE, from?.description ?: "sign in to the account center first")
 
-  private fun signedOut() = StarsAuthException(StarsAuthException.SIGNED_OUT)
+  private fun signedOut() = PolarisException(PolarisException.SIGNED_OUT)
 
   private fun now() = Clock.System.now().epochSeconds
 }

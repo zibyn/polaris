@@ -9,12 +9,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/db"
-	"github.com/zibyn/stars-auth/internal/db/dbtest"
-	"github.com/zibyn/stars-auth/internal/identity"
-	"github.com/zibyn/stars-auth/internal/passkey"
-	"github.com/zibyn/stars-auth/internal/passkey/passkeytest"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
+	"github.com/zibyn/polaris/internal/db/dbtest"
+	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/passkey"
+	"github.com/zibyn/polaris/internal/passkey/passkeytest"
 )
 
 // start gives the module an empty database, one User, and a software

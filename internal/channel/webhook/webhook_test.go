@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/channel"
-	_ "github.com/zibyn/stars-auth/internal/channel/webhook"
+	"github.com/zibyn/polaris/internal/channel"
+	_ "github.com/zibyn/polaris/internal/channel/webhook"
 )
 
 func TestPostsSignedTargetAndCode(t *testing.T) {
@@ -26,7 +26,7 @@ func TestPostsSignedTargetAndCode(t *testing.T) {
 	posts := make(chan got, 1)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		posts <- got{body, r.Header.Get("X-Stars-Signature")}
+		posts <- got{body, r.Header.Get("X-Polaris-Signature")}
 	}))
 	defer ts.Close()
 
@@ -43,7 +43,7 @@ func TestPostsSignedTargetAndCode(t *testing.T) {
 	if err := json.Unmarshal(p.body, &body); err != nil || body["to"] != "+8613800001111" || body["code"] != "123456" {
 		t.Errorf("body: %s", p.body)
 	}
-	// X-Stars-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>
+	// X-Polaris-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>
 	ts1, v1, _ := strings.Cut(p.sig, ",v1=")
 	sec, err := strconv.ParseInt(strings.TrimPrefix(ts1, "t="), 10, 64)
 	if err != nil || time.Since(time.Unix(sec, 0)).Abs() > time.Minute {

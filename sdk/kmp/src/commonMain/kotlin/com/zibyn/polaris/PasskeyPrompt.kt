@@ -1,4 +1,4 @@
-package com.starsdom.auth
+package com.zibyn.polaris
 
 /**
  * The system's Passkey sheet, and the only part of Passkey that is not the
@@ -7,7 +7,7 @@ package com.starsdom.auth
  * produced; the sheet itself belongs to the OS, not to the SDK.
  *
  * Build one with `passkeyPrompt(context)` on Android, `passkeyPrompt()` on
- * iOS (see the SDK README), and pass it to [StarsAuth].
+ * iOS (see the SDK README), and pass it to [Polaris].
  */
 public interface PasskeyPrompt {
   /**
@@ -20,8 +20,7 @@ public interface PasskeyPrompt {
   /**
    * Runs the system's "create a Passkey" sheet. [optionsJson] is the
    * PublicKeyCredentialCreationOptionsJSON (the value that goes under
-   * `publicKey`). Returns the RegistrationResponseJSON to hand back to Stars
-   * Auth, or null if the User dismissed the sheet: not a failure.
+   * `publicKey`). Returns the RegistrationResponseJSON to hand back to Polaris, or null if the User dismissed the sheet: not a failure.
    */
   public suspend fun create(optionsJson: String): String?
 

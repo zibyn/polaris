@@ -1,4 +1,4 @@
-package com.starsdom.auth
+package com.zibyn.polaris
 
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -35,7 +35,7 @@ import kotlin.coroutines.Continuation
 
 /**
  * The system Passkey sheet on iOS, `AuthenticationServices`. Pass this to
- * [StarsAuth]. The App needs the `webcredentials:` associated domain and
+ * [Polaris]. The App needs the `webcredentials:` associated domain and
  * iOS 16+; see the SDK README.
  */
 public fun passkeyPrompt(): PasskeyPrompt = IosPasskeyPrompt()
@@ -118,7 +118,7 @@ private class PasskeyDelegate(
       if (didCompleteWithError.domain == ASAuthorizationErrorDomain && didCompleteWithError.code == ASAuthorizationErrorCanceled) {
         Result.success(null)
       } else {
-        Result.failure(StarsAuthException("passkey_failed", didCompleteWithError.localizedDescription))
+        Result.failure(PolarisException("passkey_failed", didCompleteWithError.localizedDescription))
       },
     )
   }

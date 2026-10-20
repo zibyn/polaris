@@ -134,7 +134,7 @@ function Account() {
 			<Panel className="mx-auto max-w-2xl space-y-10 px-6 py-8 sm:px-14 sm:py-11">
 				<div className="flex items-center gap-2 font-semibold">
 					<Star className="size-5 text-star" />
-					Stars
+					Polaris
 				</div>
 				<header className="flex items-center gap-4">
 					<UserAvatar name={main} size="lg" />
@@ -193,7 +193,7 @@ function Account() {
 async function exportData(sub: string) {
 	const data = await api<unknown>("/export");
 	saveFile(
-		`stars-auth-${sub}.json`,
+		`polaris-${sub}.json`,
 		new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
 	);
 }
@@ -824,7 +824,7 @@ function RecoveryCodes({
 						size="sm"
 						onClick={() =>
 							saveFile(
-								"stars-auth-recovery-codes.txt",
+								"polaris-recovery-codes.txt",
 								new Blob([recoveryCodesText(location.hostname, codes)], {
 									type: "text/plain",
 								}),

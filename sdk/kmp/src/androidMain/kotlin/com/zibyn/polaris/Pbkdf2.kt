@@ -1,4 +1,4 @@
-package com.starsdom.auth
+package com.zibyn.polaris
 
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec

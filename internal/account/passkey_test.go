@@ -14,8 +14,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/zibyn/stars-auth/internal/identity"
-	"github.com/zibyn/stars-auth/internal/passkey/passkeytest"
+	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/passkey/passkeytest"
 )
 
 // enroll runs the adding flow for a: creation options, then the software

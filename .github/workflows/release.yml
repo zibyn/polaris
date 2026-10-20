@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   # GHCR makes a new package private: after the first release, set
-  # ghcr.io/zibyn/stars-auth to public once in the package settings.
+  # ghcr.io/zibyn/polaris to public once in the package settings.
   image:
     runs-on: ubuntu-latest
     steps:
@@ -61,7 +61,7 @@ jobs:
             os=${p%/*} arch=${p#*/}
             ext=; [ "$os" = windows ] && ext=.exe
             CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags=-s \
-              -o "dist/stars-auth_${GITHUB_REF_NAME}_${os}_${arch}${ext}" ./cmd/stars-auth
+              -o "dist/polaris_${GITHUB_REF_NAME}_${os}_${arch}${ext}" ./cmd/polaris
           done
           cd dist && sha256sum * > SHA256SUMS
       - run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag

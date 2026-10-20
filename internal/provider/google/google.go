@@ -5,9 +5,9 @@
 package google
 
 import (
-	"github.com/zibyn/stars-auth/internal/channel"
-	"github.com/zibyn/stars-auth/internal/provider"
-	"github.com/zibyn/stars-auth/internal/provider/oidc"
+	"github.com/zibyn/polaris/internal/channel"
+	"github.com/zibyn/polaris/internal/provider"
+	"github.com/zibyn/polaris/internal/provider/oidc"
 )
 
 // Issuer is where Google's discovery and id_tokens are; tests point it at a

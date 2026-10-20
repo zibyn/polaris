@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/db/sqlc"
 )
 
 // session starts a Session for sub: a browser one, or an App one for clientID.
@@ -39,8 +39,8 @@ func TestAdminEndsAUsersSession(t *testing.T) {
 	e := start(t)
 	e.user("ALICE", nil)
 	e.user("RO", []string{"readonly"})
-	browser := e.session("ALICE", "stars-auth-console", true)
-	app := e.session("ALICE", "stars-auth-console", false)
+	browser := e.session("ALICE", "polaris-console", true)
+	app := e.session("ALICE", "polaris-console", false)
 	owner, ro := e.token(e.owner, nil), e.token("RO", nil)
 
 	var list struct{ Sessions []session }
@@ -55,7 +55,7 @@ func TestAdminEndsAUsersSession(t *testing.T) {
 	if s := byID[browser]; s.Kind != "browser" || !s.Active || s.EndedAt != nil || time.Until(s.ExpiresAt).Round(day) != 30*day {
 		t.Errorf("browser Session: %+v", s)
 	}
-	if s := byID[app]; s.Kind != "app" || s.Application != "stars-auth-console" || !s.Active || time.Until(s.ExpiresAt).Round(day) != 90*day {
+	if s := byID[app]; s.Kind != "app" || s.Application != "polaris-console" || !s.Active || time.Until(s.ExpiresAt).Round(day) != 90*day {
 		t.Errorf("App Session: %+v", s)
 	}
 

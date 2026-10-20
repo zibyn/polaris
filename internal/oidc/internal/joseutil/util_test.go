@@ -8,9 +8,9 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/joseutil"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/oidctest"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/joseutil"
+	"github.com/zibyn/polaris/internal/oidc/internal/oidctest"
 )
 
 func TestOpaqueSigner(t *testing.T) {

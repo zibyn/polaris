@@ -1,26 +1,26 @@
 # Polaris + PostgreSQL 15 + Caddy (automatic HTTPS). See docs/deploy.md.
 #
 #   cat > .env <<END
-#   STARS_AUTH_DOMAIN=auth.example.com
-#   STARS_AUTH_VERSION=0.1.0
-#   STARS_AUTH_MASTER_KEY=$(openssl rand -base64 32)
+#   POLARIS_DOMAIN=auth.example.com
+#   POLARIS_VERSION=0.1.0
+#   POLARIS_MASTER_KEY=$(openssl rand -base64 32)
 #   POSTGRES_PASSWORD=$(openssl rand -hex 16)
 #   END
 #   docker compose up -d
 #
-# BACK UP STARS_AUTH_MASTER_KEY. Losing it makes every encrypted secret
+# BACK UP POLARIS_MASTER_KEY. Losing it makes every encrypted secret
 # (signing keys, TOTP secrets, Channel/Provider secrets) unrecoverable.
-# Leave STARS_AUTH_DOMAIN unset to try it on https://localhost (Caddy's local CA).
+# Leave POLARIS_DOMAIN unset to try it on https://localhost (Caddy's local CA).
 
 services:
-  stars-auth:
-    image: ghcr.io/zibyn/stars-auth:${STARS_AUTH_VERSION:-latest}
+  polaris:
+    image: ghcr.io/zibyn/polaris:${POLARIS_VERSION:-latest}
     restart: unless-stopped
     environment:
-      STARS_AUTH_DATABASE_URL: postgres://stars:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/stars?sslmode=disable
-      STARS_AUTH_MASTER_KEY: ${STARS_AUTH_MASTER_KEY:?set in .env}
-      STARS_AUTH_ISSUER: https://${STARS_AUTH_DOMAIN:-localhost}
-      STARS_AUTH_TRUSTED_PROXIES: 172.31.255.2 # caddy
+      POLARIS_DATABASE_URL: postgres://polaris:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/polaris?sslmode=disable
+      POLARIS_MASTER_KEY: ${POLARIS_MASTER_KEY:?set in .env}
+      POLARIS_ISSUER: https://${POLARIS_DOMAIN:-localhost}
+      POLARIS_TRUSTED_PROXIES: 172.31.255.2 # caddy
     depends_on:
       postgres:
         condition: service_healthy
@@ -30,12 +30,12 @@ services:
     image: postgres:15-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: stars
-      POSTGRES_DB: stars
+      POSTGRES_USER: polaris
+      POSTGRES_DB: polaris
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     volumes: [pg:/var/lib/postgresql/data]
     healthcheck:
-      test: [CMD, pg_isready, -U, stars]
+      test: [CMD, pg_isready, -U, polaris]
       interval: 5s
     networks: [internal]
 
@@ -44,7 +44,7 @@ services:
     restart: unless-stopped
     ports: ["80:80", "443:443"]
     environment:
-      STARS_AUTH_DOMAIN: ${STARS_AUTH_DOMAIN:-localhost}
+      POLARIS_DOMAIN: ${POLARIS_DOMAIN:-localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy:/data

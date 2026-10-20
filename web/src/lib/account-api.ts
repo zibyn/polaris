@@ -6,7 +6,7 @@ import { oidcClient } from "#/lib/oidc";
 export { APIError } from "#/lib/oidc";
 
 export const { finishLogin, api, forget, logout } = oidcClient({
-	clientID: "stars-auth-account",
+	clientID: "polaris-account",
 	home: "/account",
 	apiPrefix: "/v1/account",
 });

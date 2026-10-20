@@ -13,17 +13,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/authorize"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/client"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/discovery"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/logout"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/oidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/storage"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/strutil"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/timeutil"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/token"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/userinfo"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/authorize"
+	"github.com/zibyn/polaris/internal/oidc/internal/client"
+	"github.com/zibyn/polaris/internal/oidc/internal/discovery"
+	"github.com/zibyn/polaris/internal/oidc/internal/logout"
+	"github.com/zibyn/polaris/internal/oidc/internal/oidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/storage"
+	"github.com/zibyn/polaris/internal/oidc/internal/strutil"
+	"github.com/zibyn/polaris/internal/oidc/internal/timeutil"
+	"github.com/zibyn/polaris/internal/oidc/internal/token"
+	"github.com/zibyn/polaris/internal/oidc/internal/userinfo"
 )
 
 type Provider struct {

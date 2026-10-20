@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/identity"
+	"github.com/zibyn/polaris/internal/identity"
 )
 
 type auditEvent struct {
@@ -213,7 +213,7 @@ func TestLastOwnerCannotBeDisabledOrDeleted(t *testing.T) {
 			t.Errorf("%s %s: %d, want 409", op.method, op.path, code)
 		}
 	}
-	if code := e.call("PUT", owner, "/users/"+e.owner+"/roles", map[string]any{"api": "urn:stars-auth:management-api", "roles": []string{"admin"}}, nil); code != 409 {
+	if code := e.call("PUT", owner, "/users/"+e.owner+"/roles", map[string]any{"api": "urn:polaris:management-api", "roles": []string{"admin"}}, nil); code != 409 {
 		t.Errorf("step down while the other owner is disabled: %d", code)
 	}
 }
@@ -427,7 +427,7 @@ func TestSelfAuditedWrites(t *testing.T) {
 		t.Errorf("session.ended: %+v", ev)
 	}
 
-	if code := e.call("PUT", owner, "/users/ALICE/roles", map[string]any{"api": "urn:stars-auth:management-api", "roles": []string{"readonly"}}, nil); code != 204 {
+	if code := e.call("PUT", owner, "/users/ALICE/roles", map[string]any{"api": "urn:polaris:management-api", "roles": []string{"readonly"}}, nil); code != 204 {
 		t.Fatalf("roles: %d", code)
 	}
 	if ev := e.audited("roles.assigned"); ev.Sub != "ALICE" || ev.Detail["by"] != e.owner {
@@ -462,7 +462,7 @@ func TestAdminResetsTwoFactor(t *testing.T) {
 	e.user("ALICE", nil, "username:alice")
 	e.user("RO", []string{"readonly"})
 	e.twoFactorOn("ALICE")
-	app := e.session("ALICE", "stars-auth-console", false)
+	app := e.session("ALICE", "polaris-console", false)
 	owner, ro := e.token(e.owner, nil), e.token("RO", nil)
 
 	var detail struct{ TwoFactor bool }

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/provider"
-	_ "github.com/zibyn/stars-auth/internal/provider/oauth2"
-	"github.com/zibyn/stars-auth/internal/provider/oauth2/oauth2test"
+	"github.com/zibyn/polaris/internal/provider"
+	_ "github.com/zibyn/polaris/internal/provider/oauth2"
+	"github.com/zibyn/polaris/internal/provider/oauth2/oauth2test"
 )
 
 // newOAuth2 builds a generic OAuth2 Provider at the fake, with config as

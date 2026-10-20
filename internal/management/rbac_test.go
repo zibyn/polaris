@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/identity"
+	"github.com/zibyn/polaris/internal/identity"
 )
 
 const track = "https://track.example"

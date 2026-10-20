@@ -80,7 +80,7 @@ func (q *Queries) CloseSetup(ctx context.Context) error {
 
 const countOwners = `-- name: CountOwners :one
 SELECT count(*) FROM user_roles ur JOIN users u ON u.id = ur.user_id
-WHERE ur.api = 'urn:stars-auth:management-api' AND ur.role = 'owner'
+WHERE ur.api = 'urn:polaris:management-api' AND ur.role = 'owner'
   AND u.disabled_at IS NULL AND u.status = 'active'
 `
 

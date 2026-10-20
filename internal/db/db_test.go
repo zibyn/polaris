@@ -8,7 +8,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/zibyn/stars-auth/internal/db/dbtest"
+	"github.com/zibyn/polaris/internal/db/dbtest"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -177,4 +177,36 @@ func before25(t *testing.T) fs.FS {
 		files[e.Name()] = &fstest.MapFile{Data: b}
 	}
 	return files
+}
+
+// 00029 moves the built-in Applications and APIs to Polaris identifiers. A
+// fresh instance must end with the new ones only; roles and permissions move
+// with the API identifier they hang off.
+func TestRenameToPolaris(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.Fresh(t)
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+
+	var apps, apis, roles, old int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM applications
+		WHERE client_id IN ('polaris-console', 'polaris-account') AND builtin`).Scan(&apps); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM apis
+		WHERE identifier IN ('urn:polaris:management-api', 'urn:polaris:account-api') AND builtin`).Scan(&apis); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM roles
+		WHERE api = 'urn:polaris:management-api'`).Scan(&roles); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM applications
+		WHERE client_id IN ('stars-auth-console', 'stars-auth-account')`).Scan(&old); err != nil {
+		t.Fatal(err)
+	}
+	if apps != 2 || apis != 2 || roles != 3 || old != 0 {
+		t.Fatalf("applications=%d apis=%d roles=%d old=%d, want 2 2 3 0", apps, apis, roles, old)
+	}
 }

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/identity"
-	"github.com/zibyn/stars-auth/internal/oidcstore"
+	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/oidcstore"
 )
 
 type application struct {
@@ -131,10 +131,10 @@ func TestManageApplications(t *testing.T) {
 	if code := e.get(ro, "/applications", &list); code != 200 || len(list.Applications) != 4 || !list.Applications[1].Builtin {
 		t.Errorf("list: %d %+v", code, list)
 	}
-	if code := e.call("PUT", owner, "/applications/stars-auth-console", settings, nil); code != 409 {
+	if code := e.call("PUT", owner, "/applications/polaris-console", settings, nil); code != 409 {
 		t.Errorf("edit the console: %d", code)
 	}
-	if code := e.call("DELETE", owner, "/applications/stars-auth-console", nil, nil); code != 409 {
+	if code := e.call("DELETE", owner, "/applications/polaris-console", nil, nil); code != 409 {
 		t.Errorf("delete the console: %d", code)
 	}
 	if code := e.call("DELETE", owner, path, nil, nil); code != 204 {

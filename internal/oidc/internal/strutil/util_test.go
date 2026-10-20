@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/oidc/internal/strutil"
+	"github.com/zibyn/polaris/internal/oidc/internal/strutil"
 )
 
 func TestContainsOpenID(t *testing.T) {

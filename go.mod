@@ -1,4 +1,4 @@
-module github.com/zibyn/stars-auth
+module github.com/zibyn/polaris
 
 go 1.27
 

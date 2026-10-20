@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/login"
-	"github.com/zibyn/stars-auth/internal/twofactor"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/login"
+	"github.com/zibyn/polaris/internal/twofactor"
 )
 
 // twoFactor turns 两步验证 on for sub with a code from a step ago; it

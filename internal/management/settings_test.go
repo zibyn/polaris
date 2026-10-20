@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/management"
+	"github.com/zibyn/polaris/internal/management"
 )
 
 type settings struct {

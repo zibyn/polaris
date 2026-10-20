@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
 
 // Thumbprint generates a base64 URL-encoded SHA-256 hash (thumbprint) of a

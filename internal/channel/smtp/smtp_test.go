@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/channel"
-	_ "github.com/zibyn/stars-auth/internal/channel/smtp"
+	"github.com/zibyn/polaris/internal/channel"
+	_ "github.com/zibyn/polaris/internal/channel/smtp"
 )
 
 type received struct {

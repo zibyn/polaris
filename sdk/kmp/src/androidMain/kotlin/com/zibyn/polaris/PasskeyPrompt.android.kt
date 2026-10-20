@@ -1,4 +1,4 @@
-package com.starsdom.auth
+package com.zibyn.polaris
 
 import android.content.Context
 import android.os.Build
@@ -13,7 +13,7 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 
 /**
  * The system Passkey sheet, Credential Manager. Pass an Activity's context:
- * the sheet opens on it. Pass this to [StarsAuth].
+ * the sheet opens on it. Pass this to [Polaris].
  */
 public fun passkeyPrompt(context: Context): PasskeyPrompt = AndroidPasskeyPrompt(context)
 

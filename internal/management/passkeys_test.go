@@ -119,7 +119,7 @@ func TestAssociationFilesSurviveThePasskeySwitch(t *testing.T) {
 		UPDATE applications SET apple_app_ids = ARRAY['ABCDE12345.com.example.app'],
 		    android_apps = jsonb_build_array(jsonb_build_object('packageName', 'com.example.app',
 		        'sha256CertFingerprints', jsonb_build_array('AA:BB')))
-		WHERE client_id = 'stars-auth-console';
+		WHERE client_id = 'polaris-console';
 		UPDATE settings SET passkey_login = false`); err != nil {
 		t.Fatal(err)
 	}

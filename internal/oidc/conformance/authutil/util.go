@@ -14,9 +14,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/zibyn/stars-auth/internal/oidc/conformance/keys"
-	"github.com/zibyn/stars-auth/internal/oidc/conformance/ui"
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/conformance/keys"
+	"github.com/zibyn/polaris/internal/oidc/conformance/ui"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
 
 // Issuer is overridable so the harness can run where port 443 is not bindable.

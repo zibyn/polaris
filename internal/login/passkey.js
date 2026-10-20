@@ -2,8 +2,8 @@
 // responses — shared by the hosted login page and the account center SPA,
 // which load this file from the same origin. No WebAuthn library (issue
 // #106): the browser's own API is enough.
-window.stars ??= {};
-stars.b64url = {
+window.polaris ??= {};
+polaris.b64url = {
   encode(buf) {
     const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
     let s = "";

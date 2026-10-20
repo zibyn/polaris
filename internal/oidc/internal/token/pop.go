@@ -3,9 +3,9 @@ package token
 import (
 	"errors"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/dpop"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/oidc"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/dpop"
+	"github.com/zibyn/polaris/internal/oidc/internal/oidc"
 )
 
 // ValidatePoP validates that the context contains the information required to

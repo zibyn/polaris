@@ -11,7 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/db/sqlc"
 )
 
 // selfAudited are the writes that audit themselves, in the same

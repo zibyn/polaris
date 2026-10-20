@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/zibyn/stars-auth/internal/channel/aliyun"
-	_ "github.com/zibyn/stars-auth/internal/channel/smtp"
-	_ "github.com/zibyn/stars-auth/internal/channel/webhook"
+	_ "github.com/zibyn/polaris/internal/channel/aliyun"
+	_ "github.com/zibyn/polaris/internal/channel/smtp"
+	_ "github.com/zibyn/polaris/internal/channel/webhook"
 )
 
 type channels struct {
@@ -43,7 +43,7 @@ func receiver(t *testing.T, secret string) (string, chan string) {
 	codes := make(chan string, 1)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		ts, v1, _ := strings.Cut(r.Header.Get("X-Stars-Signature"), ",v1=")
+		ts, v1, _ := strings.Cut(r.Header.Get("X-Polaris-Signature"), ",v1=")
 		mac := hmac.New(sha256.New, []byte(secret))
 		mac.Write([]byte(strings.TrimPrefix(ts, "t=") + "."))
 		mac.Write(body)

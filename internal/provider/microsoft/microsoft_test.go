@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/provider"
-	"github.com/zibyn/stars-auth/internal/provider/microsoft"
-	"github.com/zibyn/stars-auth/internal/provider/oidc/oidctest"
+	"github.com/zibyn/polaris/internal/provider"
+	"github.com/zibyn/polaris/internal/provider/microsoft"
+	"github.com/zibyn/polaris/internal/provider/oidc/oidctest"
 )
 
 // Two tenants, as Microsoft writes them.

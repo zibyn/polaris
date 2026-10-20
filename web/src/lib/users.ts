@@ -2,7 +2,7 @@
 import { z } from "zod";
 import type { Identifier, User } from "./console-api.ts";
 
-export const managementAPI = "urn:stars-auth:management-api";
+export const managementAPI = "urn:polaris:management-api";
 
 // identifierKinds lists the kinds of Identifier, primary first.
 export const identifierKinds: Identifier["kind"][] = [

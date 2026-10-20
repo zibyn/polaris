@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/passkey"
-	"github.com/zibyn/stars-auth/internal/passkey/passkeytest"
+	"github.com/zibyn/polaris/internal/passkey"
+	"github.com/zibyn/polaris/internal/passkey/passkeytest"
 )
 
 // optionsOf pulls the assertion options embedded in the login page, and says

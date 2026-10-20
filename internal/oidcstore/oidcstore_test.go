@@ -12,10 +12,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/db"
-	"github.com/zibyn/stars-auth/internal/db/dbtest"
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
+	"github.com/zibyn/polaris/internal/db/dbtest"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
 
 func setup(t *testing.T) (*pgxpool.Pool, *crypt.Keyring) {
@@ -297,7 +297,7 @@ func TestClient(t *testing.T) {
 	s := New(pool, keyring)
 	s.Scopes = "openid profile"
 
-	console, err := s.Client(ctx, "stars-auth-console")
+	console, err := s.Client(ctx, "polaris-console")
 	if err != nil {
 		t.Fatal(err)
 	}

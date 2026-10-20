@@ -14,11 +14,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	oidcop "github.com/zibyn/stars-auth/internal/oidc/provider"
-	"github.com/zibyn/stars-auth/internal/provider"
-	_ "github.com/zibyn/stars-auth/internal/provider/oidc"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	oidcop "github.com/zibyn/polaris/internal/oidc/provider"
+	"github.com/zibyn/polaris/internal/provider"
+	_ "github.com/zibyn/polaris/internal/provider/oidc"
 )
 
 // upstream is an OpenID Provider standing in for Google: whoever the browser
@@ -44,7 +44,7 @@ func startUpstream(t *testing.T, redirectURI string) *upstream {
 			},
 			IDTokenAlgs: []goidc.SignatureAlgorithm{goidc.SigAlgRS256},
 		},
-		oidcop.WithStaticClients(&goidc.Client{ID: "stars", Secret: "shh", ClientMeta: goidc.ClientMeta{
+		oidcop.WithStaticClients(&goidc.Client{ID: "upstream", Secret: "shh", ClientMeta: goidc.ClientMeta{
 			RedirectURIs: []string{redirectURI}, TokenAuthnMethod: goidc.AuthnMethodSecretBasic,
 			GrantTypes: []goidc.GrantType{goidc.GrantAuthorizationCode}, ResponseTypes: []goidc.ResponseType{goidc.ResponseTypeCode},
 			ScopeIDs: "openid",
@@ -76,7 +76,7 @@ func (e *env) addGoogle() *upstream {
 	e.t.Helper()
 	up := startUpstream(e.t, provider.CallbackURL(e.issuer, "google"))
 	if err := e.providers().Create(context.Background(), "google", "oidc", "Google",
-		map[string]string{"issuer": up.issuer, "client_id": "stars", "client_secret": "shh"}); err != nil {
+		map[string]string{"issuer": up.issuer, "client_id": "upstream", "client_secret": "shh"}); err != nil {
 		e.t.Fatal(err)
 	}
 	return up

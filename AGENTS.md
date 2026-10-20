@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live in GitHub Issues on `zibyn/stars-auth` (via `gh`). See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues on `zibyn/polaris` (via `gh`). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

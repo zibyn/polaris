@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/channel"
-	_ "github.com/zibyn/stars-auth/internal/channel/webhook"
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/db"
-	"github.com/zibyn/stars-auth/internal/db/dbtest"
+	"github.com/zibyn/polaris/internal/channel"
+	_ "github.com/zibyn/polaris/internal/channel/webhook"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
+	"github.com/zibyn/polaris/internal/db/dbtest"
 )
 
 // inbox is a Webhook Channel endpoint that keeps the last code per Identifier.

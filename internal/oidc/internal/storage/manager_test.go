@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
-	"github.com/zibyn/stars-auth/internal/oidc/internal/storage"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/internal/storage"
 )
 
 func TestManagerSessions(t *testing.T) {

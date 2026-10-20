@@ -13,10 +13,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web /src/web/dist/client web/dist/client
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags=-s -o /stars-auth ./cmd/stars-auth
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags=-s -o /polaris ./cmd/polaris
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=go /stars-auth /stars-auth
+COPY --from=go /polaris /polaris
 EXPOSE 8080
-HEALTHCHECK --interval=10s --timeout=5s --start-period=30s CMD ["/stars-auth", "healthcheck"]
-ENTRYPOINT ["/stars-auth"]
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s CMD ["/polaris", "healthcheck"]
+ENTRYPOINT ["/polaris"]

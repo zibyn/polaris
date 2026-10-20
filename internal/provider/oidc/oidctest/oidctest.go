@@ -16,7 +16,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 
-	"github.com/zibyn/stars-auth/internal/provider"
+	"github.com/zibyn/polaris/internal/provider"
 )
 
 // sub is the user the fake signs everyone in as.

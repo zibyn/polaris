@@ -10,7 +10,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/zibyn/stars-auth/internal/channel"
+	"github.com/zibyn/polaris/internal/channel"
 )
 
 // Redirect is a Provider the browser signs in at: the hosted login page sends

@@ -1,4 +1,4 @@
-package com.starsdom.auth
+package com.zibyn.polaris
 
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -35,8 +35,8 @@ class FakeServer {
 
   fun calls(path: String) = forms.count { it.first == path }
 
-  fun auth(passkeys: PasskeyPrompt? = null) = StarsAuth(
-    StarsAuthConfig(issuer = "https://auth.test", clientId = "app"),
+  fun auth(passkeys: PasskeyPrompt? = null) = Polaris(
+    PolarisConfig(issuer = "https://auth.test", clientId = "app"),
     store,
     HttpClient(MockEngine { req ->
       val body = (req.body as? OutgoingContent.ByteArrayContent)?.bytes()?.decodeToString().orEmpty()
@@ -70,7 +70,7 @@ const val solvableChallenge = """{"parameters":{"algorithm":"PBKDF2/SHA-256","no
 fun tokens(n: Int, expiresIn: Int = 600) =
   """{"access_token":"at$n","refresh_token":"rt$n","id_token":"id$n","token_type":"Bearer","expires_in":$expiresIn}"""
 
-class StarsAuthTest {
+class PolarisTest {
   private val server = FakeServer().apply {
     handlers["/altcha/challenge"] = { json(solvableChallenge) }
     handlers["/token"] = { json(tokens(1)) }
@@ -110,7 +110,7 @@ class StarsAuthTest {
     val auth = server.auth()
 
     assertIs<SignInStep.TotpRequired>(auth.signInWithProvider("apple", "ac1", termsVersion = "2026-01"))
-    assertEquals("invalid_grant", assertFailsWith<StarsAuthException> { auth.signInWithProvider("apple", "spent", "2026-01") }.error)
+    assertEquals("invalid_grant", assertFailsWith<PolarisException> { auth.signInWithProvider("apple", "spent", "2026-01") }.error)
     val (_, challenge) = server.forms.first { it.first == "/v1/auth/challenge" }
     assertEquals("2026-01", challenge["terms_version"])
     assertEquals("S256", challenge["code_challenge_method"])
@@ -133,7 +133,7 @@ class StarsAuthTest {
     val auth = server.auth()
 
     val totp = assertIs<SignInStep.TotpRequired>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
-    val wrong = assertFailsWith<StarsAuthException> { auth.verifyTotp(totp.session, "000000") }
+    val wrong = assertFailsWith<PolarisException> { auth.verifyTotp(totp.session, "000000") }
     assertEquals("invalid_request", wrong.error)
     assertIs<SignInStep.PhoneRequired>(auth.verifyTotp(totp.session, "123456"))
     assertEquals(SignInStep.SignedIn, auth.verifyRecoveryCode(totp.session, "abcd-efgh"))
@@ -156,7 +156,7 @@ class StarsAuthTest {
     val auth = server.auth()
 
     val sent = auth.sendCode("a@example.com", termsVersion = "")
-    val wrong = assertFailsWith<StarsAuthException> { auth.verifyCode(sent.session, "000000") }
+    val wrong = assertFailsWith<PolarisException> { auth.verifyCode(sent.session, "000000") }
     assertEquals("invalid_request", wrong.error)
     assertEquals("验证码错误", wrong.description)
     val phone = assertIs<SignInStep.PhoneRequired>(auth.verifyCode(sent.session, "111111"))
@@ -178,8 +178,8 @@ class StarsAuthTest {
     server.handlers["/v1/auth/challenge"] = { json(insufficient("s1", "fingerprint"), HttpStatusCode.Forbidden) }
     val auth = server.auth()
 
-    val e = assertFailsWith<StarsAuthException> { auth.signInWithPassword("a@example.com", "pw", termsVersion = "") }
-    assertEquals(StarsAuthException.UNSUPPORTED_STEP, e.error)
+    val e = assertFailsWith<PolarisException> { auth.signInWithPassword("a@example.com", "pw", termsVersion = "") }
+    assertEquals(PolarisException.UNSUPPORTED_STEP, e.error)
   }
 
   @Test
@@ -204,7 +204,7 @@ class StarsAuthTest {
     server.handlers["/token"] = { json("""{"error":"invalid_grant","error_description":"refresh token reused"}""", HttpStatusCode.BadRequest) }
     val auth = server.auth()
 
-    assertEquals(StarsAuthException.SIGNED_OUT, assertFailsWith<StarsAuthException> { auth.accessToken() }.error)
+    assertEquals(PolarisException.SIGNED_OUT, assertFailsWith<PolarisException> { auth.accessToken() }.error)
     assertNull(server.store.value)
     assertNull(auth.tokens())
   }
@@ -215,7 +215,7 @@ class StarsAuthTest {
     server.handlers["/token"] = { json("""{"error":"server_error"}""", HttpStatusCode.InternalServerError) }
     val auth = server.auth()
 
-    assertEquals("server_error", assertFailsWith<StarsAuthException> { auth.accessToken() }.error)
+    assertEquals("server_error", assertFailsWith<PolarisException> { auth.accessToken() }.error)
     server.handlers["/token"] = { json(tokens(2)) }
     assertEquals("at2", auth.accessToken())
   }
@@ -233,7 +233,7 @@ class StarsAuthTest {
     val offline = server.auth()
     offline.signOut()
     assertNull(server.store.value)
-    assertEquals(StarsAuthException.SIGNED_OUT, assertFailsWith<StarsAuthException> { offline.accessToken() }.error)
+    assertEquals(PolarisException.SIGNED_OUT, assertFailsWith<PolarisException> { offline.accessToken() }.error)
   }
 
   @Test
@@ -243,7 +243,7 @@ class StarsAuthTest {
       respond("", HttpStatusCode.Unauthorized, headersOf(HttpHeaders.WWWAuthenticate, """Bearer error="insufficient_user_authentication", max_age="600""""))
     }
     val auth = server.auth()
-    assertEquals(StarsAuthException.REAUTHENTICATE, assertFailsWith<StarsAuthException> { auth.deleteAccount() }.error)
+    assertEquals(PolarisException.REAUTHENTICATE, assertFailsWith<PolarisException> { auth.deleteAccount() }.error)
     assertNotNull(server.store.value)
 
     server.handlers["/v1/auth/delete"] = { respond("", HttpStatusCode.NoContent) }
@@ -255,7 +255,7 @@ class StarsAuthTest {
   fun deleteAccountSendsTheAccessToken() = runTest {
     server.store.value = stored()
     var bearer: String? = null
-    val auth = StarsAuth(StarsAuthConfig("https://auth.test/", "app"), server.store, HttpClient(MockEngine { req ->
+    val auth = Polaris(PolarisConfig("https://auth.test/", "app"), server.store, HttpClient(MockEngine { req ->
       bearer = req.headers[HttpHeaders.Authorization]
       respond("", HttpStatusCode.NoContent)
     }))
@@ -319,7 +319,7 @@ class StarsAuthTest {
     server.handlers["/v1/auth/challenge"] = { json("""{"auth_session":"s1","options":{"publicKey":{"challenge":"ch"}}}""") }
     val auth = server.auth(FakePasskeys(response = null))
 
-    assertEquals(StarsAuthException.PASSKEY_CANCELLED, assertFailsWith<StarsAuthException> { auth.signInWithPasskey("") }.error)
+    assertEquals(PolarisException.PASSKEY_CANCELLED, assertFailsWith<PolarisException> { auth.signInWithPasskey("") }.error)
     assertEquals(1, server.calls("/v1/auth/challenge"))
   }
 
@@ -331,13 +331,13 @@ class StarsAuthTest {
     assertTrue(server.auth(FakePasskeys()).passkeysAvailable())
 
     val auth = server.auth()
-    assertEquals(StarsAuthException.PASSKEY_UNAVAILABLE, assertFailsWith<StarsAuthException> { auth.signInWithPasskey("") }.error)
-    assertEquals(StarsAuthException.PASSKEY_UNAVAILABLE, assertFailsWith<StarsAuthException> { auth.addPasskey() }.error)
+    assertEquals(PolarisException.PASSKEY_UNAVAILABLE, assertFailsWith<PolarisException> { auth.signInWithPasskey("") }.error)
+    assertEquals(PolarisException.PASSKEY_UNAVAILABLE, assertFailsWith<PolarisException> { auth.addPasskey() }.error)
     assertEquals(0, server.forms.size)
   }
 
   // The Account API takes only the account center's own tokens, so adding a
-  // Passkey signs in as stars-auth-account first, in memory only.
+  // Passkey signs in as polaris-account first, in memory only.
   @Test
   fun addPasskeyUsesTheAccountCentersToken() = runTest {
     server.handlers["/v1/account/passkeys/options"] = { json("""{"options":{"publicKey":{"challenge":"ch","rp":{"id":"auth.test"}}}}""") }
@@ -351,7 +351,7 @@ class StarsAuthTest {
 
     assertEquals(Passkey("p1", "Chrome", "2026-10-10T00:00:00Z"), added)
     val (_, signIn) = server.forms.first { it.first == "/v1/auth/challenge" }
-    assertEquals(StarsAuthConfig.ACCOUNT_CLIENT_ID, signIn["client_id"])
+    assertEquals(PolarisConfig.ACCOUNT_CLIENT_ID, signIn["client_id"])
     assertEquals("openid", signIn["scope"])
     assertEquals(listOf<String?>("Bearer at1", "Bearer at1"), server.authHeaders.filter { it.first.startsWith("/v1/account/") }.map { it.second })
     assertEquals("""{"challenge":"ch","rp":{"id":"auth.test"}}""", sheet.given.last())
@@ -367,7 +367,7 @@ class StarsAuthTest {
   fun addPasskeyWithoutAnAccountSignInAsksToReauthenticate() = runTest {
     val auth = server.auth(FakePasskeys())
 
-    assertEquals(StarsAuthException.REAUTHENTICATE, assertFailsWith<StarsAuthException> { auth.addPasskey() }.error)
+    assertEquals(PolarisException.REAUTHENTICATE, assertFailsWith<PolarisException> { auth.addPasskey() }.error)
     assertEquals(0, server.forms.size)
   }
 
@@ -380,8 +380,8 @@ class StarsAuthTest {
     val auth = server.auth(FakePasskeys())
 
     auth.signInForAccountWithPassword("alice", "pw", termsVersion = "")
-    val e = assertFailsWith<StarsAuthException> { auth.addPasskey() }
-    assertEquals(StarsAuthException.REAUTHENTICATE, e.error)
+    val e = assertFailsWith<PolarisException> { auth.addPasskey() }
+    assertEquals(PolarisException.REAUTHENTICATE, e.error)
     assertEquals("请先重新验证身份", e.description)
   }
 
@@ -394,7 +394,7 @@ class StarsAuthTest {
     val auth = server.auth(FakePasskeys())
 
     auth.signInForAccountWithPassword("alice", "pw", termsVersion = "")
-    val e = assertFailsWith<StarsAuthException> { auth.addPasskey() }
+    val e = assertFailsWith<PolarisException> { auth.addPasskey() }
     assertEquals("http_409", e.error)
     assertEquals("这把 Passkey 已经存在", e.description)
   }

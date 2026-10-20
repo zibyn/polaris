@@ -193,7 +193,7 @@ cd "$(dirname "$0")/.." # repo root: the build context
 HOST="${DEPLOY_HOST:-root@192.168.50.50}"
 DIR=/opt/auth
 REGISTRY=registry.starsdom.com:9443
-IMAGE=$REGISTRY/zibyn/stars-auth:latest
+IMAGE=$REGISTRY/zibyn/polaris:latest
 ENV_FILE=/dev/null # nothing is kept locally; every secret lives in $DIR/.env
 AUTO=""; [[ "${1:-}" == -y ]] && AUTO=1
 
@@ -234,15 +234,15 @@ else
   warn "域名上线后不要再改:改了以后已签发的令牌和 Application 配置都会失效。"
   # The secrets are generated on the server and never touch this machine.
   ssh "$HOST" "umask 077 && mkdir -p $DIR && cat > $DIR/.env" <<END
-STARS_AUTH_ISSUER=https://$DOMAIN
-STARS_AUTH_PORT=${PORT:-8080}
+POLARIS_ISSUER=https://$DOMAIN
+POLARIS_PORT=${PORT:-8080}
 PROXY_IP=$PROXY_IP
 END
-  ssh "$HOST" "umask 077 && cd $DIR && printf 'STARS_AUTH_MASTER_KEY=%s\nPOSTGRES_PASSWORD=%s\n' \"\$(head -c 32 /dev/urandom | base64)\" \"\$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')\" >> .env"
+  ssh "$HOST" "umask 077 && cd $DIR && printf 'POLARIS_MASTER_KEY=%s\nPOSTGRES_PASSWORD=%s\n' \"\$(head -c 32 /dev/urandom | base64)\" \"\$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')\" >> .env"
   say "✓ 已写入 $HOST:$DIR/.env"
   printf '\n'
   warn "备份主密钥!丢了它,签名私钥、TOTP 密钥、Channel 与 Provider 的密钥都无法还原:"
-  ssh "$HOST" "grep ^STARS_AUTH_MASTER_KEY= $DIR/.env"
+  ssh "$HOST" "grep ^POLARIS_MASTER_KEY= $DIR/.env"
   until confirm "已经把它存进密码管理器或离线介质了吗?"; do :; done
 fi
 
@@ -257,16 +257,16 @@ scp -q deploy/docker-compose.yaml "$HOST:$DIR/docker-compose.yaml"
 ssh "$HOST" "cd $DIR && sh -es" <<'END'
 if [ -n "$(docker compose ps -q postgres)" ]; then
   mkdir -p backups
-  f=backups/stars-$(date +%Y%m%d-%H%M%S).dump
-  docker compose exec -T postgres pg_dump -U stars -Fc stars > "$f"
+  f=backups/polaris-$(date +%Y%m%d-%H%M%S).dump
+  docker compose exec -T postgres pg_dump -U polaris -Fc polaris > "$f"
   echo "  ✓ 已备份数据库 → /opt/auth/$f"
   ls -t backups/*.dump | tail -n +11 | xargs -r rm -- # keep the newest 10
 fi
 docker compose pull -q
-docker compose up -d --wait --wait-timeout 120
+docker compose up -d --remove-orphans --wait --wait-timeout 120
 docker image prune -f >/dev/null
 END
-SETUP=$(ssh "$HOST" "cd $DIR && docker compose logs stars-auth" | grep -o 'https://[^" ]*/setup?token=[^" ]*' | tail -n1 || true)
+SETUP=$(ssh "$HOST" "cd $DIR && docker compose logs polaris" | grep -o 'https://[^" ]*/setup?token=[^" ]*' | tail -n1 || true)
 
 finish
 say "✓ $IMAGE 已在 $HOST:$DIR 运行"

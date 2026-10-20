@@ -6,9 +6,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/zibyn/stars-auth/internal/provider"
-	"github.com/zibyn/stars-auth/internal/provider/github"
-	"github.com/zibyn/stars-auth/internal/provider/oauth2/oauth2test"
+	"github.com/zibyn/polaris/internal/provider"
+	"github.com/zibyn/polaris/internal/provider/github"
+	"github.com/zibyn/polaris/internal/provider/oauth2/oauth2test"
 )
 
 // fakeGitHub points the GitHub type at a fake upstream: GitHub's endpoints

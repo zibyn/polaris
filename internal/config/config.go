@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// DefaultListen is used when STARS_AUTH_LISTEN is unset.
+// DefaultListen is used when POLARIS_LISTEN is unset.
 const DefaultListen = ":8080"
 
 type Config struct {
@@ -26,25 +26,25 @@ type Config struct {
 
 func Load(getenv func(string) string) (Config, error) {
 	c := Config{
-		DatabaseURL: getenv("STARS_AUTH_DATABASE_URL"),
-		Issuer:      getenv("STARS_AUTH_ISSUER"),
-		Listen:      getenv("STARS_AUTH_LISTEN"),
-		DevWebURL:   getenv("STARS_AUTH_DEV_WEB_URL"),
+		DatabaseURL: getenv("POLARIS_DATABASE_URL"),
+		Issuer:      getenv("POLARIS_ISSUER"),
+		Listen:      getenv("POLARIS_LISTEN"),
+		DevWebURL:   getenv("POLARIS_DEV_WEB_URL"),
 	}
 	if c.Listen == "" {
 		c.Listen = DefaultListen
 	}
 	if c.DatabaseURL == "" {
-		return c, errors.New("STARS_AUTH_DATABASE_URL is required")
+		return c, errors.New("POLARIS_DATABASE_URL is required")
 	}
 	if err := checkIssuer(c.Issuer); err != nil {
 		return c, err
 	}
 	var err error
-	if c.MasterKey, err = masterKey(getenv("STARS_AUTH_MASTER_KEY"), getenv("STARS_AUTH_MASTER_KEY_FILE")); err != nil {
+	if c.MasterKey, err = masterKey(getenv("POLARIS_MASTER_KEY"), getenv("POLARIS_MASTER_KEY_FILE")); err != nil {
 		return c, err
 	}
-	if c.TrustedProxies, err = prefixes(getenv("STARS_AUTH_TRUSTED_PROXIES")); err != nil {
+	if c.TrustedProxies, err = prefixes(getenv("POLARIS_TRUSTED_PROXIES")); err != nil {
 		return c, err
 	}
 	return c, nil
@@ -53,14 +53,14 @@ func Load(getenv func(string) string) (Config, error) {
 func checkIssuer(s string) error {
 	u, err := url.Parse(s)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return fmt.Errorf("STARS_AUTH_ISSUER must be an https URL without userinfo, query or fragment, got %q", s)
+		return fmt.Errorf("POLARIS_ISSUER must be an https URL without userinfo, query or fragment, got %q", s)
 	}
 	return nil
 }
 
 func masterKey(inline, file string) ([]byte, error) {
 	if (inline == "") == (file == "") {
-		return nil, errors.New("set exactly one of STARS_AUTH_MASTER_KEY or STARS_AUTH_MASTER_KEY_FILE")
+		return nil, errors.New("set exactly one of POLARIS_MASTER_KEY or POLARIS_MASTER_KEY_FILE")
 	}
 	if file != "" {
 		b, err := os.ReadFile(file)
@@ -90,7 +90,7 @@ func prefixes(s string) ([]netip.Prefix, error) {
 		}
 		a, err := netip.ParseAddr(f)
 		if err != nil {
-			return nil, fmt.Errorf("STARS_AUTH_TRUSTED_PROXIES: bad entry %q", f)
+			return nil, fmt.Errorf("POLARIS_TRUSTED_PROXIES: bad entry %q", f)
 		}
 		out = append(out, netip.PrefixFrom(a, a.BitLen()))
 	}

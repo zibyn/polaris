@@ -3,7 +3,7 @@ package goidc
 import (
 	"context"
 
-	"github.com/zibyn/stars-auth/internal/oidc/internal/timeutil"
+	"github.com/zibyn/polaris/internal/oidc/internal/timeutil"
 )
 
 // LogoutManager contains all the logic needed to manage logout sessions.

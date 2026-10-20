@@ -1,4 +1,4 @@
-package com.starsdom.auth
+package com.zibyn.polaris
 
 class MemoryTokenStore(var value: String? = null) : TokenStore {
   override fun read() = value

@@ -18,15 +18,15 @@ import (
 	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/db"
-	"github.com/zibyn/stars-auth/internal/db/dbtest"
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
-	"github.com/zibyn/stars-auth/internal/identity"
-	"github.com/zibyn/stars-auth/internal/login"
-	"github.com/zibyn/stars-auth/internal/management"
-	"github.com/zibyn/stars-auth/internal/oidcstore"
-	"github.com/zibyn/stars-auth/internal/server"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
+	"github.com/zibyn/polaris/internal/db/dbtest"
+	"github.com/zibyn/polaris/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/login"
+	"github.com/zibyn/polaris/internal/management"
+	"github.com/zibyn/polaris/internal/oidcstore"
+	"github.com/zibyn/polaris/internal/server"
 )
 
 type env struct {
@@ -288,8 +288,8 @@ func TestOnlyAdminsWithValidTokens(t *testing.T) {
 
 	// Any Management API Role makes an admin, even one with no Permissions.
 	if _, err := e.pool.Exec(context.Background(), `
-		INSERT INTO roles (api, key, name) VALUES ('urn:stars-auth:management-api', 'empty', 'Empty');
-		INSERT INTO user_roles VALUES ('DAVE', 'urn:stars-auth:management-api', 'empty')`); err != nil {
+		INSERT INTO roles (api, key, name) VALUES ('urn:polaris:management-api', 'empty', 'Empty');
+		INSERT INTO user_roles VALUES ('DAVE', 'urn:polaris:management-api', 'empty')`); err != nil {
 		t.Fatal(err)
 	}
 	dave := e.token("DAVE", nil)

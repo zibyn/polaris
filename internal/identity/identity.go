@@ -17,16 +17,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db/sqlc"
 )
 
 // ManagementAPI is the built-in API whose Roles make a User an admin.
-const ManagementAPI = "urn:stars-auth:management-api"
+const ManagementAPI = "urn:polaris:management-api"
 
 // AccountAPI is the built-in API the account center calls, where a User
 // manages their own account.
-const AccountAPI = "urn:stars-auth:account-api"
+const AccountAPI = "urn:polaris:account-api"
 
 // Invalid is an error safe to show the person who caused it.
 type Invalid string

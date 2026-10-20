@@ -8,7 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/zibyn/stars-auth/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/db/sqlc"
 )
 
 type Session struct {
@@ -116,7 +116,7 @@ func (s *Service) export(ctx context.Context, _ *struct{}) (*exportOutput, error
 	if err != nil {
 		return nil, err
 	}
-	out := &exportOutput{ContentDisposition: `attachment; filename="stars-auth-` + sub + `.json"`}
+	out := &exportOutput{ContentDisposition: `attachment; filename="polaris-` + sub + `.json"`}
 	b := &out.Body
 	b.Sub, b.CreatedAt, b.Credentials.Password, b.Credentials.TwoFactor = sub, u.CreatedAt.Time, u.HasPassword, twoFactorOf(u)
 	b.ExternalIdentities, b.Consents, b.AuditEvents = []BoundProvider{}, []Consent{}, []AuditEvent{}

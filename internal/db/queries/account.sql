@@ -28,7 +28,7 @@ WHERE u.id = $1;
 -- Role, and no Passkey counts (the switch is off, or they have none):
 -- turning 两步验证 off would lock them out of the Management API.
 SELECT (s.admins_need_two_factor AND NOT (s.passkey_login AND has_passkey($1)) AND EXISTS (
-    SELECT 1 FROM user_roles r WHERE r.user_id = $1 AND r.api = 'urn:stars-auth:management-api'))::boolean AS must
+    SELECT 1 FROM user_roles r WHERE r.user_id = $1 AND r.api = 'urn:polaris:management-api'))::boolean AS must
 FROM settings s;
 
 -- name: MustKeepPasskey :one
@@ -36,7 +36,7 @@ FROM settings s;
 -- TOTP, and id is their last Passkey: deleting it would lock them out. The
 -- id must be theirs, so an unknown id is 404, not 409.
 SELECT (s.passkey_login AND s.admins_need_two_factor AND NOT totp_confirmed(@sub) AND EXISTS (
-    SELECT 1 FROM user_roles r WHERE r.user_id = @sub AND r.api = 'urn:stars-auth:management-api')
+    SELECT 1 FROM user_roles r WHERE r.user_id = @sub AND r.api = 'urn:polaris:management-api')
     AND EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = @sub AND p.id = @id)
     AND NOT EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = @sub AND p.id <> @id))::boolean AS must
 FROM settings s;

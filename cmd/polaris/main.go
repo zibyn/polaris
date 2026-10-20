@@ -1,4 +1,4 @@
-// Command stars-auth runs the Polaris identity service.
+// Command polaris runs the Polaris identity service.
 package main
 
 import (
@@ -18,30 +18,30 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/zibyn/stars-auth/internal/account"
+	"github.com/zibyn/polaris/internal/account"
 	// Channel plugins and Provider types register themselves (ADR 0004).
-	_ "github.com/zibyn/stars-auth/internal/channel/aliyun"
-	_ "github.com/zibyn/stars-auth/internal/channel/smtp"
-	_ "github.com/zibyn/stars-auth/internal/channel/webhook"
-	"github.com/zibyn/stars-auth/internal/config"
-	"github.com/zibyn/stars-auth/internal/crypt"
-	"github.com/zibyn/stars-auth/internal/db"
-	"github.com/zibyn/stars-auth/internal/identity"
-	"github.com/zibyn/stars-auth/internal/login"
-	"github.com/zibyn/stars-auth/internal/management"
-	"github.com/zibyn/stars-auth/internal/oidcstore"
-	"github.com/zibyn/stars-auth/internal/otp"
-	"github.com/zibyn/stars-auth/internal/passkey"
-	"github.com/zibyn/stars-auth/internal/pow"
-	_ "github.com/zibyn/stars-auth/internal/provider/apple"
-	_ "github.com/zibyn/stars-auth/internal/provider/github"
-	_ "github.com/zibyn/stars-auth/internal/provider/google"
-	_ "github.com/zibyn/stars-auth/internal/provider/microsoft"
-	_ "github.com/zibyn/stars-auth/internal/provider/oauth2"
-	_ "github.com/zibyn/stars-auth/internal/provider/oidc"
-	"github.com/zibyn/stars-auth/internal/server"
-	"github.com/zibyn/stars-auth/internal/webhook"
-	"github.com/zibyn/stars-auth/web"
+	_ "github.com/zibyn/polaris/internal/channel/aliyun"
+	_ "github.com/zibyn/polaris/internal/channel/smtp"
+	_ "github.com/zibyn/polaris/internal/channel/webhook"
+	"github.com/zibyn/polaris/internal/config"
+	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
+	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/login"
+	"github.com/zibyn/polaris/internal/management"
+	"github.com/zibyn/polaris/internal/oidcstore"
+	"github.com/zibyn/polaris/internal/otp"
+	"github.com/zibyn/polaris/internal/passkey"
+	"github.com/zibyn/polaris/internal/pow"
+	_ "github.com/zibyn/polaris/internal/provider/apple"
+	_ "github.com/zibyn/polaris/internal/provider/github"
+	_ "github.com/zibyn/polaris/internal/provider/google"
+	_ "github.com/zibyn/polaris/internal/provider/microsoft"
+	_ "github.com/zibyn/polaris/internal/provider/oauth2"
+	_ "github.com/zibyn/polaris/internal/provider/oidc"
+	"github.com/zibyn/polaris/internal/server"
+	"github.com/zibyn/polaris/internal/webhook"
+	"github.com/zibyn/polaris/web"
 )
 
 func main() {
@@ -183,7 +183,7 @@ func runCleanup(ctx context.Context, pool *pgxpool.Pool) {
 // healthcheck probes /healthz on the local listener; used by the container
 // HEALTHCHECK since the distroless image has no curl.
 func healthcheck() error {
-	listen := os.Getenv("STARS_AUTH_LISTEN")
+	listen := os.Getenv("POLARIS_LISTEN")
 	if listen == "" {
 		listen = config.DefaultListen
 	}

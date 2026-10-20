@@ -30,7 +30,7 @@ func NewKeyring(current byte, keys map[byte][]byte) (*Keyring, error) {
 		if len(key) != 32 {
 			return nil, fmt.Errorf("master key v%d: want 32 bytes, got %d", v, len(key))
 		}
-		k.macKeys[v] = hmacSHA256(key, []byte("stars-auth mac"))
+		k.macKeys[v] = hmacSHA256(key, []byte("polaris mac"))
 		block, err := aes.NewCipher(key)
 		if err != nil {
 			return nil, err

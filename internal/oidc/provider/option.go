@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/zibyn/stars-auth/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
 
 type Option func(p *Provider) error

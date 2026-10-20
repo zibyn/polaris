@@ -12,15 +12,15 @@ plugins {
 kotlin {
   explicitApi()
   android {
-    namespace = "com.starsdom.auth"
+    namespace = "com.zibyn.polaris"
     compileSdk = 37
     minSdk = 26
     withHostTest {}
   }
-  val xcf = XCFramework("StarsAuth")
+  val xcf = XCFramework("Polaris")
   listOf(iosArm64(), iosSimulatorArm64()).forEach {
     it.binaries.framework {
-      baseName = "StarsAuth"
+      baseName = "Polaris"
       xcf.add(this)
     }
   }
@@ -52,13 +52,13 @@ kotlin {
 
 mavenPublishing {
   publishToMavenCentral()
-  coordinates(artifactId = "stars-auth")
+  coordinates(artifactId = "polaris")
   pom {
     name = "Polaris KMP SDK"
     description = "Sign Users in to Polaris from iOS and Android Apps, without a browser."
-    url = "https://github.com/zibyn/stars-auth"
+    url = "https://github.com/zibyn/polaris"
     licenses { license { name = "Apache-2.0"; url = "https://www.apache.org/licenses/LICENSE-2.0" } }
     developers { developer { id = "zibyn"; name = "zibyn" } }
-    scm { url = "https://github.com/zibyn/stars-auth" }
+    scm { url = "https://github.com/zibyn/polaris" }
   }
 }

@@ -1,4 +1,4 @@
-package com.starsdom.auth
+package com.zibyn.polaris
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
