@@ -1,10 +1,10 @@
-# Stars Auth
+# Polaris
 
 为自有应用提供统一认证的中心化身份服务:一个用户池,所有应用共用,应用自身不再处理认证复杂度。
 
 ## Language
 
-**Stars Auth**:
+**Polaris**:
 独立部署的中心化身份服务,所有 Application 的 User 身份都由它持有和验证。
 _Avoid_: 认证库, 认证框架, SSO 平台
 
@@ -13,7 +13,7 @@ _Avoid_: 认证库, 认证框架, SSO 平台
 _Avoid_: Operator, 站长, 租户
 
 **User**:
-一个自然人在 Stars Auth 中的唯一账号,跨所有 Application 是同一个。
+一个自然人在 Polaris 中的唯一账号,跨所有 Application 是同一个。
 _Avoid_: 账户, 会员, 成员
 
 **待激活**:
@@ -25,7 +25,7 @@ _Avoid_: 未激活, 待验证, 待确认
 _Avoid_: 邀请码, 激活邮件, 注册链接
 
 **Application**:
-在 Stars Auth 注册的一个接入方:委托 Stars Auth 认证 User(App、小程序或 Web 端),或以自己的身份调用 API(M2M Application)。
+在 Polaris 注册的一个接入方:委托 Polaris 认证 User(App、小程序或 Web 端),或以自己的身份调用 API(M2M Application)。
 _Avoid_: Client, 租户, 项目
 
 **First-party Application**:
@@ -37,7 +37,7 @@ _Avoid_: 内部应用, 自有客户端
 _Avoid_: 服务账号, 机器账号, 客户端凭证应用
 
 **API**:
-管理员登记的一个受保护业务后端,以 API 标识符区分;Stars Auth 签发给 Application 的 access token 指明它供哪个 API 使用,多个 Application 可共用同一个 API。
+管理员登记的一个受保护业务后端,以 API 标识符区分;Polaris 签发给 Application 的 access token 指明它供哪个 API 使用,多个 Application 可共用同一个 API。
 _Avoid_: Resource Server, 资源, 后端服务
 
 **API 标识符**:
@@ -65,7 +65,7 @@ User 持有、用于证明身份的秘密,如密码、Passkey、TOTP、恢复码
 _Avoid_: 密钥, 因子
 
 **Passkey**:
-User 保存在设备或密码管理器里的一把 Credential,只对 Stars Auth 的域名有效;登录时由设备提供,不用先输 Identifier,设备每次都要求生物识别或 PIN,所以本身就满足两步验证。只能由已登录的 User 添加,不能用来注册;一个 User 可以有多把。
+User 保存在设备或密码管理器里的一把 Credential,只对 Polaris 的域名有效;登录时由设备提供,不用先输 Identifier,设备每次都要求生物识别或 PIN,所以本身就满足两步验证。只能由已登录的 User 添加,不能用来注册;一个 User 可以有多把。
 _Avoid_: 通行密钥, 安全密钥, WebAuthn 凭证, FIDO 凭证
 
 **登录途径**:
@@ -85,7 +85,7 @@ _Avoid_: 备用码, 救援码, 备份码
 _Avoid_: 网关, 短信服务商, 发送器
 
 **Provider**:
-管理员添加的一个外部认证服务(如"Google"、"Apple"、"公司 Keycloak"),替 Stars Auth 证明"这是谁",认证结果是一个已验证的 Identifier 或一个 External Identity;各 Provider 的 External Identity 互不相通。
+管理员添加的一个外部认证服务(如"Google"、"Apple"、"公司 Keycloak"),替 Polaris 证明"这是谁",认证结果是一个已验证的 Identifier 或一个 External Identity;各 Provider 的 External Identity 互不相通。
 _Avoid_: Provider 实例, 社交登录, IdP, 第三方登录, 认证服务商
 
 **Provider 类型**:
@@ -101,5 +101,5 @@ _Avoid_: 权限点, scope, 授权
 _Avoid_: 用户组, 身份, 职位
 
 **Management API**:
-Stars Auth 自带的内置 API,管理 User、Application、Role 与配置;管理端界面和业务后端都通过它操作,权限由其上的内置 Role(所有者、管理员、只读)或自定义 Role 决定。
+Polaris 自带的内置 API,管理 User、Application、Role 与配置;管理端界面和业务后端都通过它操作,权限由其上的内置 Role(所有者、管理员、只读)或自定义 Role 决定。
 _Avoid_: 管理端 API, Admin API, 后台接口

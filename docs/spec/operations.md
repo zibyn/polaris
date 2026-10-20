@@ -29,7 +29,7 @@ Apache-2.0。并入的 go-oidc(MIT)保留其版权声明。(ADR 0008)
 
 ## 部署文档最小集合
 
-1. compose 样例:Stars Auth + PostgreSQL + Caddy(自动签发证书)。
+1. compose 样例:Polaris + PostgreSQL + Caddy(自动签发证书)。
 2. 环境变量说明。
 3. 醒目的**主密钥备份**提示。
 4. `pg_dump` 备份、升级步骤、所有管理员都无法登录时的处理(直接改数据库)。

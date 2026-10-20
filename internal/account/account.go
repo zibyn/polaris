@@ -86,7 +86,7 @@ func callerOf(ctx context.Context) caller { return ctx.Value(callerKey{}).(calle
 func (s *Service) Register(mux *http.ServeMux) {
 	s.passkeys.RegisterWellKnown(mux)
 	s.registerChangePassword(mux)
-	cfg := huma.DefaultConfig("Stars Auth Account API", "1")
+	cfg := huma.DefaultConfig("Polaris Account API", "1")
 	cfg.DocsPath = ""
 	cfg.SchemasPath = ""
 	cfg.CreateHooks = nil

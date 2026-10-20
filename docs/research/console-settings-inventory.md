@@ -160,7 +160,7 @@
 | 分区头 | 短信 / 邮件 + "已启用 · 更新于 …" / "未启用" | — | — | 未启用 | — | — |
 | 插件下拉 | 占位"选择 Channel";aria-label "短信 Channel" | 短信可选:阿里云短信认证、Webhook;邮件可选:SMTP、Webhook(aliyun.go:27-29, smtp.go:24-26, channel/webhook/webhook.go:28-30) | 开发者 | — | 换插件后,按钮变成"切换并保存",保存即替换旧通道 | **C**("选择 Channel",同一页标题又叫"通道") |
 | 阿里云字段 | AccessKey ID;AccessKey Secret(密钥);签名(帮助"号码认证控制台赠送的签名;只能发往中国大陆 +86 号码");模板 Code(帮助"与签名配套的赠送模板,选登录/注册场景") | 存入 channel 配置,密钥字段加密(channel/store.go:95-115) | 开发者 | — | — | A(分号);B(字段名直出) |
-| SMTP 字段 | 服务器(如 smtp.qq.com);端口(帮助"465 直接走 TLS;其他端口须支持 STARTTLS");用户名(选填);密码(选填、密钥);发件人(如 Stars Auth <noreply@example.com>) | 同上 | 开发者 | — | — | A |
+| SMTP 字段 | 服务器(如 smtp.qq.com);端口(帮助"465 直接走 TLS;其他端口须支持 STARTTLS");用户名(选填);密码(选填、密钥);发件人(如 Polaris <noreply@example.com>) | 同上 | 开发者 | — | — | A |
 | Webhook 字段 | URL(帮助 `收到 POST {"to", "code"},返回 2xx 即视为送达`);签名密钥(帮助 `X-Stars-Signature: t=<秒>,v1=<hex HMAC-SHA256(密钥, "<t>.<body>")>`) | 同上 | 开发者 | — | — | **B**(整段格式直出);D |
 | 密钥占位符 | "已设置 · 更新于 …,留空不修改" | 留空保留原值 | — | — | — | 符合规格"只写不回显" |
 | 选填标记 | 选填 | — | — | — | — | — |

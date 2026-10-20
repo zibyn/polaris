@@ -146,7 +146,7 @@ func (f *Fake) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The refresh token for code is "rt-<code>". Apple signs the id_token
-	// with RS256; Stars Auth trusts the TLS response instead.
+	// with RS256; Polaris trusts the TLS response instead.
 	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: f.key}, nil)
 	if err != nil {
 		f.t.Fatal(err)

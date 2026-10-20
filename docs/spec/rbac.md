@@ -1,6 +1,6 @@
 # 角色与权限
 
-Stars Auth 负责定义 Role、分配 Role,并把它们写进令牌;访问控制判断由业务后端完成。不做组、组织架构和策略引擎。(ADR 0007)
+Polaris 负责定义 Role、分配 Role,并把它们写进令牌;访问控制判断由业务后端完成。不做组、组织架构和策略引擎。(ADR 0007)
 
 ## 模型
 
@@ -23,7 +23,7 @@ API (aud)
 
 ## Management API
 
-Stars Auth 自带的内置 API,是一套 REST 接口。管理端前端只调用它;业务后端以 M2M Application 的身份调用,接入步骤见 [Management API 接入指南](../management-api.md)。
+Polaris 自带的内置 API,是一套 REST 接口。管理端前端只调用它;业务后端以 M2M Application 的身份调用,接入步骤见 [Management API 接入指南](../management-api.md)。
 
 - **标识符**:`urn:stars-auth:management-api`,即它签发的 access token 的 `aud`。
 - **调用凭证**:

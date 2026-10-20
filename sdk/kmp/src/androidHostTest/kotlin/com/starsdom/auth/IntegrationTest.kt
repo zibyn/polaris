@@ -31,7 +31,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The SDK against a running Stars Auth: scripts/integration.sh starts one and
+ * The SDK against a running Polaris: scripts/integration.sh starts one and
  * sets the environment. Skipped without it.
  */
 class IntegrationTest {

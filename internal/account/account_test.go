@@ -429,7 +429,7 @@ func TestOwnSessions(t *testing.T) {
 			rest = s
 		}
 	}
-	if current.ID == "" || rest.ID == "" || current.Application != "Stars Auth 账号中心" {
+	if current.ID == "" || rest.ID == "" || current.Application != "Polaris 账号中心" {
 		t.Fatalf("sessions: %+v", list.Sessions)
 	}
 	var bob string

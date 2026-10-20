@@ -1,6 +1,6 @@
 # 不合并 User,外部身份不按邮箱自动关联
 
-Stars Auth 永不合并两个 User。User 绑定一个已属于另一 User 的 Identifier 或 External Identity 时直接拒绝,要么先在另一个 User 上解绑 / 注销,要么改用那个 User。认证服务商返回的已验证邮箱或手机号也不会自动把新的 External Identity 关联到已有 User,只有已登录的 User 主动绑定才会关联。
+Polaris 永不合并两个 User。User 绑定一个已属于另一 User 的 Identifier 或 External Identity 时直接拒绝,要么先在另一个 User 上解绑 / 注销,要么改用那个 User。认证服务商返回的已验证邮箱或手机号也不会自动把新的 External Identity 关联到已有 User,只有已登录的 User 主动绑定才会关联。
 
 ## Considered Options
 

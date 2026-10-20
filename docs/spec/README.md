@@ -1,8 +1,8 @@
-# Stars Auth 设计规格
+# Polaris 设计规格
 
-Stars Auth 是开源、自托管的中心化身份服务:一个实例、一个用户池,服务部署它的运营方自己开发的全部 Application。它负责认证 User,并按 API 下发角色与权限;Application 不再各自处理认证。
+Polaris 是开源、自托管的中心化身份服务:一个实例、一个用户池,服务部署它的运营方自己开发的全部 Application。它负责认证 User,并按 API 下发角色与权限;Application 不再各自处理认证。
 
-本目录是可交付开发的规格,只写"是什么"。"为什么"见 `docs/adr/`,完整的决策过程见 [Stars Auth 设计规格](https://github.com/zibyn/stars-auth/issues/1) 地图下的各个 ticket。术语以仓库根目录 `GLOSSARY.md` 为准。
+本目录是可交付开发的规格,只写"是什么"。"为什么"见 `docs/adr/`,完整的决策过程见 [Polaris 设计规格](https://github.com/zibyn/stars-auth/issues/1) 地图下的各个 ticket。术语以仓库根目录 `GLOSSARY.md` 为准。
 
 ## 阅读顺序
 

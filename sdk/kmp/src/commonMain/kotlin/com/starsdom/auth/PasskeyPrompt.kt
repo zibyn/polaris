@@ -29,7 +29,7 @@ public interface PasskeyPrompt {
    * Runs the system's "use a Passkey" sheet. [optionsJson] is the
    * PublicKeyCredentialRequestOptionsJSON (the value that goes under
    * `publicKey`). Returns the AuthenticationResponseJSON to hand back to
-   * Stars Auth, or null if the User dismissed the sheet: not a failure.
+   * Polaris, or null if the User dismissed the sheet: not a failure.
    */
   public suspend fun get(optionsJson: String): String?
 }

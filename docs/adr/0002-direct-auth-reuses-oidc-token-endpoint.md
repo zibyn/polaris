@@ -5,7 +5,7 @@
 ## Considered Options
 
 - **直连 API 自有一套会话令牌**:业务后端要认两种令牌,刷新与吊销各写一遍。
-- **不透明 access token + introspection**:可即时吊销,但每个业务请求都回查 Stars Auth,使其成为单点与瓶颈。
+- **不透明 access token + introspection**:可即时吊销,但每个业务请求都回查 Polaris,使其成为单点与瓶颈。
 - **`aud` 填 client_id**:省掉 API 概念,但 access token 与 ID token 形态几乎一致,不校验 `typ` 的后端会混用两者。
 
 ## Consequences

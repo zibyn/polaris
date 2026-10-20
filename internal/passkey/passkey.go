@@ -91,7 +91,7 @@ func New(pool *pgxpool.Pool, issuer string) (*Store, error) {
 	}
 	wa, err := webauthn.New(&webauthn.Config{
 		RPID:                  u.Hostname(),
-		RPDisplayName:         "Stars Auth",
+		RPDisplayName:         "Polaris",
 		RPOrigins:             []string{issuer},
 		AttestationPreference: protocol.PreferNoAttestation,
 		AuthenticatorSelection: protocol.AuthenticatorSelection{

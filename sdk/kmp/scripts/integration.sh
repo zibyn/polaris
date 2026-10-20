@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the SDK's integration test against a local Stars Auth binary: builds it
+# Runs the SDK's integration test against a local Polaris binary: builds it
 # (Go in Docker), starts PostgreSQL in Docker, creates the owner and a test
 # Application, then runs IntegrationTest. Needs Docker, and web/dist/client
 # built (cd web && pnpm build).

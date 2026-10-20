@@ -100,7 +100,7 @@ func TestSendsCodeByMail(t *testing.T) {
 	port, got := server(t)
 	ch, err := channel.Get("smtp").New(map[string]string{
 		"host": "127.0.0.1", "port": port, "username": "mailer", "password": "pw",
-		"from": "Stars Auth <noreply@example.com>",
+		"from": "Polaris <noreply@example.com>",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestRejectsBadSettings(t *testing.T) {
 // 没有任何好处。
 func TestSendsInviteLinkWithoutACode(t *testing.T) {
 	port, got := server(t)
-	ch, err := channel.Get("smtp").New(map[string]string{"host": "127.0.0.1", "port": port, "from": "Stars Auth <noreply@example.com>"})
+	ch, err := channel.Get("smtp").New(map[string]string{"host": "127.0.0.1", "port": port, "from": "Polaris <noreply@example.com>"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -31,9 +31,9 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 public class StarsAuthConfig(
-  /** Stars Auth's address, e.g. `https://auth.example.com`. */
+  /** Polaris's address, e.g. `https://auth.example.com`. */
   public val issuer: String,
-  /** The App's Application (public) in Stars Auth. */
+  /** The App's Application (public) in Polaris. */
   public val clientId: String,
   public val scope: String = "openid offline_access",
 ) {
@@ -91,7 +91,7 @@ public sealed interface SignInStep {
 }
 
 /**
- * An error from Stars Auth or the SDK. [error] is the OAuth error code, or
+ * An error from Polaris or the SDK. [error] is the OAuth error code, or
  * one of the constants below; for `invalid_request` [description] says what
  * the User got wrong in words fit to show.
  */
@@ -225,7 +225,7 @@ public class StarsAuth(
   public fun passkeysAvailable(): Boolean = passkeys?.available ?: false
 
   /**
-   * Signs in with a Passkey in two round trips: the SDK asks Stars Auth for
+   * Signs in with a Passkey in two round trips: the SDK asks Polaris for
    * the assertion options, hands them to the system sheet, and submits what
    * the sheet produced. The User sees one system prompt and nothing else.
    * Dismissing it throws [StarsAuthException.PASSKEY_CANCELLED], which is not
@@ -494,7 +494,7 @@ private const val ACCOUNT_SCOPE = "openid"
 private val base64Url = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
 
 // The system sheets take the options the browser would put under publicKey;
-// Stars Auth answers with the PublicKeyCredential*OptionsJSON wrapped in it.
+// Polaris answers with the PublicKeyCredential*OptionsJSON wrapped in it.
 private fun JsonElement.underPublicKey(): String =
   (this as? JsonObject)?.get("publicKey")?.toString() ?: toString()
 

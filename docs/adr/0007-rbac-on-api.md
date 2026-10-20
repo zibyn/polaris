@@ -1,6 +1,6 @@
 # 角色挂在 API 上,并写入 access token
 
-Stars Auth 除了认证,还负责基于角色的权限下发。每个 API 定义自己的 Permission(字符串)和 Role(Permission 的命名集合,支持自定义),User 在同一 API 上可以持有多个 Role,权限取并集。access token 按 RFC 9068 §2.2.3.1 携带 `roles` 和 `entitlements`(展开后的 Permission),只包含当前 `aud` 那个 API 下的;ID token 不携带。Stars Auth 的管理端本身就是一个内置 API,内置所有者、管理员、只读三个 Role,也允许自定义。因此管理员不再是一个标记,而是"在 Management API 上持有任一 Role 的 User"。组和组织架构不做;访问控制判断仍由业务后端自己完成。
+Polaris 除了认证,还负责基于角色的权限下发。每个 API 定义自己的 Permission(字符串)和 Role(Permission 的命名集合,支持自定义),User 在同一 API 上可以持有多个 Role,权限取并集。access token 按 RFC 9068 §2.2.3.1 携带 `roles` 和 `entitlements`(展开后的 Permission),只包含当前 `aud` 那个 API 下的;ID token 不携带。Polaris 的管理端本身就是一个内置 API,内置所有者、管理员、只读三个 Role,也允许自定义。因此管理员不再是一个标记,而是"在 Management API 上持有任一 Role 的 User"。组和组织架构不做;访问控制判断仍由业务后端自己完成。
 
 本 ADR 取代 ADR 0006 中"只做 operator 标记、不做角色"的部分;0006 的其余内容(管理员是 User、经 OIDC 登录、用户名 Identifier、setup token 引导)仍然有效。
 

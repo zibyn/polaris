@@ -2,7 +2,7 @@
 
 > 部分被 [ADR 0007](0007-rbac-on-api.md) 取代:"只做 operator 标记、不做角色"一节已改为 Management API 上的 Role。
 
-Operator 不另建账号体系:每个 Operator 都是用户池中带 operator 标记的 User。管理端是内置的 First-party Application,经 Stars Auth 自己的 OIDC 登录,只允许带标记的 User 进入。为了让 Operator 不配置任何 Channel 也能登录,用户名成为第三种 Identifier(不验证、不能接收验证码、只能配合密码使用);密码登录开关从开 / 关改为三档,依次为关闭、仅 Operator(默认)、所有 User。首次启动时日志打印一次性 setup token,凭它在引导页设置第一个 Operator 的用户名和密码。"Operator 必须启用 2FA 或 Passkey"是开关,默认关闭。
+Operator 不另建账号体系:每个 Operator 都是用户池中带 operator 标记的 User。管理端是内置的 First-party Application,经 Polaris 自己的 OIDC 登录,只允许带标记的 User 进入。为了让 Operator 不配置任何 Channel 也能登录,用户名成为第三种 Identifier(不验证、不能接收验证码、只能配合密码使用);密码登录开关从开 / 关改为三档,依次为关闭、仅 Operator(默认)、所有 User。首次启动时日志打印一次性 setup token,凭它在引导页设置第一个 Operator 的用户名和密码。"Operator 必须启用 2FA 或 Passkey"是开关,默认关闭。
 
 ## Considered Options
 

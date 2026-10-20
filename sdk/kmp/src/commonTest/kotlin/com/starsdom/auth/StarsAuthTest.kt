@@ -25,7 +25,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
 import kotlinx.io.IOException
 
-/** A Stars Auth that answers by path; tests set the answers they need. */
+/** A Polaris that answers by path; tests set the answers they need. */
 class FakeServer {
   val forms = mutableListOf<Pair<String, Map<String, String>>>()
   val bodies = mutableListOf<Pair<String, String>>()

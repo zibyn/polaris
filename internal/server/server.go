@@ -1,4 +1,4 @@
-// Package server wires the HTTP surface of Stars Auth.
+// Package server wires the HTTP surface of Polaris.
 package server
 
 import (

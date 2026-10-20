@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Stars Auth Direct Auth API",
+    "title": "Polaris Direct Auth API",
     "version": "1",
     "description": "The authorization challenge endpoint of OAuth 2.0 for First-Party Applications (draft-ietf-oauth-first-party-apps-04). An App signs a User in without a browser and redeems the authorization_code at the OIDC token endpoint (grant_type=authorization_code, with code_verifier and no redirect_uri); the tokens are the ones the OIDC flow issues."
   },
@@ -31,7 +31,7 @@
                   "username": {"type": "string", "description": "An Identifier, for password login."},
                   "password": {"type": "string", "description": "The User's password. When it is the initial password of a 待激活 account — an admin created it and the User has not set their own — the answer is 403 `insufficient_authorization` with `next: \"password\"`: send the new password here on that `auth_session`, with no `altcha`, and the account is activated and the sign-in goes on. This is the one step such a User may take on their own."},
                   "provider": {"type": "string", "description": "The Provider ID of an enabled Provider of a type Apps can sign in with (today Apple only), with authorization_code."},
-                  "authorization_code": {"type": "string", "description": "With provider: what the Provider's SDK gave the App. For Apple, the authorization_code of Sign in with Apple, exchanged once by Stars Auth as the Provider's Bundle ID."},
+                  "authorization_code": {"type": "string", "description": "With provider: what the Provider's SDK gave the App. For Apple, the authorization_code of Sign in with Apple, exchanged once by Polaris as the Provider's Bundle ID."},
                   "passkey": {"type": "string", "description": "Passkey sign-in (ADR 0014), either of two values. `begin`, with the first request's parameters and no `auth_session`: answers 200 with `options` and an `auth_session`, and requires no `altcha`. Or the AuthenticationResponseJSON the system credential API returned for those options, with that `auth_session`: answers 200 with the authorization code. An assertion that does not verify answers 400 `invalid_request` and spends the `auth_session`; start over. Android Apps are accepted from the `android:apk-key-hash:` origin their registered signing certificate names."},
                   "totp": {"type": "string", "description": "A 6-digit code from the User's authenticator, when `next` is `totp`. Each code works once."},
                   "delete": {"type": "string", "description": "While an account is 待激活: any non-empty value deletes the account — the 注销 a User is otherwise offered from the account center. Answers 400 `access_denied`."},
@@ -72,7 +72,7 @@
       "get": {
         "operationId": "get-terms",
         "summary": "The current terms",
-        "description": "What the App's \"我已阅读并同意\" checkbox links to, and the version to send as terms_version once it is ticked. Stars Auth does not host the texts.",
+        "description": "What the App's \"我已阅读并同意\" checkbox links to, and the version to send as terms_version once it is ticked. Polaris does not host the texts.",
         "responses": {
           "200": {
             "description": "An empty version means the instance has no terms yet: any terms_version will do, the empty one too.",

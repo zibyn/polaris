@@ -1,4 +1,4 @@
-# Stars Auth + PostgreSQL behind an existing reverse proxy. Installed to
+# Polaris + PostgreSQL behind an existing reverse proxy. Installed to
 # /opt/auth by deploy.sh, which also writes /opt/auth/.env on first run.
 # The proxy terminates TLS for STARS_AUTH_ISSUER and forwards to port
 # STARS_AUTH_PORT (default 8080).

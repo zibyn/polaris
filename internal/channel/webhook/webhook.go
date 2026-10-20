@@ -1,4 +1,4 @@
-// Package webhook is the Channel for any service Stars Auth has no plugin
+// Package webhook is the Channel for any service Polaris has no plugin
 // for: it POSTs {"to", "code"} to the admin's URL, or {"to", "link"} for a
 // 注册邀请, signed with a shared secret.
 //

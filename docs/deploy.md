@@ -1,6 +1,6 @@
 # 部署
 
-用 `compose.yaml` 起 Stars Auth + PostgreSQL + Caddy(自动签发 HTTPS 证书),从零到完成首次引导大约 10 分钟。
+用 `compose.yaml` 起 Polaris + PostgreSQL + Caddy(自动签发 HTTPS 证书),从零到完成首次引导大约 10 分钟。
 
 > [!CAUTION]
 > **备份主密钥 `STARS_AUTH_MASTER_KEY`。** OIDC 签名私钥、TOTP 密钥、Channel 与 Provider 的密钥都用它加密入库。
@@ -43,7 +43,7 @@ docker compose logs stars-auth | grep setup
 
 ## 环境变量
 
-Stars Auth 只从环境变量读启动参数,其余配置都在管理端里、存在数据库中。
+Polaris 只从环境变量读启动参数,其余配置都在管理端里、存在数据库中。
 
 | 变量 | 说明 |
 |---|---|
@@ -92,7 +92,7 @@ docker compose start stars-auth
 
 ## 所有管理员都无法登录时
 
-Stars Auth 没有后门,只能直接改数据库。先进 psql:
+Polaris 没有后门,只能直接改数据库。先进 psql:
 
 ```bash
 docker compose exec postgres psql -U stars
@@ -118,8 +118,8 @@ docker compose exec postgres psql -U stars
 
 ## 已知风险与合规提醒
 
-- **运营商二次放号**:手机号停用后会被运营商重新放出。新号主用验证码就能登录前一个人的账号。Stars Auth 不专门处理;开了 2FA 或 Passkey 的 User 不受影响。重要账号建议引导用户开启。
-- **以下事项由运营方自己负责,Stars Auth 不提供相应功能**:
+- **运营商二次放号**:手机号停用后会被运营商重新放出。新号主用验证码就能登录前一个人的账号。Polaris 不专门处理;开了 2FA 或 Passkey 的 User 不受影响。重要账号建议引导用户开启。
+- **以下事项由运营方自己负责,Polaris 不提供相应功能**:
   - **未成年人保护**:年龄识别、防沉迷、监护人同意等。
   - **数据出境**:服务器或备份放在境外,或者向境外提供个人信息,须自行完成相应的评估、认证或标准合同。
   - **等保测评**:按系统定级自行备案和测评。

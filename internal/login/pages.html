@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.}} · Stars Auth</title>
+<title>{{.}} · Polaris</title>
 <style>
 /* 「星云」palette, docs/spec/consoles.md「视觉规范」; same values as
    web/src/styles.css. Light only. The brand panel's nebula is the one
@@ -437,13 +437,13 @@ addEventListener("DOMContentLoaded", () => {
 </form>
 {{template "foot"}}{{end}}
 
-{{define "message"}}{{template "head" "Stars Auth"}}
+{{define "message"}}{{template "head" "Polaris"}}
 <p>{{.}}</p>
 {{template "foot"}}{{end}}
 
 {{define "logout"}}{{template "head" "退出登录"}}
 <h1>退出登录</h1>
-<p>要退出 Stars Auth 吗?使用它登录的应用也会随之退出。</p>
+<p>要退出 Polaris 吗?使用它登录的应用也会随之退出。</p>
 <form method="post" action="{{.}}">
   <input type="hidden" name="logout" value="1">
   <button>退出</button>

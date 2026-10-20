@@ -25,7 +25,7 @@
 
 | 类型 | 职责 | 产出 | 实例数 |
 |---|---|---|---|
-| **Channel** | 把 Stars Auth 生成的验证码或一次性链接投递到手机号或邮箱 | 投递结果 | 每种 Identifier(短信、邮件)同时只启用一个,不做故障切换 |
+| **Channel** | 把 Polaris 生成的验证码或一次性链接投递到手机号或邮箱 | 投递结果 | 每种 Identifier(短信、邮件)同时只启用一个,不做故障切换 |
 | **Provider** | 由外部服务证明"这是谁" | 一个已验证的 Identifier(如一键登录给出的手机号),**或**一个 External Identity | 可以添加多个 Provider,同一 Provider 类型也可以添加多个,各自的 External Identity 互不相通 |
 
 - **核心能力不做成插件**:验证码登录、密码、Passkey、TOTP。

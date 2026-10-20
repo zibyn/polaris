@@ -26,7 +26,7 @@ func (e *env) addApple() *appletest.Fake {
 
 // signInWithApple presses the Apple button on page, approves at the fake
 // Apple, and comes back by Apple's form_post: a cross-site POST, which
-// carries no Lax cookie. It returns the response that leaves Stars Auth
+// carries no Lax cookie. It returns the response that leaves Polaris
 // for the Application (or the page it stops at) and the code Apple gave.
 func (e *env) signInWithApple(f *appletest.Fake, page string) (*http.Response, string, string) {
 	e.t.Helper()

@@ -1,4 +1,4 @@
-// Command stars-auth runs the Stars Auth identity service.
+// Command stars-auth runs the Polaris identity service.
 package main
 
 import (

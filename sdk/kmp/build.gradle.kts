@@ -1,4 +1,4 @@
-// The Stars Auth SDK for iOS and Android Apps: the direct auth API, tokens and
+// The Polaris SDK for iOS and Android Apps: the direct auth API, tokens and
 // their storage. No UI. Behaviour: docs/sdk-behavior.md at the repo root.
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
@@ -54,8 +54,8 @@ mavenPublishing {
   publishToMavenCentral()
   coordinates(artifactId = "stars-auth")
   pom {
-    name = "Stars Auth KMP SDK"
-    description = "Sign Users in to Stars Auth from iOS and Android Apps, without a browser."
+    name = "Polaris KMP SDK"
+    description = "Sign Users in to Polaris from iOS and Android Apps, without a browser."
     url = "https://github.com/zibyn/stars-auth"
     licenses { license { name = "Apache-2.0"; url = "https://www.apache.org/licenses/LICENSE-2.0" } }
     developers { developer { id = "zibyn"; name = "zibyn" } }

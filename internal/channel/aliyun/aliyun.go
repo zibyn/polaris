@@ -1,6 +1,6 @@
 // Package aliyun is the SMS Channel on Aliyun's 号码认证服务「短信认证」, the
 // one Chinese SMS route open to individuals: Aliyun lends the signature and
-// template. Stars Auth passes its own code to SendSmsVerifyCode and never
+// template. Polaris passes its own code to SendSmsVerifyCode and never
 // calls CheckSmsVerifyCode. Mainland (+86) numbers only.
 package aliyun
 

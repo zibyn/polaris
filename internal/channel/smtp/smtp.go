@@ -29,7 +29,7 @@ func init() {
 			{Key: "port", Label: "端口", Type: "number", Help: "465 直接走 TLS;其他端口须支持 STARTTLS"},
 			{Key: "username", Label: "用户名", Type: "text", Optional: true},
 			{Key: "password", Label: "密码", Type: "text", Secret: true, Optional: true},
-			{Key: "from", Label: "发件人", Type: "text", Help: "如 Stars Auth <noreply@example.com>"},
+			{Key: "from", Label: "发件人", Type: "text", Help: "如 Polaris <noreply@example.com>"},
 		},
 		New: newSMTP,
 	})
@@ -48,7 +48,7 @@ func newSMTP(c map[string]string) (channel.Channel, error) {
 	}
 	from, err := mail.ParseAddress(c["from"])
 	if err != nil {
-		return nil, errors.New("发件人须为邮箱地址,如 Stars Auth <noreply@example.com>")
+		return nil, errors.New("发件人须为邮箱地址,如 Polaris <noreply@example.com>")
 	}
 	s := &mailer{host: c["host"], port: strconv.Itoa(port), from: from}
 	if c["username"] != "" {

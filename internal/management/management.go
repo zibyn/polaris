@@ -74,7 +74,7 @@ const TwoFactorRequired = "two_factor_required"
 // Register adds the Management API and its OpenAPI document to mux.
 func (s *Service) Register(mux *http.ServeMux) {
 	s.registerAssociation(mux)
-	cfg := huma.DefaultConfig("Stars Auth Management API", "1")
+	cfg := huma.DefaultConfig("Polaris Management API", "1")
 	cfg.DocsPath = ""
 	cfg.SchemasPath = ""
 	cfg.CreateHooks = nil // no $schema links in bodies

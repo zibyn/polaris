@@ -1,4 +1,4 @@
-# Stars Auth + PostgreSQL 15 + Caddy (automatic HTTPS). See docs/deploy.md.
+# Polaris + PostgreSQL 15 + Caddy (automatic HTTPS). See docs/deploy.md.
 #
 #   cat > .env <<END
 #   STARS_AUTH_DOMAIN=auth.example.com

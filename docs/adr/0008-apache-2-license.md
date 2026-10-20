@@ -1,6 +1,6 @@
 # 采用 Apache-2.0 许可证
 
-Stars Auth 以 Apache-2.0 发布。并入的 go-oidc 是 MIT 许可,两者兼容,仓库内保留其版权声明。
+Polaris 以 Apache-2.0 发布。并入的 go-oidc 是 MIT 许可,两者兼容,仓库内保留其版权声明。
 
 ## Considered Options
 

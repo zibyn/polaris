@@ -197,7 +197,7 @@ IMAGE=$REGISTRY/zibyn/stars-auth:latest
 ENV_FILE=/dev/null # nothing is kept locally; every secret lives in $DIR/.env
 AUTO=""; [[ "${1:-}" == -y ]] && AUTO=1
 
-[[ $AUTO ]] || banner "部署 Stars Auth 到 $HOST:$DIR"
+[[ $AUTO ]] || banner "部署 Polaris 到 $HOST:$DIR"
 
 stage "检查本机与服务器"
 for c in docker ssh scp; do
@@ -228,7 +228,7 @@ elif [[ $AUTO ]]; then
   warn "首次部署需要回答几个问题:去掉 -y 再运行一次。"; exit 1
 else
   DOMAIN=""
-  while [[ -z $DOMAIN ]]; do ask DOMAIN "Stars Auth 的域名(如 auth.example.com):"; done
+  while [[ -z $DOMAIN ]]; do ask DOMAIN "Polaris 的域名(如 auth.example.com):"; done
   ask PROXY_IP "反向代理的 IP(代理就在 $HOST 上则直接回车):"
   ask PORT "暴露给反向代理的端口(回车用 8080):"
   warn "域名上线后不要再改:改了以后已签发的令牌和 Application 配置都会失效。"

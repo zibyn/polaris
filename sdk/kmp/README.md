@@ -1,6 +1,6 @@
-# Stars Auth KMP SDK
+# Polaris KMP SDK
 
-iOS 和 Android App 不经浏览器登录 Stars Auth:验证码、密码、Sign in with Apple、Passkey、刷新、登出、注销账号。只管协议,不带界面。行为约定见 [SDK 行为说明](../../docs/sdk-behavior.md)。
+iOS 和 Android App 不经浏览器登录 Polaris:验证码、密码、Sign in with Apple、Passkey、刷新、登出、注销账号。只管协议,不带界面。行为约定见 [SDK 行为说明](../../docs/sdk-behavior.md)。
 
 SDK 0.x 支持服务端 API v1。
 
@@ -151,7 +151,7 @@ export async function verify(authorization) {
 
 ```bash
 ./gradlew testAndroidHostTest       # 单元测试(iOS 目标在 Linux 上只编译)
-scripts/integration.sh              # 对本地 Stars Auth 二进制跑集成测试;需要 Docker 和 web/dist/client
+scripts/integration.sh              # 对本地 Polaris 二进制跑集成测试;需要 Docker 和 web/dist/client
 ```
 
 发布到 Maven Central:在 `~/.gradle/gradle.properties` 配好 `mavenCentralUsername`、`mavenCentralPassword` 与 `signing.*`(或 `signingInMemoryKey*`),改 `gradle.properties` 的 `VERSION_NAME`,然后 `./gradlew publishAndReleaseToMavenCentral`。

@@ -43,7 +43,7 @@
 - panva 那条 2020 年 Basic OP 记录没有标版本号，对应哪个大版本 **未验证**。按 OIDF FAQ，"[Certifications] do not expire. The date that the certification was performed is part of the certification."（[FAQ](https://openid.net/certification/what-is-self-certification-faq/)）。所以它至今仍是有效认证，只是年代较早。
 - go-oidc 虽然没有 RP-Initiated 认证，但它的 [Makefile](https://github.com/luikyv/go-oidc/blob/main/Makefile) 里 `cs-oidc-tests` 包含 `oidcc-rp-initiated-logout-certification-test-plan`，而 [`examples/oidc/failures.json`](https://github.com/luikyv/go-oidc/blob/main/examples/oidc/failures.json) 只把 `oidcc-userinfo-post-body`（warning）和 `oidcc-server-rotate-keys`（CI 无法触发轮换）列为预期失败。也就是说，logout 测试计划在它的 CI 里是通过的。
 - go-oidc 在 main 上最近一次 conformance workflow（2026-07-23，run 29971459357）的 17 个 profile 全部成功；见 `gh run list -R luikyv/go-oidc -w conformance.yml -b main`。
-- **认证不随代码转移**：提交认证时要填 "Deployment Name & Version identifies the actual software version that is being declared conformant"（[提交流程](https://openid.net/certification/how-to-submit-your-certification-request/)）。【推断】不论选哪条路，Stars Auth 都得用自己的部署和版本号重新认证。"起步于已认证实现"降低的是通过测试的难度，并不能直接带来认证。
+- **认证不随代码转移**：提交认证时要填 "Deployment Name & Version identifies the actual software version that is being declared conformant"（[提交流程](https://openid.net/certification/how-to-submit-your-certification-request/)）。【推断】不论选哪条路，Polaris 都得用自己的部署和版本号重新认证。"起步于已认证实现"降低的是通过测试的难度，并不能直接带来认证。
 
 ## 3. 代码量、结构、测试、一人维护负担
 
@@ -108,7 +108,7 @@ go-oidc 各目录的生产 / 测试行数：`internal/federation` 4396 / 5472，
 
 - OpenID Connect 认证：OIDF 会员 **$700**，非会员 **$3,500**，按 "per new deployment" 计。同一自然年内，这一笔费用可以认证任意多个 profile（原文举例：先认证 Basic OP + Config OP，同年再加 Implicit/Hybrid/Dynamic 不再收费）。OP 和 RP 分开收费。
 - FAPI、FAPI-CIBA 另计（会员 $1,000，非会员 $5,000），与本项目无关。
-- **开源费用减免**（[Open Source Project Certification Policy](https://openid.net/certification/open-source-project-certification-policy/)）：可以发邮件到 certification@oidf.org 申请。条件是申请人与该部署相关，并声明 "none of the primary maintainers of the open source project are being compensated by an employer for their work on the project"；OIDF 逐案审批，"Not all open source projects will qualify"。【推断】Stars Auth 是个人业余维护的开源项目，符合申请条件，但能否获批 **未验证**。
+- **开源费用减免**（[Open Source Project Certification Policy](https://openid.net/certification/open-source-project-certification-policy/)）：可以发邮件到 certification@oidf.org 申请。条件是申请人与该部署相关，并声明 "none of the primary maintainers of the open source project are being compensated by an employer for their work on the project"；OIDF 逐案审批，"Not all open source projects will qualify"。【推断】Polaris 是个人业余维护的开源项目，符合申请条件，但能否获批 **未验证**。
 - OIDF 个人会员的会费 **未验证**（本次没有查）。
 
 ### 6.2 流程（[How to submit](https://openid.net/certification/how-to-submit-your-certification-request/)）

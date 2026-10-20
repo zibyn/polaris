@@ -211,7 +211,7 @@
 - 个人可以备案，但有内容和名称限制：
   - 内容涉及行业或企业的，备案性质不能为个人。
   - 名称不得含「博客、论坛、平台、社区、交流」及商业类词汇。[阿里云填写说明](https://help.aliyun.com/zh/icp-filing/basic-icp-service/user-guide/fill-in-website-information)、[腾讯云（2024-05-24）](https://cloud.tencent.com/document/product/243/11740)
-- 对 Stars Auth 的含义：个人 Operator 的认证域名和站点名称要避开「平台/社区」等字样（推断）。
+- 对 Polaris 的含义：个人 Operator 的认证域名和站点名称要避开「平台/社区」等字样（推断）。
 
 ### 8.2 App 备案
 
