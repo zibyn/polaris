@@ -4,9 +4,9 @@
 -- Application whose access tokens are for the built-in Account API, where a
 -- User manages their own account. Redirect URIs are wired up at start.
 INSERT INTO apis (identifier, name, builtin)
-VALUES ('urn:stars-auth:account-api', 'Account API', true);
+VALUES ('urn:polaris:account-api', 'Account API', true);
 INSERT INTO applications (client_id, name, type, default_api, builtin)
-VALUES ('stars-auth-account', 'Stars Auth 账号中心', 'public', 'urn:stars-auth:account-api', true);
+VALUES ('polaris-account', 'Polaris 账号中心', 'public', 'urn:polaris:account-api', true);
 
 -- user.deleted webhook deliveries waiting to go out
 -- (docs/spec/protocol.md#webhook); each retry waits longer, until it is

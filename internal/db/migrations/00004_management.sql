@@ -19,7 +19,7 @@ CREATE TABLE role_permissions (
 
 -- docs/spec/rbac.md#内置-permission-与-role
 INSERT INTO permissions (api, key, name, builtin)
-SELECT 'urn:stars-auth:management-api', key, name, true FROM (VALUES
+SELECT 'urn:polaris:management-api', key, name, true FROM (VALUES
     ('users:read', '查看 User'),
     ('users:write', '管理 User'),
     ('roles:assign', '分配业务 API 的 Role'),
@@ -33,7 +33,7 @@ SELECT 'urn:stars-auth:management-api', key, name, true FROM (VALUES
 ) AS p (key, name);
 
 INSERT INTO role_permissions (api, role, permission)
-SELECT 'urn:stars-auth:management-api', role, permission FROM (VALUES
+SELECT 'urn:polaris:management-api', role, permission FROM (VALUES
     ('owner', 'users:read'), ('owner', 'users:write'), ('owner', 'roles:assign'),
     ('owner', 'admin-roles:assign'), ('owner', 'applications:read'), ('owner', 'applications:write'),
     ('owner', 'config:read'), ('owner', 'config:write'), ('owner', 'keys:rotate'), ('owner', 'audit:read'),

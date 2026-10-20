@@ -25,11 +25,11 @@ CREATE TABLE applications (
 );
 
 INSERT INTO apis (identifier, name, builtin)
-VALUES ('urn:stars-auth:management-api', 'Management API', true);
+VALUES ('urn:polaris:management-api', 'Management API', true);
 
 -- Redirect URIs depend on the issuer; the console wires them up when it lands.
 INSERT INTO applications (client_id, name, type, default_api, builtin)
-VALUES ('stars-auth-console', 'Stars Auth 管理端', 'public', 'urn:stars-auth:management-api', true);
+VALUES ('polaris-console', 'Polaris 管理端', 'public', 'urn:polaris:management-api', true);
 
 -- go-oidc records. Short-lived rows carry expires_at and are deleted by the
 -- hourly cleanup. Grants hold bearer secrets (auth code, refresh token), so the

@@ -3,3 +3,7 @@
 .env
 web/node_modules
 web/dist
+
+sdk/kmp/build
+sdk/kmp/.gradle
+sdk/kmp/.kotlin

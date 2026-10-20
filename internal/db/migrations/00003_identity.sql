@@ -41,9 +41,9 @@ CREATE TABLE user_roles (
 );
 
 INSERT INTO roles (api, key, name, builtin) VALUES
-    ('urn:stars-auth:management-api', 'owner', '所有者', true),
-    ('urn:stars-auth:management-api', 'admin', '管理员', true),
-    ('urn:stars-auth:management-api', 'readonly', '只读', true);
+    ('urn:polaris:management-api', 'owner', '所有者', true),
+    ('urn:polaris:management-api', 'admin', '管理员', true),
+    ('urn:polaris:management-api', 'readonly', '只读', true);
 
 -- Instance settings, one row.
 CREATE TABLE settings (

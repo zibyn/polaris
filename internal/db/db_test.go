@@ -179,10 +179,9 @@ func before25(t *testing.T) fs.FS {
 	return files
 }
 
-// 00029 moves the built-in Applications and APIs to Polaris identifiers. A
-// fresh instance must end with the new ones only; roles and permissions move
-// with the API identifier they hang off.
-func TestRenameToPolaris(t *testing.T) {
+// The built-in Applications and APIs use Polaris identifiers; roles and
+// permissions hang off the API identifier they belong to.
+func TestBuiltinIdentifiers(t *testing.T) {
 	ctx := context.Background()
 	pool := dbtest.Fresh(t)
 	if err := Migrate(ctx, pool); err != nil {
