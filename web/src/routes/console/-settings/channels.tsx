@@ -27,6 +27,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select";
+import { Separator } from "#/components/ui/separator";
 import {
 	api,
 	type ChannelPlugin,
@@ -366,44 +367,47 @@ function TestForm({
 		onSubmit: ({ value }) => test.mutate(value.to.trim()),
 	});
 	return (
-		<form
-			noValidate
-			className="space-y-2 border-t pt-4"
-			onSubmit={(e) => {
-				e.preventDefault();
-				form.handleSubmit();
-			}}
-		>
-			<form.Field name="to">
-				{(field) => (
-					<FormField field={field} label="发送测试验证码到">
-						{(control) => (
-							<div className="flex flex-wrap items-center gap-2">
-								<Input
-									{...control}
-									type={kind === "email" ? "email" : "tel"}
-									placeholder={placeholder}
-									className="w-64"
-								/>
-								<Button
-									type="submit"
-									variant="outline"
-									disabled={test.isPending}
-								>
-									发送测试验证码
-								</Button>
-							</div>
-						)}
-					</FormField>
+		<>
+			<Separator className="my-4" />
+			<form
+				noValidate
+				className="flex flex-col gap-2"
+				onSubmit={(e) => {
+					e.preventDefault();
+					form.handleSubmit();
+				}}
+			>
+				<form.Field name="to">
+					{(field) => (
+						<FormField field={field} label="发送测试验证码到">
+							{(control) => (
+								<div className="flex flex-wrap items-center gap-2">
+									<Input
+										{...control}
+										type={kind === "email" ? "email" : "tel"}
+										placeholder={placeholder}
+										className="w-64"
+									/>
+									<Button
+										type="submit"
+										variant="outline"
+										disabled={test.isPending}
+									>
+										发送测试验证码
+									</Button>
+								</div>
+							)}
+						</FormField>
+					)}
+				</form.Field>
+				<FormError error={test.error} />
+				{test.data && (
+					<p className="text-sm">
+						已发送 <span className="font-mono">{test.data.code}</span>
+						,请核对收到的验证码
+					</p>
 				)}
-			</form.Field>
-			<FormError error={test.error} />
-			{test.data && (
-				<p className="text-sm">
-					已发送 <span className="font-mono">{test.data.code}</span>
-					,请核对收到的验证码
-				</p>
-			)}
-		</form>
+			</form>
+		</>
 	);
 }

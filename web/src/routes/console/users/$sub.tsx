@@ -56,12 +56,11 @@ import {
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { Section } from "#/routes/console/-components/section";
 import { type Header, useCan } from "#/routes/console/route";
+import { date, rolesQuery } from "#/routes/console/users/index";
 import {
-	date,
 	PasswordLoginNotice,
-	rolesQuery,
 	usePasswordLoginOff,
-} from "#/routes/console/users/index";
+} from "./-components/password-login";
 
 export const Route = createFileRoute("/console/users/$sub")({
 	staticData: { crumb: UserName, useHeader },

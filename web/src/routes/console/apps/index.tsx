@@ -1,5 +1,8 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { createColumnHelper } from "@tanstack/react-table";
+import { useMemo } from "react";
+import { DataTable, type features } from "#/components/data-table";
 import { Badge } from "#/components/ui/badge";
 import { buttonVariants } from "#/components/ui/button";
 import {
@@ -9,14 +12,6 @@ import {
 	EmptyHeader,
 	EmptyTitle,
 } from "#/components/ui/empty";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "#/components/ui/table";
 import { onlyBuiltin, typeName } from "#/lib/apps";
 import { type Application, api } from "#/lib/console-api";
 import { apisQuery } from "#/routes/console/apis/index";
@@ -59,14 +54,56 @@ function useHeader(): Header | null {
 	return { title: "应用", actions: !empty && create };
 }
 
+const helper = createColumnHelper<typeof features, Application>();
+
 function Applications() {
 	const { applications } = useSuspenseQuery(applicationsQuery).data;
 	const { apis } = useSuspenseQuery(apisQuery).data;
-	const apiName = (identifier?: string) =>
-		apis.find((a) => a.identifier === identifier)?.name ?? identifier;
 	const { create, empty } = useCreate(applications);
+	const columns = useMemo(() => {
+		const apiName = (identifier?: string) =>
+			apis.find((a) => a.identifier === identifier)?.name ?? identifier;
+		return [
+			helper.accessor("name", {
+				header: "名称",
+				sortFn: "alphanumeric",
+				cell: ({ row }) => (
+					<>
+						<Link
+							to="/console/apps/$clientId"
+							params={{ clientId: row.original.clientId }}
+							className="font-medium hover:underline"
+						>
+							{row.original.name}
+						</Link>{" "}
+						{row.original.builtin && <Badge variant="secondary">内置</Badge>}
+					</>
+				),
+			}),
+			helper.accessor("clientId", {
+				header: "client_id",
+				sortFn: "alphanumeric",
+				cell: ({ getValue }) => (
+					<span className="font-mono text-muted-foreground text-xs">
+						{getValue()}
+					</span>
+				),
+			}),
+			helper.accessor("type", {
+				header: "类型",
+				sortFn: "alphanumeric",
+				cell: ({ getValue }) => typeName[getValue()],
+			}),
+			helper.accessor((a) => a.defaultApi ?? "", {
+				id: "defaultApi",
+				header: "默认 API 资源",
+				sortFn: "alphanumeric",
+				cell: ({ row }) => apiName(row.original.defaultApi) || "—",
+			}),
+		];
+	}, [apis]);
 	return (
-		<div className="space-y-6">
+		<div className="flex flex-col gap-6">
 			{empty && (
 				<Empty className="border">
 					<EmptyHeader>
@@ -84,37 +121,14 @@ function Applications() {
 					</EmptyContent>
 				</Empty>
 			)}
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>名称</TableHead>
-						<TableHead>client_id</TableHead>
-						<TableHead>类型</TableHead>
-						<TableHead>默认 API 资源</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{applications.map((a) => (
-						<TableRow key={a.clientId}>
-							<TableCell>
-								<Link
-									to="/console/apps/$clientId"
-									params={{ clientId: a.clientId }}
-									className="font-medium hover:underline"
-								>
-									{a.name}
-								</Link>{" "}
-								{a.builtin && <Badge variant="secondary">内置</Badge>}
-							</TableCell>
-							<TableCell className="font-mono text-muted-foreground text-xs">
-								{a.clientId}
-							</TableCell>
-							<TableCell>{typeName[a.type]}</TableCell>
-							<TableCell>{apiName(a.defaultApi) || "—"}</TableCell>
-						</TableRow>
-					))}
-				</TableBody>
-			</Table>
+			{!empty && (
+				<DataTable
+					data={applications}
+					columns={columns}
+					filterPlaceholder="搜索应用名称或 client_id"
+					empty="没有匹配的应用"
+				/>
+			)}
 		</div>
 	);
 }

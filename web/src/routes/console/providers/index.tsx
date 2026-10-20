@@ -6,6 +6,9 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { createColumnHelper } from "@tanstack/react-table";
+import { useMemo } from "react";
+import { DataTable, type features } from "#/components/data-table";
 import { failed } from "#/components/form";
 import { Badge } from "#/components/ui/badge";
 import { Button, buttonVariants } from "#/components/ui/button";
@@ -16,14 +19,6 @@ import {
 	EmptyHeader,
 	EmptyTitle,
 } from "#/components/ui/empty";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "#/components/ui/table";
 import { api, type ProviderInfo, type ProviderType } from "#/lib/console-api";
 import { disableImpact } from "#/lib/login";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
@@ -67,12 +62,71 @@ function useHeader(): Header | null {
 	};
 }
 
+const helper = createColumnHelper<typeof features, ProviderInfo>();
+
 function Providers() {
 	const { types, providers } = useSuspenseQuery(providersQuery).data;
 	const editable = useCan()("config:write");
 	const { add, empty } = useAdd(providers);
+	const columns = useMemo(
+		() => [
+			helper.accessor("name", {
+				header: "名称",
+				sortFn: "alphanumeric",
+				cell: ({ row }) => (
+					<Link
+						to="/console/providers/$id"
+						params={{ id: row.original.id }}
+						className="font-medium hover:underline"
+					>
+						{row.original.name}
+					</Link>
+				),
+			}),
+			helper.accessor(
+				(p) => types.find((t) => t.key === p.type)?.name ?? p.type,
+				{ id: "type", header: "类型", sortFn: "alphanumeric" },
+			),
+			helper.accessor("id", {
+				header: "Provider ID",
+				sortFn: "alphanumeric",
+				cell: ({ getValue }) => (
+					<span className="font-mono text-muted-foreground text-xs">
+						{getValue()}
+					</span>
+				),
+			}),
+			helper.accessor((p) => (p.enabled ? 1 : 0), {
+				id: "status",
+				header: "状态",
+				sortFn: "basic",
+				cell: ({ row }) =>
+					row.original.enabled ? (
+						<Badge variant="success">已启用</Badge>
+					) : (
+						<Badge variant="secondary">已停用</Badge>
+					),
+			}),
+			helper.accessor("bound", {
+				header: "已绑定人数",
+				sortFn: "basic",
+				cell: ({ getValue }) => (
+					<span className="tabular-nums">{getValue()}</span>
+				),
+			}),
+			helper.display({
+				id: "actions",
+				header: "",
+				enableSorting: false,
+				enableGlobalFilter: false,
+				cell: ({ row }) =>
+					editable ? <ProviderActions provider={row.original} /> : null,
+			}),
+		],
+		[types, editable],
+	);
 	return (
-		<div className="space-y-6">
+		<div className="flex flex-col gap-6">
 			{empty && (
 				<Empty className="border">
 					<EmptyHeader>
@@ -91,43 +145,20 @@ function Providers() {
 					</EmptyContent>
 				</Empty>
 			)}
-			{providers.length > 0 && (
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>名称</TableHead>
-							<TableHead>类型</TableHead>
-							<TableHead>Provider ID</TableHead>
-							<TableHead>状态</TableHead>
-							<TableHead>已绑定人数</TableHead>
-							<TableHead className="w-0" />
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{providers.map((p) => (
-							<ProviderRow
-								key={p.id}
-								provider={p}
-								type={types.find((t) => t.key === p.type)}
-								editable={editable}
-							/>
-						))}
-					</TableBody>
-				</Table>
+			{!empty && (
+				<DataTable
+					data={providers}
+					columns={columns}
+					filterPlaceholder="搜索认证源名称、类型或 ID"
+					empty="没有匹配的认证源"
+				/>
 			)}
 		</div>
 	);
 }
 
-function ProviderRow({
-	provider: p,
-	type,
-	editable,
-}: {
-	provider: ProviderInfo;
-	type?: ProviderType;
-	editable: boolean;
-}) {
+// ProviderActions is a row's 编辑/停用/启用/删除, with the confirmations.
+function ProviderActions({ provider: p }: { provider: ProviderInfo }) {
 	const client = useQueryClient();
 	const act = useMutation({
 		mutationFn: (a: {
@@ -142,105 +173,76 @@ function ProviderRow({
 		onError: (e, a) => failed(a.what)(e),
 	});
 	return (
-		<TableRow>
-			<TableCell>
-				<Link
-					to="/console/providers/$id"
-					params={{ id: p.id }}
-					className="font-medium hover:underline"
+		<div className="flex justify-end gap-1">
+			<Button
+				size="sm"
+				variant="ghost"
+				render={<Link to="/console/providers/$id" params={{ id: p.id }} />}
+			>
+				编辑
+			</Button>
+			{p.enabled ? (
+				<ConfirmDialog
+					trigger={
+						<Button size="sm" variant="ghost" disabled={act.isPending}>
+							停用
+						</Button>
+					}
+					title={`停用 ${p.name}？`}
+					action="停用认证源"
+					onConfirm={() =>
+						act.mutate({
+							method: "POST",
+							path: "/disable",
+							what: "停用认证源失败",
+						})
+					}
 				>
-					{p.name}
-				</Link>
-			</TableCell>
-			<TableCell>{type?.name ?? p.type}</TableCell>
-			<TableCell className="font-mono text-muted-foreground text-xs">
-				{p.id}
-			</TableCell>
-			<TableCell>
-				{p.enabled ? (
-					<Badge variant="success">已启用</Badge>
-				) : (
-					<Badge variant="secondary">已停用</Badge>
-				)}
-			</TableCell>
-			<TableCell className="tabular-nums">{p.bound}</TableCell>
-			{editable && (
-				<TableCell>
-					<div className="flex justify-end gap-1">
+					登录页不再显示「使用 {p.name} 登录」。{disableImpact(p)}
+				</ConfirmDialog>
+			) : (
+				<Button
+					size="sm"
+					variant="ghost"
+					disabled={act.isPending}
+					onClick={() =>
+						act.mutate({
+							method: "POST",
+							path: "/enable",
+							what: "启用认证源失败",
+						})
+					}
+				>
+					启用
+				</Button>
+			)}
+			{/* With bindings it can only be disabled (#87 story 5). */}
+			{p.bound === 0 && (
+				<ConfirmDialog
+					trigger={
 						<Button
 							size="sm"
 							variant="ghost"
-							render={
-								<Link to="/console/providers/$id" params={{ id: p.id }} />
-							}
+							className="text-destructive"
+							disabled={act.isPending}
 						>
-							编辑
+							删除
 						</Button>
-						{p.enabled ? (
-							<ConfirmDialog
-								trigger={
-									<Button size="sm" variant="ghost" disabled={act.isPending}>
-										停用
-									</Button>
-								}
-								title={`停用 ${p.name}？`}
-								action="停用认证源"
-								onConfirm={() =>
-									act.mutate({
-										method: "POST",
-										path: "/disable",
-										what: "停用认证源失败",
-									})
-								}
-							>
-								登录页不再显示「使用 {p.name} 登录」。{disableImpact(p)}
-							</ConfirmDialog>
-						) : (
-							<Button
-								size="sm"
-								variant="ghost"
-								disabled={act.isPending}
-								onClick={() =>
-									act.mutate({
-										method: "POST",
-										path: "/enable",
-										what: "启用认证源失败",
-									})
-								}
-							>
-								启用
-							</Button>
-						)}
-						{/* With bindings it can only be disabled (#87 story 5). */}
-						{p.bound === 0 && (
-							<ConfirmDialog
-								trigger={
-									<Button
-										size="sm"
-										variant="ghost"
-										className="text-destructive"
-										disabled={act.isPending}
-									>
-										删除
-									</Button>
-								}
-								title={`删除 ${p.name}？`}
-								action="删除认证源"
-								onConfirm={() =>
-									act.mutate({
-										method: "DELETE",
-										path: "",
-										what: "删除认证源失败",
-									})
-								}
-							>
-								登录页不再显示这个按钮，它的设置一并删除。之后要用得重新添加，回调
-								URL 不变。
-							</ConfirmDialog>
-						)}
-					</div>
-				</TableCell>
+					}
+					title={`删除 ${p.name}？`}
+					action="删除认证源"
+					onConfirm={() =>
+						act.mutate({
+							method: "DELETE",
+							path: "",
+							what: "删除认证源失败",
+						})
+					}
+				>
+					登录页不再显示这个按钮，它的设置一并删除。之后要用得重新添加，回调 URL
+					不变。
+				</ConfirmDialog>
 			)}
-		</TableRow>
+		</div>
 	);
 }

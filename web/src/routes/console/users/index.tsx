@@ -1,18 +1,16 @@
 import { revalidateLogic, useForm } from "@tanstack/react-form";
 import {
 	infiniteQueryOptions,
-	useQuery,
 	useSuspenseInfiniteQuery,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import {
 	createFileRoute,
-	Link,
 	stripSearchParams,
 	useNavigate,
 } from "@tanstack/react-router";
+import { useState } from "react";
 import { z } from "zod";
-import { Alert, AlertDescription } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import {
@@ -31,6 +29,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select";
+import { Separator } from "#/components/ui/separator";
 import {
 	Table,
 	TableBody,
@@ -42,8 +41,12 @@ import {
 import { UserAvatar } from "#/components/user-avatar";
 import { api, type Role, type RoleInfo, type User } from "#/lib/console-api";
 import { onlyAdmins, primaryIdentifier, searchSchema } from "#/lib/users";
-import { policyQuery } from "#/routes/console/-settings/policy";
 import { useCan } from "#/routes/console/route";
+import { CreateUserSheet } from "./-components/create-user-form";
+import {
+	PasswordLoginNotice,
+	usePasswordLoginOff,
+} from "./-components/password-login";
 
 // statuses is the 状态 filter: 待激活 is the account an admin made that
 // nobody has taken over yet, which is what they come here to find.
@@ -66,32 +69,6 @@ export const rolesQuery = {
 	queryKey: ["roles"],
 	queryFn: () => api<{ roles: RoleInfo[] }>("/roles"),
 };
-
-// usePasswordLoginOff: 创建用户 hands over a password, so with 密码登录 off
-// there is nothing to create (ADR 0016) and the entry says why. Reading it
-// takes config:read, which every built-in Role holding users:write also
-// holds; a reader without it gets no answer here, and the server turns the
-// create down in words instead.
-export function usePasswordLoginOff() {
-	const { data, error } = useQuery({ ...policyQuery, retry: false });
-	return !error && data?.passwordLogin === "off";
-}
-
-// PasswordLoginNotice is why 创建用户 is disabled. detail is the extra
-// sentence 创建页 adds: what the account you'd create is missing
-// (依赖提示 #21).
-export function PasswordLoginNotice({ detail }: { detail?: string }) {
-	return (
-		<Alert variant="warning">
-			<AlertDescription>
-				请先在登录方式里开启密码登录。{detail}{" "}
-				<Link to="/console/settings" search={{ tab: "login" }}>
-					去开启密码登录
-				</Link>
-			</AlertDescription>
-		</Alert>
-	);
-}
 
 export const Route = createFileRoute("/console/users/")({
 	staticData: { useHeader: () => ({ title: "用户" }) },
@@ -147,6 +124,7 @@ function Users() {
 	const filter = role ? roleKey({ api: roleAPI, key: role }) : "";
 	const can = useCan();
 	const off = usePasswordLoginOff();
+	const [creating, setCreating] = useState(false);
 	// 创建用户 is a 待激活 account whose password the admin passes on; with
 	// 密码登录 off there is no way into it, so the entry is disabled. When
 	// the list is admin-only the empty state carries it instead, as on 应用.
@@ -155,7 +133,7 @@ function Users() {
 		(off ? (
 			<Button disabled>创建用户</Button>
 		) : (
-			<Button render={<Link to="/console/users/new" />}>创建用户</Button>
+			<Button onClick={() => setCreating(true)}>创建用户</Button>
 		));
 	const empty = onlyAdmins(
 		rows,
@@ -164,7 +142,7 @@ function Users() {
 	);
 
 	return (
-		<div className="space-y-6">
+		<div className="flex flex-col gap-6">
 			<div className="flex gap-2">
 				<Search
 					key={q}
@@ -232,6 +210,7 @@ function Users() {
 				</Select>
 				{!empty && create}
 			</div>
+			<Separator />
 			{can("users:write") && off && <PasswordLoginNotice />}
 			{empty && (
 				<Empty className="border">
@@ -300,16 +279,18 @@ function Users() {
 						<TableRow>
 							<TableCell
 								colSpan={4}
-								className="space-x-2 text-center text-muted-foreground"
+								className="text-center text-muted-foreground"
 							>
-								<span>没有符合条件的用户</span>
-								<Button
-									size="sm"
-									variant="outline"
-									onClick={() => navigate({ search: {} })}
-								>
-									清除筛选
-								</Button>
+								<span className="inline-flex items-center gap-2">
+									没有符合条件的用户
+									<Button
+										size="sm"
+										variant="outline"
+										onClick={() => navigate({ search: {} })}
+									>
+										清除筛选
+									</Button>
+								</span>
 							</TableCell>
 						</TableRow>
 					)}
@@ -327,6 +308,7 @@ function Users() {
 					加载更多
 				</Button>
 			)}
+			<CreateUserSheet open={creating} onOpenChange={setCreating} />
 		</div>
 	);
 }

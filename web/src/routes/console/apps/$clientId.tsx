@@ -47,6 +47,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select";
+import { Slider } from "#/components/ui/slider";
 import { Switch } from "#/components/ui/switch";
 import { TabsContent } from "#/components/ui/tabs";
 import { Textarea } from "#/components/ui/textarea";
@@ -541,7 +542,9 @@ function LoginTab({ app, editable }: TabProps) {
 		defaultValues: {
 			redirectUris: app.redirectUris.join("\n"),
 			postLogoutRedirectUris: app.postLogoutRedirectUris.join("\n"),
-			idleDays: app.sessionIdleTimeout ? `${app.sessionIdleTimeout / day}` : "",
+			idleDays: app.sessionIdleTimeout
+				? `${app.sessionIdleTimeout / day}`
+				: "0",
 			refreshTokens: app.refreshTokens,
 		},
 		validationLogic: revalidateLogic(),
@@ -628,29 +631,42 @@ function LoginTab({ app, editable }: TabProps) {
 							)}
 						</form.Field>
 						<form.Field name="idleDays">
-							{(field) => (
-								<FormField
-									field={field}
-									label="闲置多久需重新登录"
-									help="用户连续这么多天没用这个应用，下次打开就要重新登录。改动只对之后新登录的会话生效。"
-								>
-									{(control) => (
-										<div className="flex items-center gap-2">
-											<Input
-												{...control}
-												type="number"
-												min={1}
-												max={365}
-												className="w-28"
-												placeholder={
-													app.type === "public" ? "默认 90" : "默认 30"
-												}
-											/>
-											<span className="text-sm">天</span>
-										</div>
-									)}
-								</FormField>
-							)}
+							{(field) => {
+								const days = Number(field.state.value) || 0;
+								return (
+									<FormField
+										field={field}
+										label="闲置多久需重新登录"
+										help="用户连续这么多天没用这个应用，下次打开就要重新登录。0 表示默认（无后端 90 天，有后端 30 天）。改动只对之后新登录的会话生效。"
+									>
+										{(control) => (
+											<div className="flex max-w-md items-center gap-4">
+												<Slider
+													min={0}
+													max={365}
+													step={1}
+													value={[days]}
+													disabled={!editable}
+													aria-label="闲置天数"
+													onValueChange={(v) =>
+														field.handleChange(
+															String(Array.isArray(v) ? v[0] : v),
+														)
+													}
+												/>
+												<Input
+													{...control}
+													type="number"
+													min={0}
+													max={365}
+													className="w-20"
+												/>
+												<span className="shrink-0 text-sm">天</span>
+											</div>
+										)}
+									</FormField>
+								);
+							}}
 						</form.Field>
 					</CollapsibleContent>
 				</Collapsible>

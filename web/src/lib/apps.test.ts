@@ -149,9 +149,10 @@ test("sign-in redirects are URLs and idle days a whole number up to a year", () 
 	};
 	assert.equal(loginSchema.safeParse(ok).success, true);
 	assert.equal(loginSchema.safeParse({ ...ok, idleDays: "30" }).success, true);
-	for (const idleDays of ["0", "1.5", "366", "abc"]) {
+	assert.equal(loginSchema.safeParse({ ...ok, idleDays: "0" }).success, true);
+	for (const idleDays of ["1.5", "366", "abc"]) {
 		assert.deepEqual(fieldErrors(loginSchema.safeParse({ ...ok, idleDays })), {
-			idleDays: "请填写 1 到 365 之间的整数，或留空用默认值。",
+			idleDays: "请填写 0 到 365 之间的整数，0 表示默认值。",
 		});
 	}
 	assert.deepEqual(

@@ -77,7 +77,7 @@ export const httpURL = z
 		"请填写 http 或 https 开头的地址。",
 	);
 
-// loginSchema checks the 登录 tab; idleDays left empty means the default.
+// loginSchema checks the 登录 tab; 0 or an empty idleDays means the default.
 export const loginSchema = z.object({
 	redirectUris: uriLines,
 	postLogoutRedirectUris: uriLines,
@@ -85,8 +85,8 @@ export const loginSchema = z.object({
 		.string()
 		.trim()
 		.refine(
-			(v) => !v || (/^\d+$/.test(v) && +v >= 1 && +v <= 365),
-			"请填写 1 到 365 之间的整数，或留空用默认值。",
+			(v) => !v || (/^\d+$/.test(v) && +v >= 0 && +v <= 365),
+			"请填写 0 到 365 之间的整数，0 表示默认值。",
 		),
 	refreshTokens: z.boolean(),
 });

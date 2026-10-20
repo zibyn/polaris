@@ -29,6 +29,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select";
+import { Separator } from "#/components/ui/separator";
 import {
 	Table,
 	TableBody,
@@ -155,7 +156,7 @@ function Audit() {
 	const filtered = !!(event || sub || since || until);
 
 	return (
-		<div className="space-y-6">
+		<div className="flex flex-col gap-6">
 			<div className="flex flex-wrap gap-2">
 				<Select value={event} onValueChange={(v) => set("event", `${v ?? ""}`)}>
 					<SelectTrigger className="w-56">
@@ -199,6 +200,7 @@ function Audit() {
 					onChange={(e) => set("until", e.target.value)}
 				/>
 			</div>
+			<Separator />
 			{choices && (
 				<div className="space-y-2 rounded-xl bg-primary-soft px-4 py-3 text-sm">
 					<p>找到 {choices.length} 个用户，选一个查看记录：</p>
@@ -392,9 +394,9 @@ export function EventTable({
 					<TableRow>
 						<TableCell
 							colSpan={3}
-							className="space-x-2 text-center text-muted-foreground"
+							className="text-center text-muted-foreground"
 						>
-							{empty}
+							<span className="inline-flex items-center gap-2">{empty}</span>
 						</TableCell>
 					</TableRow>
 				)}

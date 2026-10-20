@@ -7,6 +7,12 @@ import {
 } from "@tanstack/react-router";
 import { z } from "zod";
 import { buttonVariants } from "#/components/ui/button";
+import {
+	Card,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "#/components/ui/card";
 import { providersQuery } from "#/routes/console/providers/index";
 import { type Header, useCan } from "#/routes/console/route";
 import { ProviderForm } from "./-components/provider-form";
@@ -80,12 +86,19 @@ function AddProvider() {
 					key={t.key}
 					from={Route.fullPath}
 					search={{ type: t.key }}
-					className="space-y-1 rounded-xl border p-6 hover:border-primary"
+					className="block"
 				>
-					<p className="font-semibold text-[15px]">{t.name}</p>
-					<p className="text-muted-foreground">
-						要填：{t.fields.map((f) => f.label).join("、")}
-					</p>
+					<Card
+						size="sm"
+						className="h-full transition-colors hover:ring-primary/40"
+					>
+						<CardHeader>
+							<CardTitle>{t.name}</CardTitle>
+							<CardDescription>
+								要填：{t.fields.map((f) => f.label).join("、")}
+							</CardDescription>
+						</CardHeader>
+					</Card>
 				</Link>
 			))}
 		</div>

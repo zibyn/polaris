@@ -5,6 +5,8 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createColumnHelper } from "@tanstack/react-table";
+import { DataTable, type features } from "#/components/data-table";
 import { FormError, FormField } from "#/components/form";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -16,14 +18,6 @@ import {
 	EmptyTitle,
 } from "#/components/ui/empty";
 import { Input } from "#/components/ui/input";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "#/components/ui/table";
 import { apiSchema } from "#/lib/apis";
 import { onlyBuiltin } from "#/lib/apps";
 import { type APIDef, api, apiPath } from "#/lib/console-api";
@@ -47,13 +41,54 @@ export const apisQuery = {
 	queryFn: () => api<{ apis: APIDef[] }>("/apis"),
 };
 
+const helper = createColumnHelper<typeof features, APIDef>();
+const columns = [
+	helper.accessor("name", {
+		header: "名称",
+		sortFn: "alphanumeric",
+		cell: ({ row }) => (
+			<>
+				<Link
+					to="/console/apis/$api"
+					params={{ api: row.original.identifier }}
+					className="font-medium hover:underline"
+				>
+					{row.original.name}
+				</Link>{" "}
+				{row.original.builtin && <Badge variant="secondary">内置</Badge>}
+			</>
+		),
+	}),
+	helper.accessor("identifier", {
+		header: "API 资源标识符",
+		sortFn: "alphanumeric",
+		cell: ({ getValue }) => (
+			<span className="font-mono text-muted-foreground text-xs">
+				{getValue()}
+			</span>
+		),
+	}),
+	helper.accessor((a) => a.permissions.length, {
+		id: "permissions",
+		header: "权限",
+		sortFn: "basic",
+		cell: ({ getValue }) => <span className="tabular-nums">{getValue()}</span>,
+	}),
+	helper.accessor((a) => a.roles.length, {
+		id: "roles",
+		header: "角色",
+		sortFn: "basic",
+		cell: ({ getValue }) => <span className="tabular-nums">{getValue()}</span>,
+	}),
+];
+
 function APIs() {
 	const can = useCan();
 	const { apis } = useSuspenseQuery(apisQuery).data;
 	const writable = can("applications:write");
 	return (
-		<div className="space-y-10">
-			<div className="space-y-6">
+		<div className="flex flex-col gap-10">
+			<div className="flex flex-col gap-6">
 				{onlyBuiltin(apis) && (
 					<Empty className="border">
 						<EmptyHeader>
@@ -81,39 +116,12 @@ function APIs() {
 						</EmptyContent>
 					</Empty>
 				)}
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>名称</TableHead>
-							<TableHead>API 资源标识符</TableHead>
-							<TableHead>权限</TableHead>
-							<TableHead>角色</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{apis.map((a) => (
-							<TableRow key={a.identifier}>
-								<TableCell>
-									<Link
-										to="/console/apis/$api"
-										params={{ api: a.identifier }}
-										className="font-medium hover:underline"
-									>
-										{a.name}
-									</Link>{" "}
-									{a.builtin && <Badge variant="secondary">内置</Badge>}
-								</TableCell>
-								<TableCell className="font-mono text-muted-foreground text-xs">
-									{a.identifier}
-								</TableCell>
-								<TableCell className="tabular-nums">
-									{a.permissions.length}
-								</TableCell>
-								<TableCell className="tabular-nums">{a.roles.length}</TableCell>
-							</TableRow>
-						))}
-					</TableBody>
-				</Table>
+				<DataTable
+					data={apis}
+					columns={columns}
+					filterPlaceholder="搜索 API 资源名称或标识符"
+					empty="没有匹配的 API 资源"
+				/>
 			</div>
 			{writable && <CreateForm />}
 		</div>
@@ -150,7 +158,7 @@ function CreateForm() {
 			<form
 				id="new-api"
 				noValidate
-				className="mt-4 space-y-3"
+				className="mt-4 flex flex-col gap-3"
 				onSubmit={(e) => {
 					e.preventDefault();
 					form.handleSubmit();
@@ -185,7 +193,11 @@ function CreateForm() {
 					</div>
 				</div>
 				<FormError error={create.error} />
-				<Button type="submit" disabled={create.isPending}>
+				<Button
+					type="submit"
+					disabled={create.isPending}
+					className="self-start"
+				>
 					添加 API 资源
 				</Button>
 			</form>

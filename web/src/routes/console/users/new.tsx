@@ -1,24 +1,6 @@
-import { revalidateLogic, useForm, useStore } from "@tanstack/react-form";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { FormError, FormField } from "#/components/form";
-import { Button } from "#/components/ui/button";
-import { FieldSet } from "#/components/ui/field";
-import { Input } from "#/components/ui/input";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "#/components/ui/select";
-import { api, type UserDetail } from "#/lib/console-api";
-import { createUserSchema, type WayIn, wayName, waysIn } from "#/lib/users";
+import { createFileRoute } from "@tanstack/react-router";
 import { type Header, useCan } from "#/routes/console/route";
-import {
-	PasswordLoginNotice,
-	usePasswordLoginOff,
-} from "#/routes/console/users/index";
+import { CreateUserForm } from "./-components/create-user-form";
 
 export const Route = createFileRoute("/console/users/new")({
 	staticData: { crumb: "创建用户", useHeader },
@@ -39,135 +21,10 @@ function useHeader(): Header | null {
 	};
 }
 
-// CreateUser opens one 待激活 account for an admin to hand over (ADR 0016),
-// either with an initial password they pass on themselves or with a 注册邀请
-// that lets the User set their own.
 function CreateUser() {
 	const can = useCan();
 	if (!can("users:write")) {
 		return <p className="text-sm">需要「管理员」角色才能创建用户。</p>;
 	}
-	return <CreateForm />;
-}
-
-// wayHelp is what each way in is, said under the choice.
-const wayHelp: Record<WayIn, string> = {
-	password:
-		"当面或另找渠道把临时密码交给本人，对方第一次登录时必须先改成自己的密码。",
-	invite:
-		"认证服务往这个邮箱发一条 7 天有效的一次性链接，本人点开自己设密码，密码不经过你手上。",
-};
-
-function CreateForm() {
-	const off = usePasswordLoginOff();
-	const client = useQueryClient();
-	const navigate = useNavigate();
-	const save = useMutation({
-		mutationFn: (v: { identifier: string; way: WayIn; password: string }) =>
-			api<UserDetail>("/users", {
-				method: "POST",
-				body:
-					v.way === "invite"
-						? { identifier: v.identifier.trim(), invite: true }
-						: { identifier: v.identifier.trim(), password: v.password },
-			}),
-		onSuccess: async (user) => {
-			await client.invalidateQueries({ queryKey: ["users"] });
-			navigate({ to: "/console/users/$sub", params: { sub: user.sub } });
-		},
-	});
-	const form = useForm({
-		defaultValues: { identifier: "", way: "password" as WayIn, password: "" },
-		validationLogic: revalidateLogic(),
-		validators: { onDynamic: createUserSchema },
-		onSubmit: ({ value }) => save.mutate(value),
-	});
-	const way = useStore(form.store, (s) => s.values.way);
-	return (
-		<form
-			noValidate
-			className="max-w-3xl space-y-6"
-			onSubmit={(e) => {
-				e.preventDefault();
-				form.handleSubmit();
-			}}
-		>
-			{off && (
-				<PasswordLoginNotice detail="关闭时建出来的账号没有可用的登录方式，本人进不来。" />
-			)}
-			<FieldSet disabled={off} className="gap-6">
-				<form.Field name="way">
-					{(field) => (
-						<FormField
-							field={field}
-							label="怎么把账号交给本人"
-							help={wayHelp[way]}
-						>
-							{({ id, "aria-invalid": invalid }) => (
-								<Select
-									value={field.state.value}
-									onValueChange={(v) => field.handleChange(v as WayIn)}
-								>
-									<SelectTrigger
-										id={id}
-										aria-invalid={invalid}
-										className="w-full"
-									>
-										<SelectValue>{(v: WayIn) => wayName[v]}</SelectValue>
-									</SelectTrigger>
-									<SelectContent>
-										{waysIn.map((w) => (
-											<SelectItem key={w} value={w}>
-												{wayName[w]}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							)}
-						</FormField>
-					)}
-				</form.Field>
-				<form.Field name="identifier">
-					{(field) => (
-						<FormField
-							field={field}
-							label="登录标识"
-							help={
-								way === "invite"
-									? "邀请只发到邮箱，所以这里要填邮箱地址。填的邮箱直接算已验证，不发验证邮件、也不消耗验证码条数。"
-									: "手机号、邮箱或用户名。这里填的邮箱和手机号直接算已验证，认证服务不会给本人发验证邮件，也不消耗验证码条数。"
-							}
-						>
-							{(control) => (
-								<Input
-									{...control}
-									autoComplete="off"
-									placeholder="如 alice@example.com"
-								/>
-							)}
-						</FormField>
-					)}
-				</form.Field>
-				{way === "password" && (
-					<form.Field name="password">
-						{(field) => (
-							<FormField field={field} label="初始密码" help={wayHelp.password}>
-								{(control) => (
-									<Input
-										{...control}
-										type="password"
-										autoComplete="new-password"
-									/>
-								)}
-							</FormField>
-						)}
-					</form.Field>
-				)}
-			</FieldSet>
-			<FormError error={save.error} />
-			<Button type="submit" disabled={save.isPending || off}>
-				创建用户
-			</Button>
-		</form>
-	);
+	return <CreateUserForm />;
 }
