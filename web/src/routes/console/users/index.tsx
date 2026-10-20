@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import {
 	createFileRoute,
+	Link,
 	stripSearchParams,
 	useNavigate,
 } from "@tanstack/react-router";
@@ -242,7 +243,7 @@ function Users() {
 					{rows.map((u) => (
 						<TableRow
 							key={u.sub}
-							className="cursor-pointer"
+							className="cursor-pointer hover:bg-muted/50"
 							onClick={() =>
 								navigate({
 									to: "/console/users/$sub",
@@ -253,7 +254,16 @@ function Users() {
 							<TableCell>
 								<span className="flex items-center gap-3 font-medium">
 									<UserAvatar name={primaryIdentifier(u.identifiers)} />
-									{userName(u)}
+									{/* The row click is the mouse's way in; the name is the
+									    keyboard's, and the only thing a screen reader hears. */}
+									<Link
+										to="/console/users/$sub"
+										params={{ sub: u.sub }}
+										className="rounded-sm hover:underline"
+										onClick={(e) => e.stopPropagation()}
+									>
+										{userName(u)}
+									</Link>
 									{u.disabledAt && <Badge variant="destructive">已禁用</Badge>}
 									{u.pending && <Badge variant="warning">待激活</Badge>}
 								</span>

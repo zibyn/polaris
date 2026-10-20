@@ -905,11 +905,42 @@ function Sessions() {
 		onSuccess: () => queryClient.invalidateQueries(sessionsQuery),
 		onError: failed("下线失败"),
 	});
+	// The one action for a lost device: this browser stays signed in.
+	const others = sessions.filter((s) => s.active && !s.current);
+	const endOthers = useMutation({
+		mutationFn: () =>
+			Promise.all(
+				others.map((s) => api(`/sessions/${s.id}`, { method: "DELETE" })),
+			),
+		onSettled: () => queryClient.invalidateQueries(sessionsQuery),
+		onSuccess: () => toast.success("其他设备已下线"),
+		onError: failed("下线失败"),
+	});
 	return (
 		<Section
 			title="设备与会话"
-			intro="不限设备数,可逐个下线;已结束的保留 30 天"
+			intro="不限设备数,可逐个下线或一次下线其他设备;已结束的保留 30 天"
 		>
+			{others.length > 0 && (
+				<div className="mb-3 flex justify-end">
+					<ConfirmDialog
+						trigger={
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={endOthers.isPending}
+							>
+								下线其他设备
+							</Button>
+						}
+						title="下线其他设备?"
+						action="下线其他设备"
+						onConfirm={() => endOthers.mutate()}
+					>
+						其他设备上的会话立即结束，需要重新登录；本设备不受影响。
+					</ConfirmDialog>
+				</div>
+			)}
 			<ItemList>
 				{sessions.map((s) => (
 					<Row

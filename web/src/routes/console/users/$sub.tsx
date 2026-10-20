@@ -1,4 +1,4 @@
-import { useForm } from "@tanstack/react-form";
+import { revalidateLogic, useForm } from "@tanstack/react-form";
 import {
 	queryOptions,
 	useIsMutating,
@@ -16,7 +16,9 @@ import {
 } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { FormError, failed, saved } from "#/components/form";
+import { toast } from "sonner";
+import { z } from "zod";
+import { FormError, FormField, failed, saved } from "#/components/form";
 import { ItemList } from "#/components/item-list";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -27,13 +29,20 @@ import {
 	CollapsibleTrigger,
 } from "#/components/ui/collapsible";
 import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogTitle,
+} from "#/components/ui/dialog";
+import {
 	Empty,
 	EmptyContent,
 	EmptyDescription,
 	EmptyHeader,
 	EmptyTitle,
 } from "#/components/ui/empty";
-import { FieldLegend, FieldSet } from "#/components/ui/field";
+import { FieldGroup, FieldLegend, FieldSet } from "#/components/ui/field";
+import { Input } from "#/components/ui/input";
 import { Item, ItemActions, ItemContent } from "#/components/ui/item";
 import { Label } from "#/components/ui/label";
 import { UserAvatar } from "#/components/user-avatar";
@@ -42,6 +51,7 @@ import {
 	type Application,
 	api,
 	type ExternalIdentity,
+	type Identifier,
 	type RoleInfo,
 	type Session,
 	type UserDetail,
@@ -242,40 +252,39 @@ function UserPage() {
 	const { sub } = Route.useParams();
 	const u = useSuspenseQuery(userQuery(sub)).data;
 	const name = primaryIdentifier(u.identifiers);
+	const [changing, setChanging] = useState<Identifier["kind"] | null>(null);
 	return (
 		<div className="space-y-10 pt-4">
 			<Section title="登录标识与密码">
 				<ItemList>
-					{identifierKinds.map((kind) => (
-						<Row key={kind} label={kindName[kind]}>
-							{u.identifiers.find((i) => i.kind === kind)?.value ?? (
-								<span className="text-muted-foreground">未绑定</span>
-							)}
-							{writable && (
-								<Button
-									size="sm"
-									variant="ghost"
-									disabled={act.isPending}
-									onClick={() => {
-										const value = prompt(`新的${kindName[kind]}`);
-										if (value) {
-											act.mutate({
-												method: "PUT",
-												path: `/identifiers/${kind}`,
-												body: { value },
-												what: `更换${kindName[kind]}失败`,
-											});
-										}
-									}}
-								>
-									更换
-								</Button>
-							)}
-						</Row>
-					))}
+					{identifierKinds.map((kind) => {
+						const value = u.identifiers.find((i) => i.kind === kind)?.value;
+						return (
+							<Row key={kind} label={kindName[kind]}>
+								{value ?? <span className="text-muted-foreground">未绑定</span>}
+								{writable && (
+									<Button
+										size="sm"
+										variant="ghost"
+										onClick={() => setChanging(kind)}
+									>
+										{value ? "更换" : "绑定"}
+									</Button>
+								)}
+							</Row>
+						);
+					})}
 					<Row label="密码">{u.hasPassword ? "已设置" : "未设置"}</Row>
 				</ItemList>
 			</Section>
+			{changing && (
+				<ChangeIdentifier
+					sub={u.sub}
+					kind={changing}
+					current={u.identifiers.find((i) => i.kind === changing)?.value}
+					onClose={() => setChanging(null)}
+				/>
+			)}
 			<Section title="注册邀请">
 				<Invite
 					sub={u.sub}
@@ -378,6 +387,104 @@ function DeleteUser({
 			删除等同注销：该用户的全部数据都将删除，无法恢复。
 			{notifies && "会通知已配置用户删除通知的应用。"}
 		</ConfirmDialog>
+	);
+}
+
+// ChangeIdentifier sets or replaces a phone number, email or username. What
+// an Identifier may be — normalising, uniqueness — is the server's call in
+// its own words, as with 创建用户, so only emptiness is checked here.
+function ChangeIdentifier({
+	sub,
+	kind,
+	current,
+	onClose,
+}: {
+	sub: string;
+	kind: Identifier["kind"];
+	current?: string;
+	onClose: () => void;
+}) {
+	const client = useQueryClient();
+	const save = useMutation({
+		mutationFn: (value: string) =>
+			api(`/users/${encodeURIComponent(sub)}/identifiers/${kind}`, {
+				method: "PUT",
+				body: { value },
+			}),
+		onSuccess: async () => {
+			await client.invalidateQueries();
+			saved();
+			onClose();
+		},
+	});
+	const form = useForm({
+		defaultValues: { value: "" },
+		validationLogic: revalidateLogic(),
+		validators: {
+			onDynamic: z.object({
+				value: z.string().trim().min(1, `请填写新的${kindName[kind]}。`),
+			}),
+		},
+		onSubmit: ({ value }) => save.mutate(value.value.trim()),
+	});
+	const what = kindName[kind];
+	return (
+		<Dialog open onOpenChange={(open) => !open && onClose()}>
+			<DialogContent>
+				<DialogTitle>{current ? `更换${what}` : `绑定${what}`}</DialogTitle>
+				<DialogDescription>
+					{current
+						? `当前是 ${current}。保存后新值立即生效，原来的${what}不再能用来登录。`
+						: `绑定后本人可以用它登录。这里填的${what}直接算已验证。`}
+				</DialogDescription>
+				<form
+					noValidate
+					className="space-y-3"
+					onSubmit={(e) => {
+						e.preventDefault();
+						form.handleSubmit();
+					}}
+				>
+					<FieldGroup className="gap-3">
+						<form.Field name="value">
+							{(field) => (
+								<FormField field={field} label={current ? `新${what}` : what}>
+									{(control) => (
+										<Input
+											{...control}
+											type={
+												kind === "phone"
+													? "tel"
+													: kind === "email"
+														? "email"
+														: "text"
+											}
+											autoComplete="off"
+											placeholder={
+												kind === "phone"
+													? "+86 手机号"
+													: kind === "email"
+														? "邮箱"
+														: "用户名"
+											}
+										/>
+									)}
+								</FormField>
+							)}
+						</form.Field>
+					</FieldGroup>
+					<FormError error={save.error} />
+					<div className="flex justify-end gap-2">
+						<Button type="button" variant="outline" onClick={onClose}>
+							取消
+						</Button>
+						<Button type="submit" disabled={save.isPending}>
+							保存
+						</Button>
+					</div>
+				</form>
+			</DialogContent>
+		</Dialog>
 	);
 }
 
@@ -581,8 +688,41 @@ function Sessions({ sub, writable }: { sub: string; writable: boolean }) {
 		onSuccess: () => client.invalidateQueries({ queryKey: ["sessions", sub] }),
 		onError: failed("下线会话失败"),
 	});
+	const active = list.filter((s) => s.active);
+	// For a lost device: sign the User out everywhere in one go, rather than
+	// row by row.
+	const endAll = useMutation({
+		mutationFn: () =>
+			Promise.all(
+				active.map((s) =>
+					api(
+						`/users/${encodeURIComponent(sub)}/sessions/${encodeURIComponent(s.id)}`,
+						{ method: "DELETE" },
+					),
+				),
+			),
+		onSettled: () => client.invalidateQueries({ queryKey: ["sessions", sub] }),
+		onSuccess: () => toast.success("已全部下线"),
+		onError: failed("下线会话失败"),
+	});
 	return (
 		<>
+			{writable && active.length > 1 && (
+				<div className="flex justify-end pb-3">
+					<ConfirmDialog
+						trigger={
+							<Button size="sm" variant="outline" disabled={endAll.isPending}>
+								全部下线
+							</Button>
+						}
+						title="下线这个用户的全部会话？"
+						action="全部下线"
+						onConfirm={() => endAll.mutate()}
+					>
+						该用户在所有设备上都会退出，需要重新登录。
+					</ConfirmDialog>
+				</div>
+			)}
 			<ItemList>
 				{list.map((s) => (
 					<Row
