@@ -23,6 +23,7 @@ type Policy struct {
 	AuditRetentionDays  int32  `json:"auditRetentionDays" minimum:"1"`
 	AdminsNeedTwoFactor bool   `json:"adminsNeedTwoFactor" doc:"管理员必须启用两步验证或 Passkey: Users holding a Management API Role can't use it without 两步验证 or a Passkey; only an admin who has either turns it on"`
 	PasskeyLogin        bool   `json:"passkeyLogin" doc:"The instance offers Passkey login (default true): off hides every Passkey entry, refuses every ceremony, and stops Passkeys from satisfying 管理员必须启用两步验证或 Passkey, while keeping the added ones"`
+	OpenRegistration    bool   `json:"openRegistration" doc:"开放注册 (default true): off, a code login or External Identity no User holds is refused instead of signing a new User up; admins and 注册邀请 still add Users"`
 }
 
 type policyBody struct{ Body Policy }
@@ -32,7 +33,7 @@ func (s *Service) getSettings(ctx context.Context, _ *struct{}) (*policyBody, er
 	return &policyBody{Body: Policy{
 		PasswordLogin: r.PasswordLogin, RequirePhone: r.RequirePhone, DailySendLimit: r.DailySendLimit,
 		TermsURL: r.TermsUrl, PrivacyURL: r.PrivacyUrl, TermsVersion: r.TermsVersion, AuditRetentionDays: r.AuditRetentionDays,
-		AdminsNeedTwoFactor: r.AdminsNeedTwoFactor, PasskeyLogin: r.PasskeyLogin,
+		AdminsNeedTwoFactor: r.AdminsNeedTwoFactor, PasskeyLogin: r.PasskeyLogin, OpenRegistration: r.OpenRegistration,
 	}}, err
 }
 
@@ -73,7 +74,7 @@ func (s *Service) putSettings(ctx context.Context, in *policyBody) (*struct{}, e
 	return nil, s.q.UpdateSettings(ctx, sqlc.UpdateSettingsParams{
 		By: c.sub, PasswordLogin: b.PasswordLogin, RequirePhone: b.RequirePhone, DailySendLimit: b.DailySendLimit,
 		TermsUrl: b.TermsURL, PrivacyUrl: b.PrivacyURL, TermsVersion: b.TermsVersion, AuditRetentionDays: b.AuditRetentionDays,
-		AdminsNeedTwoFactor: b.AdminsNeedTwoFactor, PasskeyLogin: b.PasskeyLogin,
+		AdminsNeedTwoFactor: b.AdminsNeedTwoFactor, PasskeyLogin: b.PasskeyLogin, OpenRegistration: b.OpenRegistration,
 	})
 }
 

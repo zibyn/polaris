@@ -150,6 +150,7 @@ type OidcLogoutSession struct {
 type OidcSpentRefreshToken struct {
 	Hash    []byte
 	GrantID string
+	SpentAt pgtype.Timestamptz
 }
 
 type Passkey struct {
@@ -279,6 +280,7 @@ type Setting struct {
 	AuditRetentionDays  int32
 	AdminsNeedTwoFactor bool
 	PasskeyLogin        bool
+	OpenRegistration    bool
 }
 
 type SigningKey struct {

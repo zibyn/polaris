@@ -481,6 +481,9 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		if err == nil {
 			err = s.pow.Verify(ctx, r.PostFormValue("altcha"))
 		}
+		if err == nil && pending == "" {
+			err = s.ids.MaySignUp(ctx, value)
+		}
 		if err == nil {
 			err = s.codes.Send(ctx, kind, value, clientIP(r))
 		}
@@ -506,6 +509,11 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			return s.render(w, r, as, c, loginPage{})
 		}
 		form.Identifier, form.CodeSent = value, true
+		if pending == "" {
+			if err := s.ids.MaySignUp(ctx, value); err != nil {
+				return fail(err)
+			}
+		}
 		if err := s.codes.Send(ctx, kind, value, clientIP(r)); err != nil {
 			return fail(err)
 		}
