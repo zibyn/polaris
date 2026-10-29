@@ -54,7 +54,7 @@
             }}}
           },
           "400": {
-            "description": "`invalid_request`: a parameter is missing or wrong, or the User made a mistake (wrong code or password, PoW unsolved, send limit hit, an IP that started too many Passkey sign-ins; `error_description` says which, in words fit to show, and `auth_session` comes back if one was sent — and if one is still usable). A Passkey assertion that does not verify is an `invalid_request` that spends its `auth_session`. `invalid_grant`: the Provider turned authorization_code down (spent, expired, or not for this App); have the User sign in with it again. `access_denied`: the User was disabled during the sign-in. `unauthorized_client`, `invalid_scope`: as at the token endpoint. `invalid_session`: the auth_session is unknown, expired, or spent (each one yields a single authorization code), or the 5th wrong totp or recovery_code ended it; start over. `redirect_to_web` is never sent: every sign-in step the hosted page has, this endpoint has too.",
+            "description": "`invalid_request`: a parameter is missing or wrong, or the User made a mistake (wrong code or password, PoW unsolved, send limit hit, an IP that started too many Passkey sign-ins; `error_description` says which, in words fit to show, and `auth_session` comes back if one was sent — and if one is still usable). A Passkey assertion that does not verify is an `invalid_request` that spends its `auth_session`. `invalid_grant`: the Provider turned authorization_code down (spent, expired, or not for this App); have the User sign in with it again. `registration_closed`: the instance has closed 开放注册 and the identifier (or the Provider's External Identity) belongs to no User; no code was sent (ADR 0021). `access_denied`: the User was disabled during the sign-in. `unauthorized_client`, `invalid_scope`: as at the token endpoint. `invalid_session`: the auth_session is unknown, expired, or spent (each one yields a single authorization code), or the 5th wrong totp or recovery_code ended it; start over. `redirect_to_web` is never sent: every sign-in step the hosted page has, this endpoint has too.",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           },
           "401": {
@@ -111,7 +111,7 @@
         "type": "object",
         "required": ["error"],
         "properties": {
-          "error": {"type": "string", "enum": ["invalid_request", "invalid_grant", "access_denied", "invalid_client", "unauthorized_client", "invalid_scope", "invalid_session", "insufficient_authorization", "server_error"]},
+          "error": {"type": "string", "enum": ["invalid_request", "invalid_grant", "access_denied", "invalid_client", "unauthorized_client", "invalid_scope", "invalid_session", "insufficient_authorization", "registration_closed", "server_error"]},
           "error_description": {"type": "string"},
           "auth_session": {"type": "string"},
           "next": {"type": "string", "enum": ["code", "phone", "totp"], "description": "Sent with `insufficient_authorization` only (non-standard, ADR 0010): the step to take. `code`: enter the code just sent. `phone`: bind a phone number (send a code to one, then enter it). `totp`: the User has 两步验证 on; send `totp` or `recovery_code` (comes before `phone`). Values are only ever added, never renamed or removed; treat one you do not know as a failure (ask the User to update the App)."}

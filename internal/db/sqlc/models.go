@@ -278,6 +278,7 @@ type Setting struct {
 	AuditRetentionDays  int32
 	AdminsNeedTwoFactor bool
 	PasskeyLogin        bool
+	OpenRegistration    bool
 }
 
 type SigningKey struct {
