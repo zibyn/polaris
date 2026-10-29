@@ -31,6 +31,9 @@ type Store struct {
 	// longer-lived secret (auth code, refresh token) does; at least the
 	// access token lifetime.
 	GrantTTL time.Duration
+	// JTITTL keeps a used jti until its JWT can no longer be valid: go-oidc's
+	// longest JWT lifetime plus clock skew. ConsumeJTI never sees the JWT's exp.
+	JTITTL time.Duration
 }
 
 var (
@@ -49,7 +52,28 @@ const SessionKey = "session"
 var errReused = goidc.NewError(goidc.ErrorCodeInvalidGrant, "refresh token reused")
 
 func New(pool *pgxpool.Pool, keyring *crypt.Keyring) *Store {
-	return &Store{q: sqlc.New(pool), keyring: keyring, GrantTTL: time.Hour}
+	// 600s is go-oidc's default JWTLifetimeSecs, which login does not override.
+	return &Store{q: sqlc.New(pool), keyring: keyring, GrantTTL: time.Hour, JTITTL: 600*time.Second + time.Minute}
+}
+
+// errJTIReplayed answers a jti seen before; go-oidc maps it to the error code
+// of the DPoP proof or client assertion it came in.
+var errJTIReplayed = errors.New("jti already used")
+
+// ConsumeJTI is the goidc.ConsumeJTIFunc: a jti is good once until it
+// expires. The primary key makes one of concurrent uses win, across replicas.
+func (s *Store) ConsumeJTI(ctx context.Context, jti string) error {
+	n, err := s.q.ConsumeJTI(ctx, sqlc.ConsumeJTIParams{
+		Jti:       jti,
+		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(s.JTITTL), Valid: true},
+	})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errJTIReplayed
+	}
+	return nil
 }
 
 // DeleteExpired removes expired grants, sessions and retired signing keys;

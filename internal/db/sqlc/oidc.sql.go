@@ -95,6 +95,23 @@ func (q *Queries) ChallengeSession(ctx context.Context, hash []byte) (ChallengeS
 	return i, err
 }
 
+const consumeJTI = `-- name: ConsumeJTI :execrows
+INSERT INTO oidc_jtis (jti, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING
+`
+
+type ConsumeJTIParams struct {
+	Jti       string
+	ExpiresAt pgtype.Timestamptz
+}
+
+func (q *Queries) ConsumeJTI(ctx context.Context, arg ConsumeJTIParams) (int64, error) {
+	result, err := q.db.Exec(ctx, consumeJTI, arg.Jti, arg.ExpiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createApplication = `-- name: CreateApplication :exec
 INSERT INTO applications (client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, backchannel_logout_uri)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -138,7 +155,8 @@ const deleteExpiredOIDC = `-- name: DeleteExpiredOIDC :exec
 WITH g AS (DELETE FROM oidc_grants WHERE oidc_grants.expires_at < now()),
      a AS (DELETE FROM oidc_authn_sessions WHERE oidc_authn_sessions.expires_at < now()),
      c AS (DELETE FROM oidc_challenge_sessions WHERE oidc_challenge_sessions.expires_at < now()),
-     p AS (DELETE FROM provider_logins WHERE provider_logins.expires_at < now())
+     p AS (DELETE FROM provider_logins WHERE provider_logins.expires_at < now()),
+     j AS (DELETE FROM oidc_jtis WHERE oidc_jtis.expires_at < now())
 DELETE FROM oidc_logout_sessions WHERE oidc_logout_sessions.expires_at < now()
 `
 
