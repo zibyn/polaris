@@ -110,6 +110,7 @@ type Application struct {
 	DefaultAPI             string
 	RedirectURIs           []string
 	PostLogoutRedirectURIs []string
+	BackchannelLogoutURI   string
 }
 
 func CreateApplication(ctx context.Context, pool *pgxpool.Pool, app Application) error {
@@ -121,6 +122,7 @@ func CreateApplication(ctx context.Context, pool *pgxpool.Pool, app Application)
 		RedirectUris:           append([]string{}, app.RedirectURIs...),
 		PostLogoutRedirectUris: append([]string{}, app.PostLogoutRedirectURIs...),
 		DefaultApi:             pgtype.Text{String: app.DefaultAPI, Valid: app.DefaultAPI != ""},
+		BackchannelLogoutUri:   pgtype.Text{String: app.BackchannelLogoutURI, Valid: app.BackchannelLogoutURI != ""},
 	}
 	if app.Secret != "" {
 		params.Type = "confidential"
@@ -190,6 +192,7 @@ func (s *Store) SaveGrant(ctx context.Context, g *goidc.Grant) error {
 	session, _ := g.Store[SessionKey].(string)
 	return s.q.SaveGrant(ctx, sqlc.SaveGrantParams{
 		ID:               g.ID,
+		ClientID:         g.ClientID,
 		AuthCodeHash:     hash(g.AuthCode),
 		RefreshTokenHash: hash(g.RefreshToken),
 		ExpiresAt:        s.grantExpiry(g),

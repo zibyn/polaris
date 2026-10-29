@@ -146,6 +146,7 @@ type Configuration struct {
 	AuthorizationChallengeEndpoint string
 
 	LogoutEnabled               bool
+	BackChannelLogoutEnabled    bool
 	LogoutEndpoint              string
 	LogoutManager               goidc.LogoutManager
 	LogoutSessionTimeoutSecs    int

@@ -2,12 +2,13 @@
 SELECT * FROM applications WHERE client_id = $1;
 
 -- name: CreateApplication :exec
-INSERT INTO applications (client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api)
-VALUES ($1, $2, $3, $4, $5, $6, $7);
+INSERT INTO applications (client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, backchannel_logout_uri)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 
 -- name: SaveGrant :exec
 -- Revoking the refresh token of an App Session ends the Session: the chain
--- is the Session.
+-- is the Session. The Session remembers the Application, for Back-Channel
+-- Logout.
 WITH g AS (
     INSERT INTO oidc_grants (id, auth_code_hash, refresh_token_hash, expires_at, session_id, sealed)
     VALUES (@id, @auth_code_hash, @refresh_token_hash, @expires_at, @session_id, @sealed)
@@ -17,6 +18,10 @@ WITH g AS (
         expires_at = EXCLUDED.expires_at,
         sealed = EXCLUDED.sealed
     RETURNING session_id
+), issued AS (
+    INSERT INTO session_applications (session_id, client_id)
+    SELECT g.session_id, @client_id FROM g WHERE g.session_id IS NOT NULL
+    ON CONFLICT DO NOTHING
 )
 UPDATE sessions SET ended_at = now()
 WHERE @revoked::boolean AND sessions.id_hash IS NULL AND sessions.ended_at IS NULL

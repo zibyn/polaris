@@ -12,13 +12,23 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
 
 ## OIDC Provider
 
-- **端点**:discovery、JWKS、`/authorize`、`/token`、`/userinfo`、revocation(RFC 7009)、RP-Initiated Logout。
+- **端点**:discovery、JWKS、`/authorize`、`/token`、`/userinfo`、revocation(RFC 7009)、RP-Initiated Logout、Back-Channel Logout(见下面一节)。
 - **认证目标**:Basic OP + Config OP;RP-Initiated Logout 可选。Implicit、Hybrid、Dynamic 不做。
-- **不支持**:Back-Channel / Front-Channel Logout、设备授权流程、DPoP、introspection、RFC 8707 `resource` 参数、`acr_values`。
+- **不支持**:Front-Channel Logout、设备授权流程、DPoP、introspection、RFC 8707 `resource` 参数、`acr_values`。
 - **客户端类型**:public(必须 PKCE)与 confidential 都支持。
 - **同意页**:不做,也没有 Consent 概念,请求的 scope 直接授予。`prompt=consent` 接受但忽略;`offline_access` 接受但不改变行为。
 - **已有浏览器 Session 时**:静默通过,直接带 code 跳回。一个浏览器 Session 对应一个 User,所以不做账号选择器。`prompt=select_account` 按 `login` 处理;`prompt=none` / `login` 与 `max_age` 按 Core 实现。
 - **`client_credentials`**:只开给 M2M Application(ADR 0015),让它以自身身份调用 API,不签发 refresh token;scope 被忽略,令牌的 `aud` 固定为它的默认 API。接入见 [Management API 接入指南](../management-api.md)。
+
+### Back-Channel Logout
+
+按 OIDC Back-Channel Logout 1.0 实现(ADR 0022)。发现文档声明 `backchannel_logout_supported` 与 `backchannel_logout_session_supported`;`backchannel_logout_session_required` 对所有 Application 恒为真,不做成选项。
+
+- **配置**:只有 Web Application(confidential)可以选配一个 `backchannel_logout_uri`,在管理端和 Management API 里设置或清除。原生 App 和 M2M Application 没有。
+- **何时发**:Session 被**主动**终止时:管理员终止单个 Session、禁用 User(终止其全部 Session)、删除或注销 User、User 自己退出登录(RP-Initiated Logout,账户中心退出也走它),refresh token 重放,以及同一浏览器换成另一个 User 登录。闲置到期不发。
+- **发给谁**:这个 Session 签发过令牌、且配了 `backchannel_logout_uri` 的每个 Application,各一个。Session 在签发 authorization code 时记下 Application,所以只走 code flow、不拿 refresh token 的也收得到。
+- **logout token**:RS256 JWT,`typ: logout+jwt`,带 `iss`、`aud`(client_id)、`iat`、`exp`(2 分钟)、`jti`、`events`(`http://schemas.openid.net/event/backchannel-logout`),并且总是同时带 `sub` 和 `sid`;`sid` 与这个 Session 签发的 ID token、access token 里的一致;不带 `nonce`。每次投递时现签。
+- **投递**:按规范 `POST`,`application/x-www-form-urlencoded`,`logout_token=<JWT>`,不带 Standard Webhooks 签名。与 Webhook 共用投递队列和退避重试:非 2xx 时从 1 分钟起翻倍、最长 12 小时,约一天后放弃并记审计 `webhook.failed`。User 被删除后,已排队的 logout token 照样发出。
 
 ## 直连认证 API
 
@@ -49,7 +59,7 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
 | 令牌 | 形态 | 寿命 | 要点 |
 |---|---|---|---|
 | access token | JWT,RFC 9068(`typ: at+jwt`),RS256 | 10 分钟 | `aud` 为 API 标识符;带 `client_id`、`roles`、`entitlements`(只限当前 API) |
-| ID token | JWT,RS256 | — | `sub`、`amr`;scope 为 `phone` / `email` 时带对应 claim;不带角色 |
+| ID token | JWT,RS256 | — | `sub`、`amr`、`sid`(签发它的 Session);scope 为 `phone` / `email` 时带对应 claim;不带角色 |
 | refresh token | 不透明 | 跟随 Session | 每次刷新都轮换;最近换下的那个 60 秒内再来,再轮换一次签发新令牌(宽限,审计 `refresh_token.grace`);其余重用终止整个 Session |
 
 - **`amr`**:按 RFC 8176 取 `sms`、`otp`、`pwd`、`hwk` / `swk`;做过两步验证(TOTP 或恢复码)时为 `[第一因素, "otp", "mfa"]`(第一因素的值加上 `otp`、`mfa`,不重复:邮箱验证码登录为 `["otp", "mfa"]`,短信为 `["sms", "otp", "mfa"]`);Passkey 登录为 `["swk", "mfa"]`(凭证可跨设备同步)或 `["hwk", "mfa"]`(仅本机),Passkey 本身已验证持有与本人,不再加 `otp`;Application 以 `mfa` 判断是否做过两步验证;Provider 登录一律为自定义值 `fed`;接受注册邀请建立的那次会话为 `["otp"]`(链接证明邮箱控制权,与邮箱验证码同一种证据,见 [authentication.md](authentication.md#注册邀请))。
@@ -72,3 +82,4 @@ Session 是一个 User 在一台设备或一个浏览器上的一次登录。
 - **配置**:每个 Application 可以选配一个 URL 和签名共享密钥。
 - **事件**:只有一种,`user.deleted`(带 `sub`),在 User 注销或被管理员删除时发送。
 - **签名与重试**:用共享密钥签名;失败会重试。
+- **Session 终止**:不走 Webhook,走 [Back-Channel Logout](#back-channel-logout)。
