@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/zibyn/polaris/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/profile"
 )
 
 const (
@@ -174,6 +175,9 @@ func (s *Store) GuardOwners(ctx context.Context, change func(*sqlc.Queries) erro
 // request; never the last usable owner.
 func (s *Store) Delete(ctx context.Context, sub string) error {
 	return s.GuardOwners(ctx, func(q *sqlc.Queries) error {
+		if err := profile.DeleteAvatar(ctx, q, sub); err != nil {
+			return err
+		}
 		_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: sub})
 		return err
 	})

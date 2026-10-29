@@ -1,6 +1,6 @@
 // Package account serves the Account API, where a signed-in User manages
 // their own account from the account center, and the direct auth API's
-// account deletion for Apps.
+// account deletion and 用户资料 for Apps.
 package account
 
 import (
@@ -27,6 +27,7 @@ import (
 	"github.com/zibyn/polaris/internal/oidcstore"
 	"github.com/zibyn/polaris/internal/otp"
 	"github.com/zibyn/polaris/internal/passkey"
+	"github.com/zibyn/polaris/internal/profile"
 	"github.com/zibyn/polaris/internal/provider"
 	"github.com/zibyn/polaris/internal/twofactor"
 )
@@ -52,6 +53,7 @@ type Service struct {
 	twoFactor *twofactor.Store
 	providers *provider.Store
 	passkeys  *passkey.Store
+	profiles  *profile.Store
 }
 
 func New(pool *pgxpool.Pool, keyring *crypt.Keyring, issuer string) (*Service, error) {
@@ -63,7 +65,7 @@ func New(pool *pgxpool.Pool, keyring *crypt.Keyring, issuer string) (*Service, e
 		issuer: issuer, pool: pool, q: sqlc.New(pool), keys: oidcstore.NewKeys(pool, keyring),
 		ids: identity.New(pool, keyring), codes: otp.New(pool, channel.NewStore(pool, keyring)),
 		twoFactor: twofactor.New(pool, keyring), providers: provider.NewStore(pool, keyring),
-		passkeys: passkeys,
+		passkeys: passkeys, profiles: profile.New(pool, issuer),
 	}, nil
 }
 
@@ -81,8 +83,8 @@ type caller struct {
 func callerOf(ctx context.Context) caller { return ctx.Value(callerKey{}).(caller) }
 
 // Register adds the Account API, its OpenAPI document, the direct auth
-// API's account deletion and the account center's /.well-known/ discovery
-// files to mux.
+// API's account deletion and 用户资料, and the account center's /.well-known/
+// discovery files to mux.
 func (s *Service) Register(mux *http.ServeMux) {
 	s.passkeys.RegisterWellKnown(mux)
 	s.registerChangePassword(mux)
@@ -96,6 +98,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 	}
 	cfg.Security = []map[string][]string{{"bearer": {}}}
 	mux.HandleFunc("POST "+DeletePath, s.directDelete)
+	s.registerDirectProfile(mux)
 	api := humago.NewWithPrefix(mux, Prefix, cfg)
 	api.UseMiddleware(s.authorize(api))
 
@@ -109,6 +112,11 @@ func (s *Service) Register(mux *http.ServeMux) {
 	op(api, http.MethodDelete, "remove-identifier", "/identifiers/{kind}", "Unbind the User's phone number or email", s.removeIdentifier, http.StatusForbidden)
 	op(api, http.MethodPut, "put-password", "/password", "Set or change the User's password", s.putPassword, http.StatusForbidden)
 	op(api, http.MethodDelete, "delete-account", "/me", "Delete the User's account and all their data, at once", s.deleteAccount, http.StatusForbidden, http.StatusConflict)
+	op(api, http.MethodPatch, "set-nickname", "/profile", "Set or clear the User's nickname; 400 for one refused", s.setNickname, http.StatusBadRequest)
+	huma.Register(api, huma.Operation{OperationID: "set-avatar", Method: http.MethodPut, Path: "/avatar",
+		Summary: "Upload the User's avatar: a JPEG, PNG or WebP of at most 5 MB, kept as a 512×512 JPEG; 400 for what is not one",
+		Errors:  []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusRequestEntityTooLarge}, MaxBodyBytes: profile.MaxAvatarBytes}, s.setAvatar)
+	op(api, http.MethodDelete, "remove-avatar", "/avatar", "Remove the User's avatar", s.removeAvatar)
 	op(api, http.MethodGet, "list-sessions", "/sessions", "The User's Sessions", s.listSessions)
 	op(api, http.MethodDelete, "end-session", "/sessions/{id}", "Sign one of the User's Sessions out", s.endSession, http.StatusNotFound)
 	op(api, http.MethodGet, "export", "/export", "The User's data, as a JSON download", s.export, http.StatusForbidden)
@@ -210,6 +218,8 @@ type meOutput struct {
 	Body struct {
 		Sub             string       `json:"sub"`
 		CreatedAt       time.Time    `json:"createdAt"`
+		Nickname        string       `json:"nickname,omitempty"`
+		Picture         string       `json:"picture,omitempty" doc:"The avatar's URL"`
 		Identifiers     []Identifier `json:"identifiers" nullable:"false"`
 		HasPassword     bool         `json:"hasPassword"`
 		PasswordAllowed bool         `json:"passwordAllowed" doc:"The password login setting lets this User sign in with, and set, a password"`
@@ -259,6 +269,11 @@ func (s *Service) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 	b := &out.Body
 	b.Sub, b.CreatedAt, b.HasPassword, b.PasswordAllowed = c.sub, u.CreatedAt.Time, u.HasPassword, u.PasswordAllowed
 	b.RecentAuthUntil, b.TwoFactor, b.PasskeyLogin = c.authTime.Add(recent), twoFactorOf(u), u.PasskeyLogin
+	p, err := s.profiles.Get(ctx, c.sub)
+	if err != nil {
+		return nil, err
+	}
+	b.Nickname, b.Picture = p.Nickname, p.Picture
 	if b.ExternalIdentities, err = s.externalIdentities(ctx, c.sub); err != nil {
 		return nil, err
 	}

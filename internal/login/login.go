@@ -34,6 +34,7 @@ import (
 	"github.com/zibyn/polaris/internal/otp"
 	"github.com/zibyn/polaris/internal/passkey"
 	"github.com/zibyn/polaris/internal/pow"
+	"github.com/zibyn/polaris/internal/profile"
 	"github.com/zibyn/polaris/internal/provider"
 	"github.com/zibyn/polaris/internal/twofactor"
 )
@@ -94,6 +95,7 @@ type Service struct {
 	store     *oidcstore.Store
 	providers *provider.Store
 	passkeys  *passkey.Store
+	profiles  *profile.Store
 	origin    *http.CrossOriginProtection
 }
 
@@ -132,11 +134,12 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 		pow:       work,
 		providers: provider.NewStore(pool, keyring),
 		passkeys:  passkeys,
+		profiles:  profile.New(pool, issuer),
 		origin:    http.NewCrossOriginProtection(),
 	}
 	store := oidcstore.New(pool, keyring)
 	s.store = store
-	store.Scopes = strings.Join([]string{goidc.ScopeOpenID.ID, goidc.ScopeOfflineAccess.ID, goidc.ScopePhone.ID, goidc.ScopeEmail.ID}, " ")
+	store.Scopes = strings.Join([]string{goidc.ScopeOpenID.ID, goidc.ScopeOfflineAccess.ID, goidc.ScopePhone.ID, goidc.ScopeEmail.ID, goidc.ScopeProfile.ID}, " ")
 	op, err := oidcop.New(
 		oidcop.Config{
 			Issuer:      issuer,
@@ -144,8 +147,9 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 			JWKS:        oidcstore.NewKeys(pool, keyring).JWKS,
 			IDTokenAlgs: []goidc.SignatureAlgorithm{goidc.SigAlgRS256},
 		},
-		oidcop.WithScopes(goidc.ScopeOpenID, goidc.ScopeOfflineAccess, goidc.ScopePhone, goidc.ScopeEmail),
-		oidcop.WithClaims(goidc.ClaimPhoneNumber, goidc.ClaimPhoneNumberVerified, goidc.ClaimEmail, goidc.ClaimEmailVerified),
+		oidcop.WithScopes(goidc.ScopeOpenID, goidc.ScopeOfflineAccess, goidc.ScopePhone, goidc.ScopeEmail, goidc.ScopeProfile),
+		oidcop.WithClaims(goidc.ClaimPhoneNumber, goidc.ClaimPhoneNumberVerified, goidc.ClaimEmail, goidc.ClaimEmailVerified,
+			goidc.ClaimNickname, goidc.ClaimPicture),
 		oidcop.WithNoneAuthn(),
 		oidcop.WithSecretBasicAuthn(),
 		oidcop.WithSecretPostAuthn(),
@@ -201,8 +205,8 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 	return s, nil
 }
 
-// Register adds the OIDC endpoints, the direct auth API and the setup page
-// to mux.
+// Register adds the OIDC endpoints, the direct auth API, the avatars and the
+// setup page to mux.
 func (s *Service) Register(mux *http.ServeMux) {
 	s.op.RegisterRoutes(mux, clientCredentialsRules, s.cors) // cors outermost: rejected requests get it too
 	for path := range corsMethods {
@@ -217,6 +221,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		http.ServeFileFS(w, r, pagesFS, "passkey.js")
 	})
+	s.profiles.Register(mux)
 	mux.HandleFunc("POST "+ChallengePath, s.challenge)
 	mux.HandleFunc("GET /v1/auth/terms", s.terms)
 	mux.HandleFunc("GET /v1/auth/openapi.json", func(w http.ResponseWriter, r *http.Request) {
@@ -772,7 +777,8 @@ func clientIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-// userClaims are the phone and email claims the grant's scopes ask for.
+// userClaims are the phone, email and profile claims the grant's scopes
+// ask for.
 func (s *Service) userClaims(ctx context.Context, g *goidc.Grant) map[string]any {
 	claims := map[string]any{}
 	scopes := strings.Fields(g.Scopes)
@@ -787,6 +793,18 @@ func (s *Service) userClaims(ctx context.Context, g *goidc.Grant) map[string]any
 			claims[goidc.ClaimPhoneNumber], claims[goidc.ClaimPhoneNumberVerified] = id.Value, true
 		case id.Kind == "email" && slices.Contains(scopes, goidc.ScopeEmail.ID):
 			claims[goidc.ClaimEmail], claims[goidc.ClaimEmailVerified] = id.Value, true
+		}
+	}
+	if slices.Contains(scopes, goidc.ScopeProfile.ID) {
+		p, err := s.profiles.Get(ctx, g.Subject)
+		if err != nil {
+			slog.Error("user claims: profile", "err", err)
+		}
+		if p.Nickname != "" {
+			claims[goidc.ClaimNickname] = p.Nickname
+		}
+		if p.Picture != "" {
+			claims[goidc.ClaimPicture] = p.Picture
 		}
 	}
 	return claims

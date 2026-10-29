@@ -49,6 +49,13 @@ type AuditLog struct {
 	Detail []byte
 }
 
+type Blob struct {
+	Key         string
+	ContentType string
+	Bytes       []byte
+	CreatedAt   pgtype.Timestamptz
+}
+
 type Channel struct {
 	Kind      string
 	Plugin    string
@@ -291,6 +298,8 @@ type User struct {
 	DisabledAt pgtype.Timestamptz
 	Status     string
 	Pending    bool
+	Nickname   pgtype.Text
+	Avatar     pgtype.Text
 }
 
 type UserRole struct {

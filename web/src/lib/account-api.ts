@@ -18,6 +18,9 @@ export type Identifier = {
 export type Me = {
 	sub: string;
 	createdAt: string;
+	nickname?: string;
+	// The avatar's URL.
+	picture?: string;
 	identifiers: Identifier[];
 	hasPassword: boolean;
 	passwordAllowed: boolean;
@@ -51,3 +54,4 @@ export type Session = {
 	active: boolean;
 	current: boolean;
 };
+export type Profile = { nickname?: string; picture?: string };

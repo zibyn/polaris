@@ -6,7 +6,7 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { encode } from "uqr";
 import { CopyButton } from "#/components/copy-button";
@@ -32,8 +32,10 @@ import {
 } from "#/components/ui/item";
 import { UserAvatar } from "#/components/user-avatar";
 import {
+	avatarProblem,
 	bindSchema,
 	deleteSchema,
+	nicknameSchema,
 	passkeyNameSchema,
 	passwordSchema,
 	providerReturn,
@@ -51,6 +53,7 @@ import {
 	forget,
 	logout,
 	type Me,
+	type Profile,
 	type Session,
 	type TOTPSetup,
 } from "#/lib/account-api";
@@ -137,10 +140,14 @@ function Account() {
 					Polaris
 				</div>
 				<header className="flex items-center gap-4">
-					<UserAvatar name={main} size="lg" />
+					<UserAvatar
+						name={user.nickname ?? main}
+						picture={user.picture}
+						size="lg"
+					/>
 					<div className="min-w-0">
 						<h1 className="truncate font-semibold text-2xl tracking-tight">
-							{main ?? user.sub}
+							{user.nickname ?? main ?? user.sub}
 						</h1>
 						<p className="text-[13px] text-muted-foreground">
 							注册于 {date(user.createdAt)}
@@ -150,6 +157,7 @@ function Account() {
 						退出登录
 					</Button>
 				</header>
+				<ProfileSection me={user} />
 				<LoginMethods me={user} guard={guard} />
 				<Security me={user} guard={guard} />
 				<Sessions />
@@ -211,6 +219,138 @@ function saveFile(name: string, blob: Blob) {
 	a.download = name;
 	a.click();
 	URL.revokeObjectURL(a.href);
+}
+
+// ProfileSection is the 用户资料 every Application shows: the nickname and
+// the avatar. Neither is a sensitive action.
+function ProfileSection({ me }: { me: Me }) {
+	const queryClient = useQueryClient();
+	const [editing, setEditing] = useState(false);
+	const file = useRef<HTMLInputElement>(null);
+	const onSaved = async () => {
+		await queryClient.invalidateQueries(meQuery);
+		saved();
+	};
+	const upload = useMutation({
+		mutationFn: (f: File) =>
+			api<Profile>("/avatar", { method: "PUT", body: f }),
+		onSuccess: onSaved,
+		onError: failed("上传头像失败"),
+	});
+	const remove = useMutation({
+		mutationFn: () => api<Profile>("/avatar", { method: "DELETE" }),
+		onSuccess: onSaved,
+		onError: failed("移除头像失败"),
+	});
+	return (
+		<Section title="个人资料">
+			<ItemList>
+				<Row
+					label="昵称"
+					hint={me.nickname ?? "未设置,各应用会显示你的手机号或邮箱"}
+				>
+					<Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+						修改
+					</Button>
+				</Row>
+				<Row label="头像" hint="JPEG、PNG 或 WebP,不超过 5 MB;会裁成正方形">
+					<input
+						ref={file}
+						type="file"
+						accept="image/jpeg,image/png,image/webp"
+						className="hidden"
+						onChange={(e) => {
+							const f = e.target.files?.[0];
+							e.target.value = "";
+							if (!f) return;
+							const problem = avatarProblem(f);
+							if (problem) toast.error(problem);
+							else upload.mutate(f);
+						}}
+					/>
+					{me.picture && (
+						<Button
+							variant="ghost"
+							size="sm"
+							disabled={remove.isPending}
+							onClick={() => remove.mutate()}
+						>
+							移除
+						</Button>
+					)}
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={upload.isPending}
+						onClick={() => file.current?.click()}
+					>
+						{me.picture ? "更换" : "上传"}
+					</Button>
+				</Row>
+			</ItemList>
+			{editing && (
+				<EditNickname
+					nickname={me.nickname ?? ""}
+					onClose={() => setEditing(false)}
+				/>
+			)}
+		</Section>
+	);
+}
+
+function EditNickname({
+	nickname,
+	onClose,
+}: {
+	nickname: string;
+	onClose: () => void;
+}) {
+	const queryClient = useQueryClient();
+	const save = useMutation({
+		mutationFn: (nickname: string) =>
+			api<Profile>("/profile", { method: "PATCH", body: { nickname } }),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries(meQuery);
+			saved();
+			onClose();
+		},
+	});
+	const form = useForm({
+		defaultValues: { nickname },
+		validationLogic: revalidateLogic(),
+		validators: { onDynamic: nicknameSchema },
+		onSubmit: ({ value }) => save.mutate(value.nickname.trim()),
+	});
+	return (
+		<Dialog open onOpenChange={(open) => !open && onClose()}>
+			<DialogContent>
+				<DialogTitle>修改昵称</DialogTitle>
+				<DialogDescription>留空即清除昵称。</DialogDescription>
+				<form
+					noValidate
+					className="space-y-3"
+					onSubmit={(e) => {
+						e.preventDefault();
+						form.handleSubmit();
+					}}
+				>
+					<form.Field name="nickname">
+						{(field) => (
+							<FormField field={field} label="昵称">
+								{(control) => <Input {...control} maxLength={64} />}
+							</FormField>
+						)}
+					</form.Field>
+					<FormError error={save.error} />
+					<div className="flex justify-end">
+						<Button type="submit" disabled={save.isPending}>
+							保存
+						</Button>
+					</div>
+				</form>
+			</DialogContent>
+		</Dialog>
+	);
 }
 
 function LoginMethods({ me, guard }: { me: Me; guard: Guard }) {

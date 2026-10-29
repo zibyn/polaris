@@ -20,7 +20,7 @@
                 "properties": {
                   "client_id": {"type": "string", "description": "Required unless auth_session is sent or the client authenticates with HTTP Basic."},
                   "response_type": {"type": "string", "enum": ["code"], "description": "Required unless auth_session is sent."},
-                  "scope": {"type": "string", "description": "Space-separated: openid, offline_access, phone, email. Ignored once auth_session is sent."},
+                  "scope": {"type": "string", "description": "Space-separated: openid, offline_access, phone, email, profile. Ignored once auth_session is sent."},
                   "code_challenge": {"type": "string", "description": "PKCE; required for public Applications. Ignored once auth_session is sent."},
                   "code_challenge_method": {"type": "string", "enum": ["S256"]},
                   "auth_session": {"type": "string", "description": "From an earlier insufficient_authorization answer; continues that sign-in."},
@@ -100,6 +100,143 @@
           "409": {"description": "The User is the instance's last owner.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
         }
       }
+    },
+    "/v1/auth/profile": {
+      "patch": {
+        "operationId": "set-nickname",
+        "summary": "Set or clear the signed-in User's nickname",
+        "description": "The App's own access token changes the User it was issued to, while its Session lives. The nickname is trimmed; 1–32 characters with no control characters, or empty to clear it. It is not unique and not a username. Applications see it as the nickname claim under the profile scope.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "nickname"
+                ],
+                "properties": {
+                  "nickname": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The User's 用户资料 as it now stands.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The nickname is refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "WWW-Authenticate: error=\"invalid_token\" for a missing, expired or invalid token, or one whose Session ended."
+          }
+        }
+      }
+    },
+    "/v1/auth/profile/avatar": {
+      "put": {
+        "operationId": "set-avatar",
+        "summary": "Upload the signed-in User's avatar",
+        "description": "The body is the image itself: JPEG, PNG or WebP, told apart by its content, at most 5 MB. It is cropped to its centre square and kept as a 512×512 JPEG without EXIF; the previous avatar is deleted.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "image/*": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The User's 用户资料 as it now stands.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a JPEG, PNG or WebP image.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "WWW-Authenticate: error=\"invalid_token\" for a missing, expired or invalid token, or one whose Session ended."
+          },
+          "413": {
+            "description": "Over 5 MB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "remove-avatar",
+        "summary": "Remove the signed-in User's avatar",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The User's 用户资料 as it now stands.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "WWW-Authenticate: error=\"invalid_token\" for a missing, expired or invalid token, or one whose Session ended."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -107,6 +244,20 @@
       "bearer": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT", "description": "The App's access token"}
     },
     "schemas": {
+      "Profile": {
+        "type": "object",
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "description": "Absent when unset."
+          },
+          "picture": {
+            "type": "string",
+            "format": "uri",
+            "description": "The avatar: a 512×512 JPEG at issuer/avatars/{key}, public and cached for good; it changes with every upload. Absent when unset."
+          }
+        }
+      },
       "Error": {
         "type": "object",
         "required": ["error"],

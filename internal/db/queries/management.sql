@@ -49,6 +49,7 @@ LIMIT @lim OFFSET @off;
 
 -- name: GetUser :one
 SELECT u.id, u.created_at, u.disabled_at, u.pending,
+       COALESCE(u.nickname, '')::text AS nickname, COALESCE(u.avatar, '')::text AS avatar,
        COALESCE((SELECT json_agg(json_build_object('kind', i.kind, 'value', i.value) ORDER BY i.kind)
                  FROM identifiers i WHERE i.user_id = u.id), '[]')::jsonb AS identifiers,
        COALESCE((SELECT json_agg(json_build_object('api', r.api, 'key', r.key, 'name', r.name) ORDER BY r.api, r.key)

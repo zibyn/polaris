@@ -129,6 +129,33 @@ export const reauthSchema = (method: ReauthMethod, sent: boolean) =>
 // totpSchema checks a code from the authenticator, confirming the TOTP.
 export const totpSchema = z.object({ code: totp });
 
+// nicknameSchema checks a nickname as the server does: trimmed, at most 32
+// characters, no control characters; empty clears it.
+export const nicknameSchema = z.object({
+	nickname: z
+		.string()
+		.trim()
+		.refine((v) => [...v].length <= 32, "昵称最多 32 个字符")
+		.refine(
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses
+			(v) => !/[\u0000-\u001f\u007f-\u009f]/.test(v),
+			"昵称不能含控制字符",
+		),
+});
+
+// avatarProblem is why a picked file cannot be an avatar, or undefined; the
+// server sniffs the content, this only spares an upload doomed by its type
+// or size.
+export function avatarProblem(file: {
+	size: number;
+	type: string;
+}): string | undefined {
+	if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+		return "头像须为 JPEG、PNG 或 WebP 图片";
+	}
+	if (file.size > 5 << 20) return "头像不能超过 5 MB";
+}
+
 // passkeyNameSchema checks a Passkey's new name.
 export const passkeyNameSchema = z.object({
 	name: z

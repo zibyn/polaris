@@ -35,6 +35,7 @@ User (sub: 不透明、稳定、永不复用)
 - `sub`:User ID,public 类型,不用手机号。
 - `phone` scope:`phone_number`,`phone_number_verified` 恒为 true。
 - `email` scope:`email`,`email_verified` 恒为 true。
+- `profile` scope:用户资料。有昵称时发 `nickname`,有头像时发 `picture`(`issuer` + `/avatars/{key}`,512×512 JPEG,每次上传换新地址);没值的 claim 不发。不发 `name`、`preferred_username` 等其他 profile claim。(ADR 0020)
 - External Identity 和用户名不暴露。
 
 ## 账号生命周期
@@ -84,7 +85,7 @@ User 无法自助找回丢失的唯一途径。由持有 `users:write` 的管理
 - **发起**:账号中心,或直连 API(供 App 内注销,满足 App Store 要求)。
 - **前提**:近期重新认证,并二次确认。
 - **生效**:立即生效,没有冷静期。
-- **删除范围**:物理删除 User、Identifier、External Identity、Credential、Session、Role 分配、同意记录,并吊销所有 refresh token。审计日志只保留 `sub` 和事件。
+- **删除范围**:物理删除 User、Identifier、External Identity、Credential、Session、Role 分配、同意记录、用户资料与头像 blob,并吊销所有 refresh token。审计日志只保留 `sub` 和事件。
 - **释放与复用**:`sub` 永不复用;Identifier 立即释放,同一个手机号可以马上注册为新 User。
 - **外部吊销**:触发 Provider 的注销回调(如 Apple 吊销令牌)。
 - **通知 Application**:向配置了 webhook 的每个 Application 发送 `user.deleted` 事件,见 [protocol.md](protocol.md#webhook)。

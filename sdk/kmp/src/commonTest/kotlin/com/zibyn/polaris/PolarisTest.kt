@@ -264,6 +264,48 @@ class PolarisTest {
   }
 
   @Test
+  fun setNicknameSendsItWithTheAccessToken() = runTest {
+    server.store.value = stored()
+    server.handlers["/v1/auth/profile"] = { json("""{"nickname":"小明","picture":"https://auth.test/avatars/K"}""") }
+    val auth = server.auth()
+    assertEquals(Profile("小明", "https://auth.test/avatars/K"), auth.setNickname(" 小明 "))
+    assertEquals("""{"nickname":" 小明 "}""", server.bodies.last { it.first == "/v1/auth/profile" }.second)
+    assertEquals("Bearer at1", server.authHeaders.last { it.first == "/v1/auth/profile" }.second)
+
+    server.handlers["/v1/auth/profile"] = {
+      json("""{"error":"invalid_request","error_description":"昵称最多 32 个字符"}""", HttpStatusCode.BadRequest)
+    }
+    val e = assertFailsWith<PolarisException> { auth.setNickname("x".repeat(33)) }
+    assertEquals("invalid_request", e.error)
+    assertEquals("昵称最多 32 个字符", e.description)
+  }
+
+  @Test
+  fun uploadAvatarSendsTheImageBytes() = runTest {
+    server.store.value = stored()
+    var sent: ByteArray? = null
+    var method: String? = null
+    val auth = Polaris(PolarisConfig("https://auth.test", "app"), server.store, HttpClient(MockEngine { req ->
+      method = req.method.value
+      sent = (req.body as? OutgoingContent.ByteArrayContent)?.bytes()
+      json("""{"picture":"https://auth.test/avatars/NEW"}""")
+    }))
+    val png = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte())
+    assertEquals(Profile(picture = "https://auth.test/avatars/NEW"), auth.uploadAvatar(png))
+    assertEquals("PUT", method)
+    assertTrue(png.contentEquals(sent))
+  }
+
+  @Test
+  fun profileCallsSignOutOnceTheSessionIsGone() = runTest {
+    server.store.value = stored()
+    server.handlers["/v1/auth/profile/avatar"] = { respond("", HttpStatusCode.Unauthorized) }
+    val auth = server.auth()
+    assertEquals(PolarisException.SIGNED_OUT, assertFailsWith<PolarisException> { auth.removeAvatar() }.error)
+    assertNull(server.store.value)
+  }
+
+  @Test
   fun termsComeFromTheServer() = runTest {
     server.handlers["/v1/auth/terms"] = { json("""{"terms_url":"https://t","privacy_url":"https://p","version":"v2"}""") }
     assertEquals(Terms("https://t", "https://p", "v2"), server.auth().terms())
