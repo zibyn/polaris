@@ -173,9 +173,10 @@ func (s *Store) SaveGrant(ctx context.Context, g *goidc.Grant) error {
 		return err
 	}
 	if g.PreviousRefreshToken != "" {
+		ip, ua := Device(ctx)
 		n, err := s.q.RotateRefreshToken(ctx, sqlc.RotateRefreshTokenParams{
 			ID: g.ID, OldHash: hash(g.PreviousRefreshToken), NewHash: hash(g.RefreshToken),
-			ExpiresAt: s.grantExpiry(g), Sealed: sealed,
+			ExpiresAt: s.grantExpiry(g), Sealed: sealed, Ip: ip, UserAgent: ua,
 		})
 		if err != nil {
 			return err

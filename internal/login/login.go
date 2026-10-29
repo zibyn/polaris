@@ -205,7 +205,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 // Register adds the OIDC endpoints, the direct auth API and the setup page
 // to mux.
 func (s *Service) Register(mux *http.ServeMux) {
-	s.op.RegisterRoutes(mux, clientCredentialsRules, s.cors) // cors outermost: rejected requests get it too
+	s.op.RegisterRoutes(mux, clientCredentialsRules, withDevice, s.cors) // cors outermost: rejected requests get it too
 	for path := range corsMethods {
 		mux.Handle("OPTIONS "+path, s.cors(http.HandlerFunc(preflight)))
 	}
@@ -766,6 +766,18 @@ func storedAMR(v any) []string {
 	return nil
 }
 
+// withDevice lets the OIDC handlers record the request's device on the
+// Session they refresh.
+func withDevice(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(deviceContext(r)))
+	})
+}
+
+func deviceContext(r *http.Request) context.Context {
+	return oidcstore.WithDevice(r.Context(), clientIP(r), r.UserAgent())
+}
+
 func clientIP(r *http.Request) string {
 	if ap, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {
 		return ap.Addr().Unmap().String()
@@ -808,7 +820,8 @@ func (s *Service) session(w http.ResponseWriter, r *http.Request) (*sqlc.TouchSe
 	if err != nil {
 		return nil, nil //nolint:nilerr // no cookie, no Session
 	}
-	sess, err := s.q.TouchSession(r.Context(), hash(cookie.Value))
+	ip, ua := oidcstore.Device(deviceContext(r))
+	sess, err := s.q.TouchSession(r.Context(), sqlc.TouchSessionParams{IDHash: hash(cookie.Value), Ip: ip, UserAgent: ua})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	} else if err != nil {
@@ -824,10 +837,11 @@ func (s *Service) session(w http.ResponseWriter, r *http.Request) (*sqlc.TouchSe
 // holds one User.
 func (s *Service) newSession(w http.ResponseWriter, r *http.Request, clientID, sub string, authTime time.Time, amr []string) (string, error) {
 	token := rand.Text()
+	ip, ua := oidcstore.Device(deviceContext(r))
 	if old, err := r.Cookie(sessionCookie); err == nil {
 		sess, err := s.q.RenewSession(r.Context(), sqlc.RenewSessionParams{
 			OldHash: hash(old.Value), NewHash: hash(token), UserID: sub,
-			AuthTime: pgtype.Timestamptz{Time: authTime, Valid: true}, Amr: amr,
+			AuthTime: pgtype.Timestamptz{Time: authTime, Valid: true}, Amr: amr, Ip: ip, UserAgent: ua,
 		})
 		if err == nil {
 			setSessionCookie(w, token, int(sess.IdleSecs))
@@ -840,11 +854,13 @@ func (s *Service) newSession(w http.ResponseWriter, r *http.Request, clientID, s
 		}
 	}
 	sess, err := s.q.CreateSession(r.Context(), sqlc.CreateSessionParams{
-		IDHash:   hash(token),
-		ClientID: clientID,
-		UserID:   sub,
-		AuthTime: pgtype.Timestamptz{Time: authTime, Valid: true},
-		Amr:      amr,
+		IDHash:    hash(token),
+		ClientID:  clientID,
+		UserID:    sub,
+		AuthTime:  pgtype.Timestamptz{Time: authTime, Valid: true},
+		Amr:       amr,
+		Ip:        ip,
+		UserAgent: ua,
 	})
 	if err != nil {
 		return "", err

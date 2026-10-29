@@ -254,6 +254,8 @@ type Session struct {
 	ClientID    pgtype.Text
 	IdleTimeout pgtype.Interval
 	EndedAt     pgtype.Timestamptz
+	Ip          pgtype.Text
+	UserAgent   pgtype.Text
 }
 
 type SessionApplication struct {

@@ -29,14 +29,15 @@ WHERE @revoked::boolean AND sessions.id_hash IS NULL AND sessions.ended_at IS NU
 
 -- name: RotateRefreshToken :execrows
 -- Swaps the refresh token only if old_hash is still the current one, keeps
--- the old one as spent, and counts the refresh as Session activity. No row:
--- another request rotated it first.
+-- the old one as spent, and counts the refresh as Session activity, from
+-- the refreshing device. No row: another request rotated it first.
 WITH g AS (
     UPDATE oidc_grants SET refresh_token_hash = @new_hash, expires_at = @expires_at, sealed = @sealed
     WHERE oidc_grants.id = @id AND oidc_grants.refresh_token_hash = @old_hash
     RETURNING oidc_grants.id, oidc_grants.session_id
 ), touched AS (
-    UPDATE sessions SET last_seen_at = now() WHERE sessions.id = (SELECT g.session_id FROM g)
+    UPDATE sessions SET last_seen_at = now(), ip = sqlc.narg(ip), user_agent = sqlc.narg(user_agent)
+    WHERE sessions.id = (SELECT g.session_id FROM g)
 )
 INSERT INTO oidc_spent_refresh_tokens (hash, grant_id) SELECT @old_hash, g.id FROM g;
 

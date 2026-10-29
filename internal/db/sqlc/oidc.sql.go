@@ -297,7 +297,8 @@ WITH g AS (
     WHERE oidc_grants.id = $5 AND oidc_grants.refresh_token_hash = $1
     RETURNING oidc_grants.id, oidc_grants.session_id
 ), touched AS (
-    UPDATE sessions SET last_seen_at = now() WHERE sessions.id = (SELECT g.session_id FROM g)
+    UPDATE sessions SET last_seen_at = now(), ip = $6, user_agent = $7
+    WHERE sessions.id = (SELECT g.session_id FROM g)
 )
 INSERT INTO oidc_spent_refresh_tokens (hash, grant_id) SELECT $1, g.id FROM g
 `
@@ -308,11 +309,13 @@ type RotateRefreshTokenParams struct {
 	ExpiresAt pgtype.Timestamptz
 	Sealed    []byte
 	ID        string
+	Ip        pgtype.Text
+	UserAgent pgtype.Text
 }
 
 // Swaps the refresh token only if old_hash is still the current one, keeps
-// the old one as spent, and counts the refresh as Session activity. No row:
-// another request rotated it first.
+// the old one as spent, and counts the refresh as Session activity, from
+// the refreshing device. No row: another request rotated it first.
 func (q *Queries) RotateRefreshToken(ctx context.Context, arg RotateRefreshTokenParams) (int64, error) {
 	result, err := q.db.Exec(ctx, rotateRefreshToken,
 		arg.OldHash,
@@ -320,6 +323,8 @@ func (q *Queries) RotateRefreshToken(ctx context.Context, arg RotateRefreshToken
 		arg.ExpiresAt,
 		arg.Sealed,
 		arg.ID,
+		arg.Ip,
+		arg.UserAgent,
 	)
 	if err != nil {
 		return 0, err
