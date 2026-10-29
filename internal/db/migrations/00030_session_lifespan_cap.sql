@@ -6,9 +6,8 @@
 -- Existing Sessions get the default of their kind; those already past it end
 -- on deploy.
 ALTER TABLE applications ADD COLUMN session_max_lifetime interval;
-ALTER TABLE sessions ADD COLUMN max_lifetime interval;
-UPDATE sessions SET max_lifetime = CASE WHEN id_hash IS NULL THEN interval '180 days' ELSE interval '90 days' END;
-ALTER TABLE sessions ALTER COLUMN max_lifetime SET NOT NULL;
+ALTER TABLE sessions ADD COLUMN max_lifetime interval NOT NULL DEFAULT '90 days';
+UPDATE sessions SET max_lifetime = interval '180 days' WHERE id_hash IS NULL;
 
 CREATE OR REPLACE VIEW live_sessions AS
 SELECT id FROM sessions
