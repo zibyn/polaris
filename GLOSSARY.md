@@ -52,6 +52,14 @@ _Avoid_: Default Audience, 目标 API, 资源
 一个 User 在一台设备或一个浏览器上的一次登录;App 中由 refresh token 承载,浏览器中由 cookie 承载,终止它即让该设备下线。
 _Avoid_: 登录态, 会话令牌, 设备
 
+**闲置时长**:
+Session 多久没有活动就失效;每次活动重新计时。
+_Avoid_: idle timeout, 空闲超时
+
+**寿命上限**:
+Session 距 User 上次证明身份(登录或重新认证)最多多久必须重新登录,不因活动而延长;偷到 refresh token 的人无法重新认证,所以续不了期。
+_Avoid_: absolute lifetime, max lifetime, SSO Session Max, 绝对寿命
+
 **Identifier**:
 User 用来登录的手机号、邮箱或用户名,在用户池内唯一;手机号和邮箱必须已验证、能接收验证码,用户名不验证、只能配合密码使用。
 _Avoid_: 账号, 用户名, 联系方式
