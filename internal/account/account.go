@@ -72,8 +72,8 @@ type callerKey struct{}
 // caller is the User a request comes from, the Session it comes from and
 // when they last authenticated in it.
 type caller struct {
-	sub, session, ip string
-	authTime         time.Time
+	sub, session, ip, ua string
+	authTime             time.Time
 	// 待激活, read with the Session; see AccountSession.
 	pending bool
 }
@@ -180,7 +180,7 @@ func (s *Service) authorize(api huma.API) func(huma.Context, func(huma.Context))
 			return
 		}
 		r, _ := humago.Unwrap(ctx)
-		c.ip = clientIP(r)
+		c.ip, c.ua = clientIP(r), r.UserAgent()
 		next(huma.WithValue(ctx, callerKey{}, c))
 	}
 }
@@ -433,7 +433,7 @@ func (s *Service) reauth(ctx context.Context, in *reauthInput) (*struct{}, error
 			if err != nil || len(ids) == 0 {
 				return cmp.Or(err, error(identity.ErrBadCredentials))
 			}
-			sub, err := s.ids.CheckPassword(ctx, ids[0].Value, in.Body.Password)
+			sub, err := s.ids.CheckPassword(ctx, identity.Attempt{IP: c.ip, UA: c.ua}, ids[0].Value, in.Body.Password)
 			if err == nil && sub != c.sub {
 				err = identity.ErrBadCredentials
 			}
