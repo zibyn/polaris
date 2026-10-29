@@ -255,12 +255,12 @@ func (st *ApplicationSettings) validate(typ string) error {
 	// others' default is the App Session's.
 	defaultIdle, _ := oidcstore.SessionDefaults(typ == "confidential")
 	if idle := cmp.Or(st.SessionIdleTimeout, defaultIdle); st.SessionMaxLifetime != 0 && st.SessionMaxLifetime < idle {
-		return identity.Invalid("最长多久需重新登录不能短于闲置时长")
+		return identity.Invalid("寿命上限不能短于闲置时长")
 	}
-	// Only a Web Application has a back end to tell (ADR 0022).
+	// Only a confidential Application has a back end to tell (ADR 0022).
 	if st.BackchannelLogoutURI != "" {
 		if typ != "confidential" {
-			return identity.Invalid("只有 Web Application 能配置 Back-Channel Logout")
+			return identity.Invalid("只有 confidential Application 能配置 Back-Channel Logout")
 		}
 		if p, err := url.Parse(st.BackchannelLogoutURI); err != nil || (p.Scheme != "https" && p.Scheme != "http") || p.Host == "" || p.Fragment != "" {
 			return identity.Invalid("Back-Channel Logout URI 须为 http(s) 地址,不带 #")

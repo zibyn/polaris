@@ -498,7 +498,7 @@ const authMethods: {
 ];
 
 // ClientAuthn is the 客户端认证方式 block: which method is on, the secret
-// while it is the shared one, and the Application 公钥, saved apart from the
+// while it is the shared one, and the 应用公钥, saved apart from the
 // method so a backend can be given its keys before the switch.
 function ClientAuthn({ app, editable }: TabProps) {
 	const client = useQueryClient();
@@ -568,7 +568,7 @@ function ClientAuthn({ app, editable }: TabProps) {
 				{(field) => (
 					<FormField
 						field={field}
-						label="Application 公钥"
+						label="应用公钥"
 						help="JWKS 格式，只放公钥：RSA（至少 2048 位）或 EC P-256，每把要有不同的 kid，最多 5 把。轮换时让新旧公钥并存一段时间。"
 					>
 						{(control) => (
