@@ -53,10 +53,34 @@ Polaris 只从环境变量读启动参数,其余配置都在管理端里、存�
 | `POLARIS_MASTER_KEY_FILE` | 从文件读主密钥,适合 Docker/Kubernetes secret。 |
 | `POLARIS_TRUSTED_PROXIES` | 反向代理的 IP 或 CIDR,逗号分隔。只信任它们的 `X-Forwarded-For`;限流与失败锁定按客户端 IP 计数,填错会把所有人算成同一个 IP。 |
 | `POLARIS_LISTEN` | 监听地址,默认 `:8080`。 |
+| `POLARIS_METRICS_LISTEN` | Prometheus 指标的监听地址,如 `:9090`。不设就不开。见[指标](#指标)。 |
 
 `compose.yaml` 另外读 `.env` 中的 `POLARIS_DOMAIN`(域名,不填就是 `https://localhost`,证书由 Caddy 本地 CA 签发,只适合试用)、`POLARIS_VERSION`(镜像版本,不填是 `latest`)、`POSTGRES_PASSWORD`。
 
 不用容器时,从 Releases 下载对应平台的单个二进制,设好上面的变量直接运行,前面放一个反向代理终结 TLS。
+
+## 指标
+
+设了 `POLARIS_METRICS_LISTEN` 后,Polaris 在这个地址上单独起一个 HTTP 服务,只提供 `GET /metrics`(Prometheus 文本格式)。它**不鉴权**,也不出现在主端口上:别把这个端口暴露到公网,只让 Prometheus 能访问到。它不能和 `POLARIS_LISTEN` 相同,否则启动失败。
+
+除 `go_*`、`process_*` 外,还有下面这些。前一组在每次抓取时从 PostgreSQL 现查(ADR 0024),数据库不可用时这次抓取返回 500,不会报 0。
+
+| 指标 | 类型 | 含义 |
+|---|---|---|
+| `polaris_code_sends_last_24h` | gauge | 最近 24 小时发出的验证码和邀请邮件,和每日上限、控制台概览同一个口径 |
+| `polaris_daily_send_limit` | gauge | 每日发送上限,0 表示不限 |
+| `polaris_logins_succeeded_last_24h` | gauge | 最近 24 小时的 `login.succeeded` 审计事件数 |
+| `polaris_logins_failed_last_24h` | gauge | 最近 24 小时的 `login.failed` 审计事件数。对应不到 User 的失败不在其中,撞库看 IP 锁定数 |
+| `polaris_lockouts_last_24h{kind="ip"\|"password"}` | gauge | 最近 24 小时的 IP 锁定 / 密码锁定次数 |
+| `polaris_webhook_deliveries_pending` | gauge | 待投递的 webhook |
+| `polaris_webhook_deliveries_retrying` | gauge | 其中至少失败过一次的 |
+| `polaris_webhook_dropped_last_24h` | gauge | 最近 24 小时重试用尽、放弃投递的 webhook |
+| `polaris_code_send_failures_total{kind="sms"\|"email"}` | counter | 渠道发送返回错误的次数(验证码和邀请邮件)。被每日上限或频率限制拒绝的不算 |
+| `polaris_tokens_issued_total{grant_type}` | counter | 签发的访问令牌数,按 `authorization_code`、`refresh_token`、`client_credentials` 分 |
+
+`_last_24h` 是滑动窗口,告警用 `delta(...[15m])` 近似。登录类指标来自审计日志,审计保留期短于 1 天时数会偏小。
+
+多副本时:查库类 gauge 每个副本报的值一样,聚合用 `max`;`_total` 是各副本进程内的计数,重启清零,聚合用 `sum`(配 `rate()`)。
 
 ## 备份
 

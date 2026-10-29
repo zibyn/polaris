@@ -20,6 +20,7 @@ type Config struct {
 	MasterKey      []byte // 32 bytes, AES-256
 	Issuer         string // public https URL
 	Listen         string
+	MetricsListen  string // empty: no metrics listener (ADR 0024)
 	TrustedProxies []netip.Prefix
 	DevWebURL      string // dev only: proxy the SPA to a running Vite server
 }
@@ -29,10 +30,15 @@ func Load(getenv func(string) string) (Config, error) {
 		DatabaseURL: getenv("POLARIS_DATABASE_URL"),
 		Issuer:      getenv("POLARIS_ISSUER"),
 		Listen:      getenv("POLARIS_LISTEN"),
-		DevWebURL:   getenv("POLARIS_DEV_WEB_URL"),
+		// ADR 0024: /metrics only on its own, unauthenticated listener.
+		MetricsListen: getenv("POLARIS_METRICS_LISTEN"),
+		DevWebURL:     getenv("POLARIS_DEV_WEB_URL"),
 	}
 	if c.Listen == "" {
 		c.Listen = DefaultListen
+	}
+	if c.MetricsListen == c.Listen {
+		return c, fmt.Errorf("POLARIS_METRICS_LISTEN must differ from POLARIS_LISTEN (%s): metrics are served on their own port", c.Listen)
 	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("POLARIS_DATABASE_URL is required")

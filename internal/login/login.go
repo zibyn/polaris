@@ -28,6 +28,7 @@ import (
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/metrics"
 	"github.com/zibyn/polaris/internal/oidc/goidc"
 	oidcop "github.com/zibyn/polaris/internal/oidc/provider"
 	"github.com/zibyn/polaris/internal/oidcstore"
@@ -191,6 +192,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 		}, oidcop.WithLogoutPolicies(goidc.NewLogoutPolicy("session",
 			func(*http.Request, *goidc.LogoutSession) bool { return true },
 			s.logout)), oidcop.WithBackChannelLogout()),
+		oidcop.WithTokenHandler(countToken),
 		oidcop.WithErrorRenderer(renderError),
 		oidcop.WithErrorHandler(func(_ context.Context, err error) { slog.Info("oidc", "err", err) }),
 	)
@@ -204,7 +206,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 // Register adds the OIDC endpoints, the direct auth API and the setup page
 // to mux.
 func (s *Service) Register(mux *http.ServeMux) {
-	s.op.RegisterRoutes(mux, clientCredentialsRules, withDevice, s.cors) // cors outermost: rejected requests get it too
+	s.op.RegisterRoutes(mux, clientCredentialsRules, withDevice, withGrantType, s.cors) // cors outermost: rejected requests get it too
 	for path := range corsMethods {
 		mux.Handle("OPTIONS "+path, s.cors(http.HandlerFunc(preflight)))
 	}
@@ -786,6 +788,27 @@ func storedAMR(v any) []string {
 			}
 		}
 		return out
+	}
+	return nil
+}
+
+type grantTypeKey struct{}
+
+// withGrantType tells countToken which grant a token request is for: the
+// token handler sees the Grant, which does not say.
+func withGrantType(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			r = r.WithContext(context.WithValue(r.Context(), grantTypeKey{}, r.PostFormValue("grant_type")))
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// countToken counts each access token issued, by grant type (ADR 0024).
+func countToken(ctx context.Context, _ *goidc.Token, _ *goidc.Grant) error {
+	if g, _ := ctx.Value(grantTypeKey{}).(string); g != "" {
+		metrics.TokensIssued.WithLabelValues(g).Inc()
 	}
 	return nil
 }

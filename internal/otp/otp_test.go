@@ -12,11 +12,14 @@ import (
 	"testing"
 	"time"
 
+	dto "github.com/prometheus/client_model/go"
+
 	"github.com/zibyn/polaris/internal/channel"
 	_ "github.com/zibyn/polaris/internal/channel/webhook"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/dbtest"
+	"github.com/zibyn/polaris/internal/metrics"
 )
 
 // inbox is a Webhook Channel endpoint that keeps the last code per Identifier.
@@ -273,5 +276,48 @@ func TestInviteNeedsAnEmailChannel(t *testing.T) {
 	// 电话渠道还在, 也帮不上忙。
 	if err := s.SendInvite(ctx, "a@example.com", "https://x/invite?token=1"); !errors.Is(err, ErrNoEmailChannel) {
 		t.Errorf("a phone Channel is not an email Channel: %v", err)
+	}
+}
+
+func failures(kind string) float64 {
+	var m dto.Metric
+	_ = metrics.CodeSendFailures.WithLabelValues(kind).Write(&m)
+	return m.GetCounter().GetValue()
+}
+
+// 渠道报错才算发送失败, 按渠道类型计; 被每日上限挡下的不算。
+func TestChannelErrorsAreCounted(t *testing.T) {
+	s, _, _ := setup(t)
+	ctx := context.Background()
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(down.Close)
+	for _, kind := range []string{"phone", "email"} {
+		if err := s.channels.Put(ctx, kind, "webhook", map[string]string{"url": down.URL, "secret": "s"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sms, email := failures("sms"), failures("email")
+	if err := s.Send(ctx, "phone", phone, "10.0.0.1"); !errors.Is(err, ErrSendFailed) {
+		t.Fatalf("code: %v", err)
+	}
+	if err := s.SendInvite(ctx, "a@example.com", "https://x/invite?token=1"); !errors.Is(err, ErrInviteFailed) {
+		t.Fatalf("invite: %v", err)
+	}
+	if got := failures("sms") - sms; got != 1 {
+		t.Errorf("sms failures +%v, want +1", got)
+	}
+	if got := failures("email") - email; got != 1 {
+		t.Errorf("email failures +%v, want +1", got)
+	}
+	if _, err := s.pool.Exec(ctx, "UPDATE settings SET daily_send_limit = 2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Send(ctx, "email", "b@example.com", "10.0.0.2"); !errors.Is(err, ErrDailyCap) {
+		t.Fatalf("capped: %v", err)
+	}
+	if got := failures("email") - email; got != 1 {
+		t.Errorf("a refusal counted as a failure: +%v", got)
 	}
 }

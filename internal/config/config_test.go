@@ -32,6 +32,20 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadMetricsListen(t *testing.T) {
+	if c, err := Load(env(nil)); err != nil || c.MetricsListen != "" {
+		t.Errorf("unset: %q %v", c.MetricsListen, err)
+	}
+	c, err := Load(env(map[string]string{"POLARIS_METRICS_LISTEN": ":9090"}))
+	if err != nil || c.MetricsListen != ":9090" {
+		t.Errorf("set: %q %v", c.MetricsListen, err)
+	}
+	_, err = Load(env(map[string]string{"POLARIS_LISTEN": ":9000", "POLARIS_METRICS_LISTEN": ":9000"}))
+	if err == nil || !strings.Contains(err.Error(), "POLARIS_METRICS_LISTEN") {
+		t.Errorf("same as POLARIS_LISTEN: %v", err)
+	}
+}
+
 func TestLoadRejects(t *testing.T) {
 	for name, m := range map[string]map[string]string{
 		"http issuer":     {"POLARIS_ISSUER": "http://auth.example.com"},
@@ -45,6 +59,7 @@ func TestLoadRejects(t *testing.T) {
 		"bad base64":      {"POLARIS_MASTER_KEY": "!!"},
 		"both keys":       {"POLARIS_MASTER_KEY_FILE": "/k"},
 		"bad proxy":       {"POLARIS_TRUSTED_PROXIES": "10.0.0.0/8,nope"},
+		"metrics on main": {"POLARIS_METRICS_LISTEN": ":8080"},
 	} {
 		if _, err := Load(env(m)); err == nil {
 			t.Errorf("%s: want error", name)
