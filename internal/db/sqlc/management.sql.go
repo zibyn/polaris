@@ -531,35 +531,6 @@ func (q *Queries) ListRoles(ctx context.Context) ([]ListRolesRow, error) {
 	return items, nil
 }
 
-const listSigningKeys = `-- name: ListSigningKeys :many
-SELECT kid, created_at FROM signing_keys ORDER BY created_at DESC, kid
-`
-
-type ListSigningKeysRow struct {
-	Kid       string
-	CreatedAt pgtype.Timestamptz
-}
-
-func (q *Queries) ListSigningKeys(ctx context.Context) ([]ListSigningKeysRow, error) {
-	rows, err := q.db.Query(ctx, listSigningKeys)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListSigningKeysRow
-	for rows.Next() {
-		var i ListSigningKeysRow
-		if err := rows.Scan(&i.Kid, &i.CreatedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listUsers = `-- name: ListUsers :many
 SELECT u.id, u.created_at, u.disabled_at, u.pending,
        COALESCE((SELECT json_agg(json_build_object('kind', i.kind, 'value', i.value) ORDER BY i.kind)

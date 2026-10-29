@@ -85,7 +85,7 @@ func isHTTPS(s string) bool {
 type SigningKey struct {
 	Kid       string    `json:"kid"`
 	CreatedAt time.Time `json:"createdAt"`
-	Current   bool      `json:"current" doc:"Signs new tokens; the other one only verifies tokens it signed"`
+	Current   bool      `json:"current" doc:"Signs new tokens; the others only verify tokens they signed, until an hour after their successor arrives"`
 }
 
 type listKeysOutput struct {
@@ -95,7 +95,7 @@ type listKeysOutput struct {
 }
 
 func (s *Service) listKeys(ctx context.Context, _ *struct{}) (*listKeysOutput, error) {
-	rows, err := s.q.ListSigningKeys(ctx)
+	rows, err := s.keys.Published(ctx)
 	out := &listKeysOutput{}
 	out.Body.Keys = []SigningKey{}
 	for i, r := range rows {

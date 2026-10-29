@@ -52,9 +52,14 @@ func New(pool *pgxpool.Pool, keyring *crypt.Keyring) *Store {
 	return &Store{q: sqlc.New(pool), keyring: keyring, GrantTTL: time.Hour}
 }
 
-// DeleteExpired removes expired grants and sessions; run by the hourly cleanup.
+// DeleteExpired removes expired grants, sessions and retired signing keys;
+// run by the hourly cleanup.
 func DeleteExpired(ctx context.Context, pool *pgxpool.Pool) error {
-	return sqlc.New(pool).DeleteExpiredOIDC(ctx)
+	q := sqlc.New(pool)
+	if err := q.DeleteExpiredOIDC(ctx); err != nil {
+		return err
+	}
+	return q.DeleteRetiredSigningKeys(ctx, keyRetention)
 }
 
 // Client resolves an Application. Confidential Applications authenticate with

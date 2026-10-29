@@ -102,11 +102,20 @@ DELETE FROM oidc_logout_sessions WHERE oidc_logout_sessions.expires_at < now();
 INSERT INTO signing_keys (kid, sealed) VALUES ($1, $2);
 
 -- name: SigningKeys :many
-SELECT kid, sealed FROM signing_keys ORDER BY created_at DESC, kid LIMIT 2;
+-- The published keys: the current one, plus each older key whose successor
+-- came less than @retention ago. A newer key past that age means the next
+-- key after this one is too.
+SELECT kid, created_at, sealed FROM signing_keys k
+WHERE NOT EXISTS (
+    SELECT 1 FROM signing_keys n
+    WHERE n.created_at > k.created_at AND n.created_at <= now() - @retention::interval
+)
+ORDER BY created_at DESC, kid;
 
 -- name: DeleteRetiredSigningKeys :exec
-DELETE FROM signing_keys WHERE kid NOT IN (
-    SELECT kid FROM signing_keys ORDER BY created_at DESC, kid LIMIT 2
+DELETE FROM signing_keys k WHERE EXISTS (
+    SELECT 1 FROM signing_keys n
+    WHERE n.created_at > k.created_at AND n.created_at <= now() - @retention::interval
 );
 
 -- name: LockSigningKeys :exec
