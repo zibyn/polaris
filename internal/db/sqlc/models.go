@@ -32,6 +32,7 @@ type Application struct {
 	WebhookSecretUpdatedAt pgtype.Timestamptz
 	AppleAppIds            []string
 	AndroidApps            []byte
+	BackchannelLogoutUri   pgtype.Text
 }
 
 type ApplicationRole struct {
@@ -250,6 +251,11 @@ type Session struct {
 	EndedAt     pgtype.Timestamptz
 }
 
+type SessionApplication struct {
+	SessionID string
+	ClientID  string
+}
+
 type Setting struct {
 	ID                  bool
 	PasswordLogin       string
@@ -299,4 +305,5 @@ type WebhookDelivery struct {
 	Payload  []byte
 	Attempts int32
 	NextAt   pgtype.Timestamptz
+	Kind     string
 }

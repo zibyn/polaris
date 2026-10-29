@@ -5,7 +5,11 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"errors"
 	"time"
+
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -113,3 +117,27 @@ func add(ctx context.Context, q *sqlc.Queries, keyring *crypt.Keyring) error {
 }
 
 func keyAAD(kid string) []byte { return []byte("signing_key:" + kid) }
+
+// LogoutToken signs an OIDC Back-Channel Logout 1.0 logout token (section 2.4)
+// telling Application aud that the Session sid of User sub has ended.
+func (k *Keys) LogoutToken(ctx context.Context, issuer, aud, sub, sid string) (string, error) {
+	jwks, err := k.JWKS(ctx)
+	if err != nil {
+		return "", err
+	}
+	if len(jwks.Keys) == 0 {
+		return "", errors.New("no signing key")
+	}
+	key := jwks.Keys[0]
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: jose.JSONWebKey{Key: key.Key, KeyID: key.KeyID}},
+		(&jose.SignerOptions{}).WithType("logout+jwt"))
+	if err != nil {
+		return "", err
+	}
+	now := time.Now()
+	return jwt.Signed(signer).Claims(map[string]any{
+		"iss": issuer, "aud": aud, "sub": sub, "sid": sid,
+		"iat": now.Unix(), "exp": now.Add(2 * time.Minute).Unix(), "jti": rand.Text(),
+		"events": map[string]any{"http://schemas.openid.net/event/backchannel-logout": map[string]any{}},
+	}).Serialize()
+}

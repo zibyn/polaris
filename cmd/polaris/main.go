@@ -112,7 +112,7 @@ func serve() error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go runCleanup(ctx, pool)
-	go webhook.New(pool, keyring).Run(ctx)
+	go webhook.New(pool, keyring, cfg.Issuer).Run(ctx)
 	drained := make(chan struct{})
 	go func() {
 		defer close(drained)

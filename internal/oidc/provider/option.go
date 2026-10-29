@@ -1080,6 +1080,15 @@ func WithLogoutPolicies(logoutPolicies ...goidc.LogoutPolicy) LogoutOption {
 	}
 }
 
+// WithBackChannelLogout advertises OIDC Back-Channel Logout 1.0 with sid in
+// discovery; the caller sends the logout tokens and puts sid in ID tokens.
+func WithBackChannelLogout() LogoutOption {
+	return func(p *Provider) error {
+		p.config.BackChannelLogoutEnabled = true
+		return nil
+	}
+}
+
 // WithLogoutSessionTimeoutSecs sets the logout session timeout.
 func WithLogoutSessionTimeoutSecs(secs int) LogoutOption {
 	return func(p *Provider) error {

@@ -181,7 +181,7 @@ SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_re
        COALESCE(default_api, '')::text AS default_api,
        COALESCE(extract(epoch FROM session_idle_timeout), 0)::int AS session_idle_timeout,
        refresh_tokens, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
-       apple_app_ids, android_apps
+       COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps
 FROM applications
 WHERE @client_id::text = '' OR client_id = @client_id
 ORDER BY builtin DESC, created_at, client_id;
@@ -204,6 +204,7 @@ UPDATE applications SET
     webhook_secret_updated_at = CASE WHEN @webhook_url = '' THEN NULL
                                      WHEN sqlc.narg(webhook_secret) IS NOT NULL THEN now()
                                      ELSE webhook_secret_updated_at END,
+    backchannel_logout_uri = NULLIF(@backchannel_logout_uri::text, ''),
     apple_app_ids = @apple_app_ids,
     android_apps = @android_apps
 WHERE client_id = @client_id AND NOT builtin;

@@ -357,7 +357,7 @@ SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_re
        COALESCE(default_api, '')::text AS default_api,
        COALESCE(extract(epoch FROM session_idle_timeout), 0)::int AS session_idle_timeout,
        refresh_tokens, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
-       apple_app_ids, android_apps
+       COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps
 FROM applications
 WHERE $1::text = '' OR client_id = $1
 ORDER BY builtin DESC, created_at, client_id
@@ -376,6 +376,7 @@ type ListApplicationsRow struct {
 	RefreshTokens          bool
 	WebhookUrl             string
 	WebhookSecretUpdatedAt pgtype.Timestamptz
+	BackchannelLogoutUri   string
 	AppleAppIds            []string
 	AndroidApps            []byte
 }
@@ -403,6 +404,7 @@ func (q *Queries) ListApplications(ctx context.Context, clientID string) ([]List
 			&i.RefreshTokens,
 			&i.WebhookUrl,
 			&i.WebhookSecretUpdatedAt,
+			&i.BackchannelLogoutUri,
 			&i.AppleAppIds,
 			&i.AndroidApps,
 		); err != nil {
@@ -903,9 +905,10 @@ UPDATE applications SET
     webhook_secret_updated_at = CASE WHEN $7 = '' THEN NULL
                                      WHEN $8 IS NOT NULL THEN now()
                                      ELSE webhook_secret_updated_at END,
-    apple_app_ids = $9,
-    android_apps = $10
-WHERE client_id = $11 AND NOT builtin
+    backchannel_logout_uri = NULLIF($9::text, ''),
+    apple_app_ids = $10,
+    android_apps = $11
+WHERE client_id = $12 AND NOT builtin
 `
 
 type UpdateApplicationParams struct {
@@ -917,6 +920,7 @@ type UpdateApplicationParams struct {
 	RefreshTokens          bool
 	WebhookUrl             string
 	WebhookSecret          []byte
+	BackchannelLogoutUri   string
 	AppleAppIds            []string
 	AndroidApps            []byte
 	ClientID               string
@@ -934,6 +938,7 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 		arg.RefreshTokens,
 		arg.WebhookUrl,
 		arg.WebhookSecret,
+		arg.BackchannelLogoutUri,
 		arg.AppleAppIds,
 		arg.AndroidApps,
 		arg.ClientID,
