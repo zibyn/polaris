@@ -44,6 +44,14 @@ _Avoid_: 内部应用, 自有客户端
 不代表任何 User、以自己的身份调用 API 的 Application(如业务后端、定时任务),没有登录界面;只调用它的默认 API,也只在这个 API 上持有 Role(Management API 上不能持有「所有者」)。要调多个 API 就建多个 M2M Application。
 _Avoid_: 服务账号, 机器账号, 客户端凭证应用
 
+**客户端认证方式**:
+非 public 的 Application 换取令牌时证明自己身份的方式,二选一:共享密钥(client secret),或用私钥签名、Polaris 以 Application 公钥验证(private_key_jwt)。
+_Avoid_: Credential, 客户端凭证, 认证类型
+
+**Application 公钥**:
+管理员为 Application 登记的一组公钥,用于验证它私钥签名的客户端认证;可同时登记多把,以便轮换。
+_Avoid_: 证书, 凭证, 客户端密钥
+
 **API**:
 管理员登记的一个受保护业务后端,以 API 标识符区分;Polaris 签发给 Application 的 access token 指明它供哪个 API 使用,多个 Application 可共用同一个 API。
 _Avoid_: Resource Server, 资源, 后端服务
