@@ -15,21 +15,23 @@ const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, ip, user_agent, idle_timeout, max_lifetime)
 SELECT $1, $2::text, u.id, $3, $4, $5, $6,
        COALESCE((SELECT session_idle_timeout FROM applications WHERE applications.client_id = $2),
-                CASE WHEN $1::bytea IS NULL THEN interval '90 days' ELSE interval '30 days' END),
+                make_interval(secs => $7::int)),
        COALESCE((SELECT session_max_lifetime FROM applications WHERE applications.client_id = $2),
-                CASE WHEN $1::bytea IS NULL THEN interval '180 days' ELSE interval '90 days' END)
-FROM users u WHERE u.id = $7 AND u.disabled_at IS NULL
+                make_interval(secs => $8::int))
+FROM users u WHERE u.id = $9 AND u.disabled_at IS NULL
 RETURNING id, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs
 `
 
 type CreateSessionParams struct {
-	IDHash    []byte
-	ClientID  string
-	AuthTime  pgtype.Timestamptz
-	Amr       []string
-	Ip        pgtype.Text
-	UserAgent pgtype.Text
-	UserID    string
+	IDHash          []byte
+	ClientID        string
+	AuthTime        pgtype.Timestamptz
+	Amr             []string
+	Ip              pgtype.Text
+	UserAgent       pgtype.Text
+	DefaultIdleSecs int32
+	DefaultMaxSecs  int32
+	UserID          string
 }
 
 type CreateSessionRow struct {
@@ -38,8 +40,8 @@ type CreateSessionRow struct {
 }
 
 // A NULL id_hash makes an App Session. The idle timeout and lifespan cap
-// are the Application's, or the defaults of the Session's kind. No row for a
-// disabled User.
+// are the Application's, or the defaults given for the Session's kind
+// (oidcstore.SessionDefaults). No row for a disabled User.
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (CreateSessionRow, error) {
 	row := q.db.QueryRow(ctx, createSession,
 		arg.IDHash,
@@ -48,6 +50,8 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (C
 		arg.Amr,
 		arg.Ip,
 		arg.UserAgent,
+		arg.DefaultIdleSecs,
+		arg.DefaultMaxSecs,
 		arg.UserID,
 	)
 	var i CreateSessionRow

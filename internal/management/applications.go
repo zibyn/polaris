@@ -251,8 +251,10 @@ func (st *ApplicationSettings) validate(typ string) error {
 			return identity.Invalid("webhook URL 须为 http(s) 地址")
 		}
 	}
-	// With the default idle timeout, an App Session may sit idle 90 days.
-	if idle := cmp.Or(st.SessionIdleTimeout, 90*86400); st.SessionMaxLifetime != 0 && st.SessionMaxLifetime < idle {
+	// A confidential Application signs Users in through the browser; the
+	// others' default is the App Session's.
+	defaultIdle, _ := oidcstore.SessionDefaults(typ == "confidential")
+	if idle := cmp.Or(st.SessionIdleTimeout, defaultIdle); st.SessionMaxLifetime != 0 && st.SessionMaxLifetime < idle {
 		return identity.Invalid("最长多久需重新登录不能短于闲置时长")
 	}
 	// Only a Web Application has a back end to tell (ADR 0022).

@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/zibyn/polaris/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/oidcstore"
 )
 
 // session starts a Session for sub: a browser one, or an App one for clientID.
@@ -20,6 +21,7 @@ func (e *env) session(sub, clientID string, browser bool) string {
 	if browser {
 		p.IDHash = []byte(sub + clientID)
 	}
+	p.DefaultIdleSecs, p.DefaultMaxSecs = oidcstore.SessionDefaults(browser)
 	s, err := sqlc.New(e.pool).CreateSession(context.Background(), p)
 	if err != nil {
 		e.t.Fatal(err)
@@ -146,11 +148,17 @@ func TestApplicationSetsTheSessionLifespanCap(t *testing.T) {
 		t.Errorf("default browser Session ends in %v, want 5 days", got)
 	}
 
-	// Shorter than the idle timeout in effect: the set one, or the longest default.
+	// Shorter than the idle timeout in effect: the set one, or the App default.
 	for name, st := range map[string][2]int{"set idle": {7 * 86400, 6 * 86400}, "default idle": {0, 60 * 86400}} {
 		settings["sessionIdleTimeout"], settings["sessionMaxLifetime"] = st[0], st[1]
 		if code := e.call("PUT", owner, "/applications/"+id, settings, nil); code != 422 {
 			t.Errorf("%s: %d, want 422", name, code)
 		}
+	}
+	// A Web Application signs Users in through the browser: its default idle
+	// timeout is the browser one.
+	settings["redirectUris"], settings["sessionIdleTimeout"], settings["sessionMaxLifetime"] = []string{"https://web.example/cb"}, 0, 60*86400
+	if code := e.call("POST", owner, "/applications", map[string]any{"type": "confidential", "settings": settings}, nil); code != 200 {
+		t.Errorf("Web Application with a 60-day cap: %d", code)
 	}
 }

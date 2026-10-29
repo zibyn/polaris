@@ -240,9 +240,10 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			}
 		}
 		ip, ua := oidcstore.Device(deviceContext(r))
+		idle, maxLife := oidcstore.SessionDefaults(false)
 		sess, err := s.q.CreateSession(ctx, sqlc.CreateSessionParams{
 			ClientID: c.ID, UserID: sub, AuthTime: pgtype.Timestamptz{Time: authTime, Valid: true}, Amr: amr,
-			Ip: ip, UserAgent: ua,
+			Ip: ip, UserAgent: ua, DefaultIdleSecs: idle, DefaultMaxSecs: maxLife,
 		})
 		if errors.Is(err, pgx.ErrNoRows) { // disabled since authenticating
 			return answer{}, &challengeError{status: http.StatusBadRequest, Code: string(goidc.ErrorCodeAccessDenied), Description: identity.ErrDisabled.Error()}

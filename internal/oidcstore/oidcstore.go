@@ -48,6 +48,15 @@ var (
 // was issued in; such a grant works only while that Session lives.
 const SessionKey = "session"
 
+// SessionDefaults are the 闲置时长 and 寿命上限, in seconds, of a browser or
+// App Session whose Application sets none (docs/spec/protocol.md#session).
+func SessionDefaults(browser bool) (idleSecs, maxSecs int32) {
+	if browser {
+		return 30 * 86400, 90 * 86400
+	}
+	return 90 * 86400, 180 * 86400
+}
+
 // GraceWindow is how long the refresh token a rotation spent last still
 // rotates its grant again instead of counting as reuse (ADR 0019).
 const GraceWindow = 60 * time.Second

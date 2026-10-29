@@ -19,9 +19,10 @@ func TestRevokingAnAppSessionsRefreshTokenEndsIt(t *testing.T) {
 	if err := q.CreateUser(ctx, "ALICE"); err != nil {
 		t.Fatal(err)
 	}
+	idle, maxLife := SessionDefaults(false)
 	sess, err := q.CreateSession(ctx, sqlc.CreateSessionParams{
 		ClientID: "polaris-console", UserID: "ALICE", Amr: []string{"sms"},
-		AuthTime: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		AuthTime: pgtype.Timestamptz{Time: time.Now(), Valid: true}, DefaultIdleSecs: idle, DefaultMaxSecs: maxLife,
 	})
 	if err != nil {
 		t.Fatal(err)

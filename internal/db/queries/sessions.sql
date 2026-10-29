@@ -1,13 +1,13 @@
 -- name: CreateSession :one
 -- A NULL id_hash makes an App Session. The idle timeout and lifespan cap
--- are the Application's, or the defaults of the Session's kind. No row for a
--- disabled User.
+-- are the Application's, or the defaults given for the Session's kind
+-- (oidcstore.SessionDefaults). No row for a disabled User.
 INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, ip, user_agent, idle_timeout, max_lifetime)
 SELECT sqlc.narg(id_hash), @client_id::text, u.id, @auth_time, @amr, sqlc.narg(ip), sqlc.narg(user_agent),
        COALESCE((SELECT session_idle_timeout FROM applications WHERE applications.client_id = @client_id),
-                CASE WHEN sqlc.narg(id_hash)::bytea IS NULL THEN interval '90 days' ELSE interval '30 days' END),
+                make_interval(secs => @default_idle_secs::int)),
        COALESCE((SELECT session_max_lifetime FROM applications WHERE applications.client_id = @client_id),
-                CASE WHEN sqlc.narg(id_hash)::bytea IS NULL THEN interval '180 days' ELSE interval '90 days' END)
+                make_interval(secs => @default_max_secs::int))
 FROM users u WHERE u.id = @user_id AND u.disabled_at IS NULL
 RETURNING id, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs;
 
