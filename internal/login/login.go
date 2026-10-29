@@ -925,18 +925,7 @@ func (s *Service) newSession(w http.ResponseWriter, r *http.Request, clientID, s
 			return "", err
 		}
 	}
-	idle, maxLife := oidcstore.SessionDefaults(true)
-	sess, err := s.q.CreateSession(r.Context(), sqlc.CreateSessionParams{
-		IDHash:          hash(token),
-		ClientID:        clientID,
-		UserID:          sub,
-		AuthTime:        pgtype.Timestamptz{Time: authTime, Valid: true},
-		Amr:             amr,
-		Ip:              ip,
-		UserAgent:       ua,
-		DefaultIdleSecs: idle,
-		DefaultMaxSecs:  maxLife,
-	})
+	sess, err := s.store.CreateSession(deviceContext(r), hash(token), clientID, sub, authTime, amr)
 	if err != nil {
 		return "", err
 	}

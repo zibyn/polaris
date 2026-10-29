@@ -257,17 +257,19 @@ type Send struct {
 }
 
 type Session struct {
-	IDHash      []byte
-	UserID      string
-	AuthTime    pgtype.Timestamptz
-	Amr         []string
-	LastSeenAt  pgtype.Timestamptz
-	ID          string
-	ClientID    pgtype.Text
+	IDHash     []byte
+	UserID     string
+	AuthTime   pgtype.Timestamptz
+	Amr        []string
+	LastSeenAt pgtype.Timestamptz
+	ID         string
+	ClientID   pgtype.Text
+	// The default is a browser Session's, only for direct INSERTs (tests); oidcstore.SessionDefaults decides.
 	IdleTimeout pgtype.Interval
 	EndedAt     pgtype.Timestamptz
 	Ip          pgtype.Text
 	UserAgent   pgtype.Text
+	// The default is a browser Session's, only for direct INSERTs (tests); oidcstore.SessionDefaults decides.
 	MaxLifetime pgtype.Interval
 }
 
