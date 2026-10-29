@@ -133,6 +133,11 @@ type OidcGrant struct {
 	SessionID        pgtype.Text
 }
 
+type OidcJti struct {
+	Jti       string
+	ExpiresAt pgtype.Timestamptz
+}
+
 type OidcLogoutSession struct {
 	ID        string
 	ExpiresAt pgtype.Timestamptz

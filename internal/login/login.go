@@ -151,6 +151,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 		oidcop.WithSecretPostAuthn(),
 		oidcop.WithClientManager(store),
 		oidcop.WithClientSecretVerifier(oidcstore.VerifyClientSecret),
+		oidcop.WithJTIConsumer(store.ConsumeJTI),
 		oidcop.WithAuthCodeGrant(
 			oidcop.AuthCodeGrantConfig{Manager: store, ResponseTypes: []goidc.ResponseType{goidc.ResponseTypeCode}},
 			oidcop.WithPKCE([]goidc.CodeChallengeMethod{goidc.CodeChallengeMethodSHA256}),
