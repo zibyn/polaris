@@ -334,7 +334,8 @@ Management API 不改,后端没拦的写在备注列。
 | | create / update / enable / disable / delete-provider | 添加认证源 / 修改认证源 / 启用认证源 / 停用认证源 / 删除认证源 |
 | | provider.unlink_failed | 外部账号吊销授权失败 |
 | 设置 | keys.rotated | 轮换令牌签名密钥 |
-| 安全 | login.password_locked | 密码输错次数过多,暂时锁定 |
+| 安全 | login.succeeded / failed | 登录成功 / 登录失败(句中写明方式和 Application,如「用验证码登录了 <Application>」「登录 <Application> 失败:密码错误」;IP 和 UA 放在悬停里) |
+| | login.password_locked | 密码输错次数过多,暂时锁定(有 `until` 时写明锁定到几点) |
 | | login.ip_locked | 同一 IP 登录失败过多,暂时锁定 |
 | | refresh_token.reused | 疑似登录凭据被盗用,已下线会话 |
 | | passkey.counter_regressed | Passkey 计数器回退,拒绝登录 |

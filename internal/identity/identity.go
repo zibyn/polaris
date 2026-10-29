@@ -3,13 +3,13 @@
 package identity
 
 import (
-	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"errors"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -133,8 +133,10 @@ func (s *Store) Bootstrap(ctx context.Context, token, username, password string)
 
 // CheckPassword returns the sub of the User with this Identifier (username,
 // phone or email) whose password matches, if the password login setting lets
-// them in. Five wrong passwords in a row lock the User's password login.
-func (s *Store) CheckPassword(ctx context.Context, identifier, password string) (string, error) {
+// them in. Five wrong passwords in a row lock the User's password login,
+// audited with a. A wrong password, or one tried while locked, still returns
+// the sub it was tried on, for LoginFailed.
+func (s *Store) CheckPassword(ctx context.Context, a Attempt, identifier, password string) (string, error) {
 	value := strings.ToLower(strings.TrimSpace(identifier))
 	if _, v, err := ParseIdentifier(identifier); err == nil {
 		value = v // a phone number typed without +86
@@ -145,19 +147,25 @@ func (s *Store) CheckPassword(ctx context.Context, identifier, password string) 
 		return "", ErrBadCredentials
 	}
 	key := "sub:" + row.UserID
-	if locked, err := s.q.LockedOut(ctx, key); err != nil || locked {
-		return "", cmp.Or(err, error(ErrPasswordLocked))
+	if locked, err := s.q.LockedOut(ctx, key); err != nil {
+		return "", err
+	} else if locked {
+		return row.UserID, ErrPasswordLocked
 	}
 	if ok, err := verifyPassword(row.Hash, password); err != nil {
 		return "", err
 	} else if !ok {
-		locked, err := s.failed(ctx, key, passwordTries, passwordWindow, passwordLock, sqlc.AuditParams{
-			Event: "login.password_locked", Sub: pgtype.Text{String: row.UserID, Valid: true}, Detail: []byte("{}"),
+		locked, err := s.failed(ctx, key, passwordTries, passwordWindow, passwordLock, func(until time.Time) sqlc.AuditParams {
+			return sqlc.AuditParams{
+				Event: "login.password_locked", Sub: pgtype.Text{String: row.UserID, Valid: true}, Detail: a.detail(map[string]any{"until": until}),
+			}
 		})
-		if locked {
-			return "", cmp.Or(err, error(ErrPasswordLocked))
+		if err != nil {
+			return "", err
+		} else if locked {
+			return row.UserID, ErrPasswordLocked
 		}
-		return "", cmp.Or(err, error(ErrBadCredentials))
+		return row.UserID, ErrBadCredentials
 	}
 	if err := s.q.ClearLoginFailures(ctx, key); err != nil {
 		return "", err

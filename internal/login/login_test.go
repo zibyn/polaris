@@ -47,6 +47,7 @@ type env struct {
 	ids    *identity.Store
 	pool   *pgxpool.Pool
 	inbox  *inbox
+	ua     string // the User-Agent requests send, if set
 }
 
 // start runs the whole HTTP surface against a fresh database, with one public
@@ -118,6 +119,9 @@ func (e *env) do(method, path string, form url.Values) (*http.Response, string) 
 	}
 	if form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	if e.ua != "" {
+		req.Header.Set("User-Agent", e.ua)
 	}
 	resp, err := e.client.Do(req)
 	if err != nil {

@@ -237,6 +237,9 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		} else if err != nil {
 			return answer{}, err
 		}
+		if err := s.ids.LoginSucceeded(ctx, attempt(r, c.ID), sub, amr); err != nil {
+			return answer{}, err
+		}
 		code, err := s.op.IssueAuthCode(ctx, c, sub, st.Params, map[string]any{
 			oidcstore.SessionKey: sess.ID, storeAuthTime: authTime.Unix(), storeAMR: amr,
 		})
@@ -295,6 +298,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			return mistake(identity.Invalid("两步验证 is on: send totp or recovery_code"))
 		}
 		err := s.twoFactor.Check(ctx, clientIP(r), p.Sub, totp, recoveryCode)
+		err = s.ids.LoginFailed(ctx, attempt(r, c.ID), p.Sub, secondFactor(recoveryCode), err)
 		switch {
 		case err == nil:
 			return signedIn(p.Sub, time.Unix(p.AuthTime, 0), withMFA(p.AMR))
@@ -363,7 +367,11 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			return answer{}, invalid("no code was sent in this auth_session")
 		}
 		if err := s.ids.FromIP(ctx, clientIP(r), func() error { return s.codes.Check(ctx, st.Identifier, r.PostFormValue("code")) }); err != nil {
-			return mistake(err)
+			var pending string
+			if st.Pending != nil {
+				pending = st.Pending.Sub
+			}
+			return mistake(s.codeFailed(ctx, attempt(r, c.ID), pending, st.Identifier, err))
 		}
 		kind, value, _ := identity.ParseIdentifier(st.Identifier)
 		if p := st.Pending; p != nil {
@@ -419,11 +427,12 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			return mistake(err)
 		}
 		var sub string
+		a := attempt(r, c.ID)
 		if err := s.ids.FromIP(ctx, clientIP(r), func() (err error) {
-			sub, err = s.ids.CheckPassword(ctx, r.PostFormValue("username"), r.PostFormValue("password"))
+			sub, err = s.ids.CheckPassword(ctx, a, r.PostFormValue("username"), r.PostFormValue("password"))
 			return err
 		}); err != nil {
-			return mistake(err)
+			return mistake(s.ids.LoginFailed(ctx, a, sub, "password", err))
 		}
 		return signedIn(sub, time.Now(), []string{string(goidc.AMRPassword)})
 	}

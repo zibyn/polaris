@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/zibyn/polaris/internal/identity"
 )
 
 // invited mints a 注册邀请 for a fresh account and returns its sub and the
@@ -52,7 +54,7 @@ func TestAcceptingAnInviteSignsTheUserIn(t *testing.T) {
 		t.Fatal("no Session was started")
 	}
 	// 密码是她自己的, 账号不再是待激活。
-	if who, err := e.ids.CheckPassword(context.Background(), "alice@example.com", "her-own-password"); err != nil || who != sub {
+	if who, err := e.ids.CheckPassword(context.Background(), identity.Attempt{}, "alice@example.com", "her-own-password"); err != nil || who != sub {
 		t.Errorf("the password she set does not work: %q %v", who, err)
 	}
 	if pending, err := e.ids.Pending(context.Background(), sub); err != nil || pending {
@@ -90,7 +92,7 @@ func TestAcceptingAnInviteDoesNotSkipTOTP(t *testing.T) {
 		t.Error("邀请链接把两步验证绕过去了")
 	}
 	// 密码确实是她自己的,接下来照常登录即可。
-	if who, err := e.ids.CheckPassword(context.Background(), "erin@example.com", "her-own-password"); err != nil || who != sub {
+	if who, err := e.ids.CheckPassword(context.Background(), identity.Attempt{}, "erin@example.com", "her-own-password"); err != nil || who != sub {
 		t.Errorf("the password she set does not work: %q %v", who, err)
 	}
 	if pending, err := e.ids.Pending(context.Background(), sub); err != nil || pending {
