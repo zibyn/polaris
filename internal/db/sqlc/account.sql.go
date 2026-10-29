@@ -192,6 +192,9 @@ func (q *Queries) Reauthenticate(ctx context.Context, arg ReauthenticateParams) 
 const removeIdentifier = `-- name: RemoveIdentifier :execrows
 WITH gone AS (
     DELETE FROM identifiers WHERE user_id = $2 AND kind = $1 RETURNING user_id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM gone, user_event('user.updated', gone.user_id, ARRAY[$1::text]) e
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'identifier.removed', gone.user_id, jsonb_build_object('kind', $1::text, 'by', gone.user_id) FROM gone
@@ -202,7 +205,7 @@ type RemoveIdentifierParams struct {
 	UserID string
 }
 
-// Audited as done by the User.
+// Audited as done by the User; queues user.updated.
 func (q *Queries) RemoveIdentifier(ctx context.Context, arg RemoveIdentifierParams) (int64, error) {
 	result, err := q.db.Exec(ctx, removeIdentifier, arg.Kind, arg.UserID)
 	if err != nil {

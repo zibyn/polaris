@@ -1,5 +1,6 @@
-// Package webhook delivers user.deleted to the Applications that set up a
-// webhook (docs/spec/protocol.md#webhook), signed the Standard Webhooks way
+// Package webhook delivers User events (user.deleted, user.disabled,
+// user.enabled, user.updated) to the Applications that set up a webhook
+// (docs/spec/protocol.md#webhook), signed the Standard Webhooks way
 // with each Application's key, and retries failures with backoff.
 package webhook
 

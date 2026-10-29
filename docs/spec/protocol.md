@@ -70,5 +70,13 @@ Session 是一个 User 在一台设备或一个浏览器上的一次登录。
 ## Webhook
 
 - **配置**:每个 Application 可以选配一个 URL 和签名共享密钥。
-- **事件**:只有一种,`user.deleted`(带 `sub`),在 User 注销或被管理员删除时发送。
+- **收件方**:每个配置了 Webhook 的 Application 都收到每一条事件,不看 User 用没用过它,也不能按类型订阅。
+- **事件**:都是薄事件(ADR 0022),只带 `sub`,不带新值;要新值就调 Management API。payload 统一为 `{"type", "timestamp", "data"}`,`timestamp` 是 UTC 的 RFC 3339 时间。
+  - `user.deleted`,`data: {sub}`:User 注销或被管理员删除。
+  - `user.disabled` / `user.enabled`,`data: {sub}`:User 被禁用或恢复;状态本来就是这样时不发。
+  - `user.updated`,`data: {sub, changed}`:`changed` 是非空数组,取 `phone`、`email`、`username`、`profile`、`roles` 的子集,列出这次变了哪几项。不论是管理员改、User 在账号中心自己改,还是登录时绑定了已验证的 Identifier,都会发。改某个 User 的 Role 分配算 `roles`;强制删除 Role 或 API 时,原来持有其 Role 的每个 User 各发一条。
+  - 不发事件的:只改 Role 里的 Permission;Credential 变更(密码、Passkey、两步验证、恢复码);从待激活转为 active;External Identity 绑定或解绑;Session 终止(走 Back-Channel Logout)。
+- **事务**:事件和触发它的变更在同一个事务里排进投递队列;变更回滚,事件也不产生。
+- **顺序**:不保证投递顺序。接收方应按 `timestamp` 丢弃过时事件,或调 Management API 取当前状态。
+- **兼容**:接收方必须忽略不认识的 `type`,以后可能加新事件。
 - **签名与重试**:用共享密钥签名;失败会重试。
