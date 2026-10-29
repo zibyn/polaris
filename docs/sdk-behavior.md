@@ -10,6 +10,7 @@
 - **多步**:`403 insufficient_authorization` 带回 `auth_session`,下一步带上它。**必须**按 `next` 决定下一步,不要解析 `error_description`:`code` 表示"输入验证码"(给绑定的手机号发码后也是 `code`);`phone` 表示"需要绑定手机号",在同一 `auth_session` 内给手机号发码再验证;`totp` 表示"User 开了两步验证",在同一 `auth_session` 内提交 `totp`(验证器上的 6 位码)或 `recovery_code`(恢复码),先于 `phone`。`totp` 输错返回 `invalid_request` 并带回 `auth_session`,可以重输;第 5 次输错后返回 `invalid_session`。`next` 以后只新增取值;遇到不认识的取值**必须**按失败处理(KMP SDK 抛 `PolarisException`,`error` 为 `unsupported_step`),提示 User 升级 App。
 - **外部登录**(Apple):App 用系统的 Sign in with Apple 拿到 `authorization_code`,原样作为 `authorization_code`、连同 Provider ID 作为 `provider` 提交(KMP:`signInWithProvider`),不提交 identity token,也不需要 nonce(ADR 0011)。code 只能用一次,`400 invalid_grant` 表示 Apple 没认这个 code,让 User 重新用 Apple 登录。之后照常按 `next` 走。
 - **用户错误**:`400 invalid_request` 的 `error_description` 可直接展示;返回了 `auth_session` 时它仍然可用(比如重输验证码)。`invalid_session` 表示从头再来。
+- **没有权限**:`403 application_access_denied` 表示 User 登录成功,但这个 Application 要求 User 在它的默认 API 上有 Role,而他一个都没有。不带 `auth_session`,重试没用:提示"你没有使用该应用的权限,请联系管理员",并允许切换账号。见 [rbac.md](spec/rbac.md#签发时检查-role)。
 
 ## Passkey
 

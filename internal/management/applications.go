@@ -28,6 +28,7 @@ type ApplicationSettings struct {
 	DefaultAPI             string       `json:"defaultApi,omitempty" doc:"Identifier of the API its access tokens are for; empty for none"`
 	SessionIdleTimeout     int32        `json:"sessionIdleTimeout,omitempty" minimum:"0" maximum:"31536000" doc:"Seconds a Session may sit idle; 0 for the default (30 days browser, 90 days App)"`
 	RefreshTokens          bool         `json:"refreshTokens"`
+	RequireRole            bool         `json:"requireRole,omitempty" doc:"Turn away a User without a Role on the default API: no authorization code, no refresh. Needs a default API; not for M2M Applications"`
 	WebhookURL             string       `json:"webhookUrl,omitempty" doc:"Where User events (user.deleted, user.disabled, user.enabled, user.updated) are sent; empty for none"`
 	WebhookSecret          string       `json:"webhookSecret,omitempty" writeOnly:"true" doc:"Key the webhook is signed with; empty keeps the stored one. Never read back."`
 	BackchannelLogoutURI   string       `json:"backchannelLogoutUri,omitempty" doc:"Where OIDC Back-Channel Logout tokens are sent when a Session ends; Web (confidential) Applications only, empty for none"`
@@ -100,7 +101,7 @@ func (s *Service) applications(ctx context.Context, clientID string) ([]Applicat
 			ApplicationSettings: ApplicationSettings{
 				Name: r.Name, RedirectURIs: r.RedirectUris, PostLogoutRedirectURIs: r.PostLogoutRedirectUris,
 				DefaultAPI: r.DefaultApi, SessionIdleTimeout: r.SessionIdleTimeout, RefreshTokens: r.RefreshTokens,
-				WebhookURL: r.WebhookUrl, BackchannelLogoutURI: r.BackchannelLogoutUri, AppleAppIDs: r.AppleAppIds,
+				RequireRole: r.RequireRole, WebhookURL: r.WebhookUrl, BackchannelLogoutURI: r.BackchannelLogoutUri, AppleAppIDs: r.AppleAppIds,
 			},
 		}
 		if r.WebhookSecretUpdatedAt.Valid {
@@ -204,6 +205,13 @@ func (st *ApplicationSettings) validate(typ string) error {
 		if len(st.AppleAppIDs) > 0 || len(st.AndroidApps) > 0 {
 			return identity.Invalid("M2M Application 不关联原生 App")
 		}
+		if st.RequireRole {
+			return identity.Invalid("M2M Application 没有 User 登录,不能要求 Role")
+		}
+	}
+	// The Roles checked are the ones on the default API.
+	if st.RequireRole && st.DefaultAPI == "" {
+		return identity.Invalid("要求 Role 需要先设置默认 API")
 	}
 	// Its tokens would let the Application act as any admin who signs in to
 	// it, or as any User on their own account.
@@ -272,7 +280,7 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 		RedirectUris:           append([]string{}, st.RedirectURIs...),
 		PostLogoutRedirectUris: append([]string{}, st.PostLogoutRedirectURIs...),
 		DefaultApi:             st.DefaultAPI, IdleSecs: st.SessionIdleTimeout, RefreshTokens: st.RefreshTokens,
-		WebhookUrl: st.WebhookURL, WebhookSecret: secret, BackchannelLogoutUri: st.BackchannelLogoutURI,
+		RequireRole: st.RequireRole, WebhookUrl: st.WebhookURL, WebhookSecret: secret, BackchannelLogoutUri: st.BackchannelLogoutURI,
 		AppleAppIds: append([]string{}, st.AppleAppIDs...), AndroidApps: android,
 	})
 	var pg *pgconn.PgError
