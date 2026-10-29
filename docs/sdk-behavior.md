@@ -22,11 +22,13 @@
 
 ## 刷新
 
-- **single-flight(必须)**:同一时间只有一个刷新请求,其余调用方等它的结果。服务端没有宽限窗口:同一个 refresh token 用两次即视为泄露。
+- **single-flight(必须)**:同一时间只有一个刷新请求,其余调用方等它的结果。服务端的宽限窗口(见下)只兜住丢失的响应,不能代替 single-flight。
 - **时机**:access token 剩余不足 30 秒时刷新;刷新后旧 refresh token 立刻作废,新令牌原子地写入存储。
-- **网络失败、5xx**:保留现有令牌,下次再试。注意:若服务端已完成轮换而响应丢失,下次刷新会用到旧 token,按重用处理。
+- **网络失败、5xx**:保留现有令牌,下次再试。若服务端已完成轮换而响应丢失,下次刷新会用到旧 token:60 秒内服务端走宽限,签发一组新令牌;超过 60 秒则按重用处理。
 
 ## refresh token 重用后
+
+最近一次被换下的 refresh token,换下后 60 秒内再拿来刷新,服务端不算重用:基于当前状态再轮换一次,签发一组全新的令牌(不是丢失的那组),Session 照常。并发刷新的输家同样走宽限。更早换下的 token,或超过 60 秒才回来的 token,算重用。用已用 token 调 `/revoke` 始终终止 Session。
 
 服务端发现重用时终止整个 Session:旧 token、新 token 和这个 Session 签发的 access token(在 Account API 上立即,在业务后端最多滞后 10 分钟)都失效。`/token` 返回 `invalid_grant` 时 SDK 清空本地令牌,报告"已登出"(KMP:`PolarisException.SIGNED_OUT`),App 应回到登录页。被吊销、过期、在账号中心下线、账号被删除,表现相同。
 

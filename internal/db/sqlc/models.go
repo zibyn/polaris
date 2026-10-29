@@ -149,6 +149,7 @@ type OidcLogoutSession struct {
 type OidcSpentRefreshToken struct {
 	Hash    []byte
 	GrantID string
+	SpentAt pgtype.Timestamptz
 }
 
 type Passkey struct {
