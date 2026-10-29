@@ -47,6 +47,8 @@ export type Session = {
 	authTime: string;
 	amr: string[];
 	lastSeenAt: string;
+	ip: string;
+	userAgent: string;
 	endedAt?: string;
 	active: boolean;
 	current: boolean;

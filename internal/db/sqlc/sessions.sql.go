@@ -12,22 +12,24 @@ import (
 )
 
 const createSession = `-- name: CreateSession :one
-INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, idle_timeout, max_lifetime)
-SELECT $1, $2::text, u.id, $3, $4,
+INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, ip, user_agent, idle_timeout, max_lifetime)
+SELECT $1, $2::text, u.id, $3, $4, $5, $6,
        COALESCE((SELECT session_idle_timeout FROM applications WHERE applications.client_id = $2),
                 CASE WHEN $1::bytea IS NULL THEN interval '90 days' ELSE interval '30 days' END),
        COALESCE((SELECT session_max_lifetime FROM applications WHERE applications.client_id = $2),
                 CASE WHEN $1::bytea IS NULL THEN interval '180 days' ELSE interval '90 days' END)
-FROM users u WHERE u.id = $5 AND u.disabled_at IS NULL
+FROM users u WHERE u.id = $7 AND u.disabled_at IS NULL
 RETURNING id, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs
 `
 
 type CreateSessionParams struct {
-	IDHash   []byte
-	ClientID string
-	AuthTime pgtype.Timestamptz
-	Amr      []string
-	UserID   string
+	IDHash    []byte
+	ClientID  string
+	AuthTime  pgtype.Timestamptz
+	Amr       []string
+	Ip        pgtype.Text
+	UserAgent pgtype.Text
+	UserID    string
 }
 
 type CreateSessionRow struct {
@@ -44,6 +46,8 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (C
 		arg.ClientID,
 		arg.AuthTime,
 		arg.Amr,
+		arg.Ip,
+		arg.UserAgent,
 		arg.UserID,
 	)
 	var i CreateSessionRow
@@ -99,18 +103,21 @@ func (q *Queries) EndUserSession(ctx context.Context, arg EndUserSessionParams) 
 }
 
 const renewSession = `-- name: RenewSession :one
-UPDATE sessions SET id_hash = $1, auth_time = $2, amr = $3, last_seen_at = now()
-WHERE sessions.id_hash = $4 AND sessions.user_id = $5
+UPDATE sessions SET id_hash = $1, auth_time = $2, amr = $3, last_seen_at = now(),
+    ip = $4, user_agent = $5
+WHERE sessions.id_hash = $6 AND sessions.user_id = $7
   AND sessions.id IN (SELECT l.id FROM live_sessions l)
 RETURNING id, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs
 `
 
 type RenewSessionParams struct {
-	NewHash  []byte
-	AuthTime pgtype.Timestamptz
-	Amr      []string
-	OldHash  []byte
-	UserID   string
+	NewHash   []byte
+	AuthTime  pgtype.Timestamptz
+	Amr       []string
+	Ip        pgtype.Text
+	UserAgent pgtype.Text
+	OldHash   []byte
+	UserID    string
 }
 
 type RenewSessionRow struct {
@@ -124,6 +131,8 @@ func (q *Queries) RenewSession(ctx context.Context, arg RenewSessionParams) (Ren
 		arg.NewHash,
 		arg.AuthTime,
 		arg.Amr,
+		arg.Ip,
+		arg.UserAgent,
 		arg.OldHash,
 		arg.UserID,
 	)
@@ -133,10 +142,16 @@ func (q *Queries) RenewSession(ctx context.Context, arg RenewSessionParams) (Ren
 }
 
 const touchSession = `-- name: TouchSession :one
-UPDATE sessions SET last_seen_at = now()
-WHERE sessions.id_hash = $1 AND sessions.id IN (SELECT l.id FROM live_sessions l)
+UPDATE sessions SET last_seen_at = now(), ip = $1, user_agent = $2
+WHERE sessions.id_hash = $3 AND sessions.id IN (SELECT l.id FROM live_sessions l)
 RETURNING id, user_id, auth_time, amr, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs
 `
+
+type TouchSessionParams struct {
+	Ip        pgtype.Text
+	UserAgent pgtype.Text
+	IDHash    []byte
+}
 
 type TouchSessionRow struct {
 	ID       string
@@ -146,8 +161,8 @@ type TouchSessionRow struct {
 	IdleSecs int32
 }
 
-func (q *Queries) TouchSession(ctx context.Context, idHash []byte) (TouchSessionRow, error) {
-	row := q.db.QueryRow(ctx, touchSession, idHash)
+func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) (TouchSessionRow, error) {
+	row := q.db.QueryRow(ctx, touchSession, arg.Ip, arg.UserAgent, arg.IDHash)
 	var i TouchSessionRow
 	err := row.Scan(
 		&i.ID,
@@ -161,7 +176,7 @@ func (q *Queries) TouchSession(ctx context.Context, idHash []byte) (TouchSession
 
 const userSessions = `-- name: UserSessions :many
 SELECT s.id, (s.id_hash IS NULL)::boolean AS app, s.client_id, COALESCE(a.name, s.client_id, '')::text AS application_name,
-       s.auth_time, s.amr, s.last_seen_at,
+       s.auth_time, s.amr, s.last_seen_at, s.ip, s.user_agent,
        LEAST(s.last_seen_at + s.idle_timeout, s.auth_time + s.max_lifetime)::timestamptz AS expires_at, s.ended_at,
        (s.id IN (SELECT l.id FROM live_sessions l))::boolean AS active
 FROM sessions s LEFT JOIN applications a USING (client_id) WHERE s.user_id = $1
@@ -176,6 +191,8 @@ type UserSessionsRow struct {
 	AuthTime        pgtype.Timestamptz
 	Amr             []string
 	LastSeenAt      pgtype.Timestamptz
+	Ip              pgtype.Text
+	UserAgent       pgtype.Text
 	ExpiresAt       pgtype.Timestamptz
 	EndedAt         pgtype.Timestamptz
 	Active          bool
@@ -198,6 +215,8 @@ func (q *Queries) UserSessions(ctx context.Context, userID string) ([]UserSessio
 			&i.AuthTime,
 			&i.Amr,
 			&i.LastSeenAt,
+			&i.Ip,
+			&i.UserAgent,
 			&i.ExpiresAt,
 			&i.EndedAt,
 			&i.Active,

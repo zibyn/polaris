@@ -19,6 +19,8 @@ type Session struct {
 	ExpiresAt   time.Time  `json:"expiresAt" doc:"When it ends if left idle, or at its 寿命上限 if sooner"`
 	EndedAt     *time.Time `json:"endedAt,omitempty" doc:"When it was ended: logout, an admin, or a reused refresh token"`
 	Active      bool       `json:"active"`
+	IP          string     `json:"ip" doc:"The client IP it was last used from; empty for a Session from before IPs were kept"`
+	UserAgent   string     `json:"userAgent" doc:"The User-Agent it was last used with, cut to 512 bytes; may be empty"`
 }
 
 type listSessionsOutput struct {
@@ -42,7 +44,7 @@ func (s *Service) listSessions(ctx context.Context, in *struct {
 	for _, r := range rows {
 		sess := Session{
 			ID: r.ID, Kind: "browser", Application: r.ClientID.String, AuthTime: r.AuthTime.Time, AMR: r.Amr,
-			LastSeenAt: r.LastSeenAt.Time, ExpiresAt: r.ExpiresAt.Time, Active: r.Active,
+			LastSeenAt: r.LastSeenAt.Time, IP: r.Ip.String, UserAgent: r.UserAgent.String, ExpiresAt: r.ExpiresAt.Time, Active: r.Active,
 		}
 		if r.App {
 			sess.Kind = "app"

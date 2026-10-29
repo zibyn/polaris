@@ -124,6 +124,10 @@ val passkey = auth.addPasskey()                        // 系统弹出「创建 
 
 实现 `TokenStore`(`read()` / `write(value)`,`null` 表示登出),传给 `Polaris`。
 
+### User-Agent
+
+SDK 的请求自动带 `<App 名>/<App 版本> (<系统> <版本>; <机型>) Polaris-KMP/<SDK 版本>`,账号中心靠它认出 Session 是哪台设备。传给 `Polaris` 的 `HttpClient` 上自己设的 User-Agent 会被覆盖。
+
 ## 业务后端校验 access token
 
 用主流 JWT 库按 JWKS 本地验签,检查签名(RS256)、`iss`、`aud`(你的 API 标识)、`typ: at+jwt`,权限读 `entitlements`。Node(`jose`):
@@ -154,4 +158,4 @@ export async function verify(authorization) {
 scripts/integration.sh              # 对本地 Polaris 二进制跑集成测试;需要 Docker 和 web/dist/client
 ```
 
-发布到 Maven Central:在 `~/.gradle/gradle.properties` 配好 `mavenCentralUsername`、`mavenCentralPassword` 与 `signing.*`(或 `signingInMemoryKey*`),改 `gradle.properties` 的 `VERSION_NAME`,然后 `./gradlew publishAndReleaseToMavenCentral`。
+发布到 Maven Central:在 `~/.gradle/gradle.properties` 配好 `mavenCentralUsername`、`mavenCentralPassword` 与 `signing.*`(或 `signingInMemoryKey*`),改 `gradle.properties` 的 `VERSION_NAME`(和 `UserAgent.kt` 的 `SDK_VERSION`),然后 `./gradlew publishAndReleaseToMavenCentral`。

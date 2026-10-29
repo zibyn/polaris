@@ -54,6 +54,7 @@ import {
 	type Session,
 	type TOTPSetup,
 } from "#/lib/account-api";
+import { deviceLabel } from "#/lib/device";
 import {
 	type AssertionOptions,
 	type CreationOptions,
@@ -947,12 +948,18 @@ function Sessions() {
 						key={s.id}
 						label={
 							<span className="flex items-center gap-2">
-								{s.kind === "app" ? "App" : "浏览器"} · {s.application}
+								{deviceLabel(s.userAgent)} · {s.application}
 								{s.current && <Badge>本设备</Badge>}
 								{!s.active && <Badge variant="secondary">已结束</Badge>}
 							</span>
 						}
-						hint={`登录于 ${date(s.authTime)} · 最近活动 ${date(s.lastSeenAt)}`}
+						hint={[
+							s.ip,
+							`登录于 ${date(s.authTime)}`,
+							`最近活动 ${date(s.lastSeenAt)}`,
+						]
+							.filter(Boolean)
+							.join(" · ")}
 					>
 						{s.active && !s.current && (
 							<Button

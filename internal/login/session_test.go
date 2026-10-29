@@ -204,6 +204,39 @@ func TestDisablingAUserEndsTheirSessions(t *testing.T) {
 	}
 }
 
+// A Session keeps the IP and User-Agent it was last used from: signing in
+// writes them, a refresh overwrites them, and a User-Agent is cut to 512
+// bytes.
+func TestSessionRemembersItsDevice(t *testing.T) {
+	e := start(t)
+	e.bootstrap("owner", "password1")
+	e.ua = "Mozilla/5.0 (Macintosh) Chrome/130.0"
+	tok := e.signIn()
+	device := func() (string, string) {
+		t.Helper()
+		var sub string
+		if err := e.pool.QueryRow(context.Background(), "SELECT user_id FROM identifiers WHERE value = 'owner'").Scan(&sub); err != nil {
+			t.Fatal(err)
+		}
+		rows, err := sqlc.New(e.pool).UserSessions(context.Background(), sub)
+		if err != nil || len(rows) != 1 {
+			t.Fatalf("sessions: %+v %v", rows, err)
+		}
+		return rows[0].Ip.String, rows[0].UserAgent.String
+	}
+	if ip, ua := device(); ip != "127.0.0.1" || ua != e.ua {
+		t.Errorf("after sign-in: %q %q", ip, ua)
+	}
+
+	e.ua = "App/1.0 " + strings.Repeat("x", 600)
+	if _, errCode := e.refresh(tok.RefreshToken); errCode != "" {
+		t.Fatal(errCode)
+	}
+	if _, ua := device(); ua != e.ua[:512] {
+		t.Errorf("after refresh: %d bytes %.40q", len(ua), ua)
+	}
+}
+
 // Fifty failures in an hour lock an IP out of logging in, whichever flow.
 func TestIPLockout(t *testing.T) {
 	e := start(t)

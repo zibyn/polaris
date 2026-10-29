@@ -148,13 +148,14 @@ func (q *Queries) DeleteExpiredOIDC(ctx context.Context) error {
 }
 
 const deleteRetiredSigningKeys = `-- name: DeleteRetiredSigningKeys :exec
-DELETE FROM signing_keys WHERE kid NOT IN (
-    SELECT kid FROM signing_keys ORDER BY created_at DESC, kid LIMIT 2
+DELETE FROM signing_keys k WHERE EXISTS (
+    SELECT 1 FROM signing_keys n
+    WHERE n.created_at > k.created_at AND n.created_at <= now() - $1::interval
 )
 `
 
-func (q *Queries) DeleteRetiredSigningKeys(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteRetiredSigningKeys)
+func (q *Queries) DeleteRetiredSigningKeys(ctx context.Context, retention pgtype.Interval) error {
+	_, err := q.db.Exec(ctx, deleteRetiredSigningKeys, retention)
 	return err
 }
 
@@ -280,7 +281,8 @@ WITH g AS (
     WHERE oidc_grants.id = $5 AND oidc_grants.refresh_token_hash = $1
     RETURNING oidc_grants.id, oidc_grants.session_id
 ), touched AS (
-    UPDATE sessions SET last_seen_at = now() WHERE sessions.id = (SELECT g.session_id FROM g)
+    UPDATE sessions SET last_seen_at = now(), ip = $6, user_agent = $7
+    WHERE sessions.id = (SELECT g.session_id FROM g)
 )
 INSERT INTO oidc_spent_refresh_tokens (hash, grant_id) SELECT $1, g.id FROM g
 `
@@ -291,11 +293,13 @@ type RotateRefreshTokenParams struct {
 	ExpiresAt pgtype.Timestamptz
 	Sealed    []byte
 	ID        string
+	Ip        pgtype.Text
+	UserAgent pgtype.Text
 }
 
 // Swaps the refresh token only if old_hash is still the current one, keeps
-// the old one as spent, and counts the refresh as Session activity. No row:
-// another request rotated it first.
+// the old one as spent, and counts the refresh as Session activity, from
+// the refreshing device. No row: another request rotated it first.
 func (q *Queries) RotateRefreshToken(ctx context.Context, arg RotateRefreshTokenParams) (int64, error) {
 	result, err := q.db.Exec(ctx, rotateRefreshToken,
 		arg.OldHash,
@@ -303,6 +307,8 @@ func (q *Queries) RotateRefreshToken(ctx context.Context, arg RotateRefreshToken
 		arg.ExpiresAt,
 		arg.Sealed,
 		arg.ID,
+		arg.Ip,
+		arg.UserAgent,
 	)
 	if err != nil {
 		return 0, err
@@ -423,24 +429,27 @@ func (q *Queries) SetRedirectURIs(ctx context.Context, arg SetRedirectURIsParams
 }
 
 const signingKeys = `-- name: SigningKeys :many
-SELECT kid, sealed FROM signing_keys ORDER BY created_at DESC, kid LIMIT 2
+SELECT kid, created_at, sealed FROM signing_keys k
+WHERE NOT EXISTS (
+    SELECT 1 FROM signing_keys n
+    WHERE n.created_at > k.created_at AND n.created_at <= now() - $1::interval
+)
+ORDER BY created_at DESC, kid
 `
 
-type SigningKeysRow struct {
-	Kid    string
-	Sealed []byte
-}
-
-func (q *Queries) SigningKeys(ctx context.Context) ([]SigningKeysRow, error) {
-	rows, err := q.db.Query(ctx, signingKeys)
+// The published keys: the current one, plus each older key whose successor
+// came less than @retention ago. A newer key past that age means the next
+// key after this one is too.
+func (q *Queries) SigningKeys(ctx context.Context, retention pgtype.Interval) ([]SigningKey, error) {
+	rows, err := q.db.Query(ctx, signingKeys, retention)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SigningKeysRow
+	var items []SigningKey
 	for rows.Next() {
-		var i SigningKeysRow
-		if err := rows.Scan(&i.Kid, &i.Sealed); err != nil {
+		var i SigningKey
+		if err := rows.Scan(&i.Kid, &i.CreatedAt, &i.Sealed); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -229,8 +229,10 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 				return answer{}, err
 			}
 		}
+		ip, ua := oidcstore.Device(deviceContext(r))
 		sess, err := s.q.CreateSession(ctx, sqlc.CreateSessionParams{
 			ClientID: c.ID, UserID: sub, AuthTime: pgtype.Timestamptz{Time: authTime, Valid: true}, Amr: amr,
+			Ip: ip, UserAgent: ua,
 		})
 		if errors.Is(err, pgx.ErrNoRows) { // disabled since authenticating
 			return answer{}, &challengeError{status: http.StatusBadRequest, Code: string(goidc.ErrorCodeAccessDenied), Description: identity.ErrDisabled.Error()}
