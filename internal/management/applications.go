@@ -30,7 +30,7 @@ type ApplicationSettings struct {
 	SessionIdleTimeout     int32        `json:"sessionIdleTimeout,omitempty" minimum:"0" maximum:"31536000" doc:"Seconds a Session may sit idle; 0 for the default (30 days browser, 90 days App)"`
 	SessionMaxLifetime     int32        `json:"sessionMaxLifetime,omitempty" minimum:"0" maximum:"31536000" doc:"Seconds a Session may last from the User's last sign-in or re-authentication, however active; 0 for the default (90 days browser, 180 days App). At least the idle timeout in effect"`
 	RefreshTokens          bool         `json:"refreshTokens"`
-	WebhookURL             string       `json:"webhookUrl,omitempty" doc:"Where user.deleted is sent; empty for none"`
+	WebhookURL             string       `json:"webhookUrl,omitempty" doc:"Where User events (user.deleted, user.disabled, user.enabled, user.updated) are sent; empty for none"`
 	WebhookSecret          string       `json:"webhookSecret,omitempty" writeOnly:"true" doc:"Key the webhook is signed with; empty keeps the stored one. Never read back."`
 	BackchannelLogoutURI   string       `json:"backchannelLogoutUri,omitempty" doc:"Where OIDC Back-Channel Logout tokens are sent when a Session ends; Web (confidential) Applications only, empty for none"`
 	AppleAppIDs            []string     `json:"appleAppIds" nullable:"false" doc:"Team ID + Bundle ID, as ABCDE12345.com.example.app"`
