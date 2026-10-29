@@ -206,7 +206,8 @@ SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_re
        COALESCE(default_api, '')::text AS default_api,
        COALESCE(extract(epoch FROM session_idle_timeout), 0)::int AS session_idle_timeout,
        refresh_tokens, require_role, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
-       COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps
+       COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps,
+       token_auth_method, jwks
 FROM applications
 WHERE @client_id::text = '' OR client_id = @client_id
 ORDER BY builtin DESC, created_at, client_id;
@@ -216,7 +217,8 @@ INSERT INTO applications (client_id, name, type, secret_hash) VALUES ($1, '', $2
 
 -- name: UpdateApplication :execrows
 -- An empty webhook_url turns the webhook off; a NULL webhook_secret keeps
--- the stored one. idle_secs 0 means the default Session lifetime.
+-- the stored one, as does a NULL jwks. idle_secs 0 means the default
+-- Session lifetime.
 UPDATE applications SET
     name = @name,
     redirect_uris = @redirect_uris,
@@ -232,11 +234,20 @@ UPDATE applications SET
                                      ELSE webhook_secret_updated_at END,
     backchannel_logout_uri = NULLIF(@backchannel_logout_uri::text, ''),
     apple_app_ids = @apple_app_ids,
-    android_apps = @android_apps
+    android_apps = @android_apps,
+    jwks = COALESCE(sqlc.narg(jwks), jwks)
 WHERE client_id = @client_id AND NOT builtin;
 
 -- name: SetApplicationSecret :execrows
-UPDATE applications SET secret_hash = $2 WHERE client_id = $1 AND type <> 'public' AND NOT builtin;
+UPDATE applications SET secret_hash = $2
+WHERE client_id = $1 AND type <> 'public' AND token_auth_method = 'client_secret_basic' AND NOT builtin;
+
+-- name: SetTokenAuthMethod :execrows
+-- Switches how the Application authenticates (ADR 0023): a secret_hash for
+-- client_secret_basic, NULL for private_key_jwt, which needs a registered key.
+UPDATE applications SET token_auth_method = @method, secret_hash = sqlc.narg(secret_hash)
+WHERE client_id = @client_id AND type <> 'public' AND NOT builtin
+  AND (@method <> 'private_key_jwt' OR jsonb_array_length(jwks -> 'keys') > 0);
 
 -- name: DeleteApplication :exec
 DELETE FROM applications WHERE client_id = $1 AND NOT builtin;
