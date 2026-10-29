@@ -30,6 +30,7 @@ type ApplicationSettings struct {
 	RefreshTokens          bool         `json:"refreshTokens"`
 	WebhookURL             string       `json:"webhookUrl,omitempty" doc:"Where User events (user.deleted, user.disabled, user.enabled, user.updated) are sent; empty for none"`
 	WebhookSecret          string       `json:"webhookSecret,omitempty" writeOnly:"true" doc:"Key the webhook is signed with; empty keeps the stored one. Never read back."`
+	BackchannelLogoutURI   string       `json:"backchannelLogoutUri,omitempty" doc:"Where OIDC Back-Channel Logout tokens are sent when a Session ends; Web (confidential) Applications only, empty for none"`
 	AppleAppIDs            []string     `json:"appleAppIds" nullable:"false" doc:"Team ID + Bundle ID, as ABCDE12345.com.example.app"`
 	AndroidApps            []AndroidApp `json:"androidApps" nullable:"false"`
 }
@@ -99,7 +100,7 @@ func (s *Service) applications(ctx context.Context, clientID string) ([]Applicat
 			ApplicationSettings: ApplicationSettings{
 				Name: r.Name, RedirectURIs: r.RedirectUris, PostLogoutRedirectURIs: r.PostLogoutRedirectUris,
 				DefaultAPI: r.DefaultApi, SessionIdleTimeout: r.SessionIdleTimeout, RefreshTokens: r.RefreshTokens,
-				WebhookURL: r.WebhookUrl, AppleAppIDs: r.AppleAppIds,
+				WebhookURL: r.WebhookUrl, BackchannelLogoutURI: r.BackchannelLogoutUri, AppleAppIDs: r.AppleAppIds,
 			},
 		}
 		if r.WebhookSecretUpdatedAt.Valid {
@@ -222,6 +223,15 @@ func (st *ApplicationSettings) validate(typ string) error {
 			return identity.Invalid("webhook URL 须为 http(s) 地址")
 		}
 	}
+	// Only a Web Application has a back end to tell (ADR 0022).
+	if st.BackchannelLogoutURI != "" {
+		if typ != "confidential" {
+			return identity.Invalid("只有 Web Application 能配置 Back-Channel Logout")
+		}
+		if p, err := url.Parse(st.BackchannelLogoutURI); err != nil || (p.Scheme != "https" && p.Scheme != "http") || p.Host == "" || p.Fragment != "" {
+			return identity.Invalid("Back-Channel Logout URI 须为 http(s) 地址,不带 #")
+		}
+	}
 	for _, id := range st.AppleAppIDs {
 		if !appleAppID.MatchString(id) {
 			return identity.Invalid("Apple App ID 须为 Team ID.Bundle ID:" + id)
@@ -262,7 +272,7 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 		RedirectUris:           append([]string{}, st.RedirectURIs...),
 		PostLogoutRedirectUris: append([]string{}, st.PostLogoutRedirectURIs...),
 		DefaultApi:             st.DefaultAPI, IdleSecs: st.SessionIdleTimeout, RefreshTokens: st.RefreshTokens,
-		WebhookUrl: st.WebhookURL, WebhookSecret: secret,
+		WebhookUrl: st.WebhookURL, WebhookSecret: secret, BackchannelLogoutUri: st.BackchannelLogoutURI,
 		AppleAppIds: append([]string{}, st.AppleAppIDs...), AndroidApps: android,
 	})
 	var pg *pgconn.PgError

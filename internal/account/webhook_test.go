@@ -33,7 +33,7 @@ func (e *env) queued(what string, changed ...string) {
 		e.t.Fatal(err)
 	}
 	var left int
-	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM webhook_deliveries").Scan(&left); err != nil {
+	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM webhook_deliveries WHERE kind = 'webhook'").Scan(&left); err != nil {
 		e.t.Fatal(err)
 	}
 	if left != 0 || len(got) != len(changed) || (len(got) == 1 && got[0] != changed[0]) {

@@ -32,25 +32,27 @@ type Configuration struct {
 	TokenAuthnMethods      []AuthnMethod                `json:"token_endpoint_auth_methods_supported,omitempty"`
 	TokenAuthnSigAlgs      []SignatureAlgorithm         `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"`
 	// RequestURIParamSupported is always false; Discovery defaults it to true when omitted.
-	RequestURIParamSupported       bool                  `json:"request_uri_parameter_supported"`
-	IssuerResponseParamEnabled     bool                  `json:"authorization_response_iss_parameter_supported,omitempty"`
-	ClaimsParamEnabled             bool                  `json:"claims_parameter_supported,omitempty"`
-	AuthDetailsEnabled             bool                  `json:"authorization_details_supported,omitempty"`
-	AuthDetailTypesSupported       []AuthDetailType      `json:"authorization_details_types_supported,omitempty"`
-	DPoPSigAlgs                    []SignatureAlgorithm  `json:"dpop_signing_alg_values_supported,omitempty"`
-	TokenIntrospectionEndpoint     string                `json:"introspection_endpoint,omitempty"`
-	TokenIntrospectionAuthnMethods []AuthnMethod         `json:"introspection_endpoint_auth_methods_supported,omitempty"`
-	TokenIntrospectionAuthnSigAlgs []SignatureAlgorithm  `json:"introspection_endpoint_auth_signing_alg_values_supported,omitempty"`
-	TokenRevocationEndpoint        string                `json:"revocation_endpoint,omitempty"`
-	TokenRevocationAuthnMethods    []AuthnMethod         `json:"revocation_endpoint_auth_methods_supported,omitempty"`
-	TokenRevocationAuthnSigAlgs    []SignatureAlgorithm  `json:"revocation_endpoint_auth_signing_alg_values_supported,omitempty"`
-	ACRs                           []ACR                 `json:"acr_values_supported,omitempty"`
-	DisplayValues                  []DisplayValue        `json:"display_values_supported,omitempty"`
-	CodeChallengeMethods           []CodeChallengeMethod `json:"code_challenge_methods_supported,omitempty"`
-	EndSessionEndpoint             string                `json:"end_session_endpoint,omitempty"`
-	AuthorizationChallengeEndpoint string                `json:"authorization_challenge_endpoint,omitempty"`
-	OrganizationName               string                `json:"organization_name,omitempty"`
-	JWKS                           *JSONWebKeySet        `json:"jwks,omitempty"`
+	RequestURIParamSupported          bool                  `json:"request_uri_parameter_supported"`
+	IssuerResponseParamEnabled        bool                  `json:"authorization_response_iss_parameter_supported,omitempty"`
+	ClaimsParamEnabled                bool                  `json:"claims_parameter_supported,omitempty"`
+	AuthDetailsEnabled                bool                  `json:"authorization_details_supported,omitempty"`
+	AuthDetailTypesSupported          []AuthDetailType      `json:"authorization_details_types_supported,omitempty"`
+	DPoPSigAlgs                       []SignatureAlgorithm  `json:"dpop_signing_alg_values_supported,omitempty"`
+	TokenIntrospectionEndpoint        string                `json:"introspection_endpoint,omitempty"`
+	TokenIntrospectionAuthnMethods    []AuthnMethod         `json:"introspection_endpoint_auth_methods_supported,omitempty"`
+	TokenIntrospectionAuthnSigAlgs    []SignatureAlgorithm  `json:"introspection_endpoint_auth_signing_alg_values_supported,omitempty"`
+	TokenRevocationEndpoint           string                `json:"revocation_endpoint,omitempty"`
+	TokenRevocationAuthnMethods       []AuthnMethod         `json:"revocation_endpoint_auth_methods_supported,omitempty"`
+	TokenRevocationAuthnSigAlgs       []SignatureAlgorithm  `json:"revocation_endpoint_auth_signing_alg_values_supported,omitempty"`
+	ACRs                              []ACR                 `json:"acr_values_supported,omitempty"`
+	DisplayValues                     []DisplayValue        `json:"display_values_supported,omitempty"`
+	CodeChallengeMethods              []CodeChallengeMethod `json:"code_challenge_methods_supported,omitempty"`
+	EndSessionEndpoint                string                `json:"end_session_endpoint,omitempty"`
+	BackChannelLogoutSupported        bool                  `json:"backchannel_logout_supported,omitempty"`
+	BackChannelLogoutSessionSupported bool                  `json:"backchannel_logout_session_supported,omitempty"`
+	AuthorizationChallengeEndpoint    string                `json:"authorization_challenge_endpoint,omitempty"`
+	OrganizationName                  string                `json:"organization_name,omitempty"`
+	JWKS                              *JSONWebKeySet        `json:"jwks,omitempty"`
 }
 
 // ClientManager resolves clients that are not configured statically.

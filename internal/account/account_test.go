@@ -572,7 +572,7 @@ func TestDeleteAccount(t *testing.T) {
 		t.Errorf("same phone signs in again as %q (was %q): %v", again, sub, err)
 	}
 
-	hooks := webhook.New(e.pool, e.keyring)
+	hooks := webhook.New(e.pool, e.keyring, "https://auth.example")
 	if err := hooks.Deliver(ctx); err != nil {
 		t.Fatal(err)
 	}

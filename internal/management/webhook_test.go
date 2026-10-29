@@ -33,7 +33,7 @@ func (e *env) hooked() {
 // deliveries takes every queued delivery, oldest first.
 func (e *env) deliveries() []delivery {
 	e.t.Helper()
-	rows, err := e.pool.Query(context.Background(), "DELETE FROM webhook_deliveries RETURNING client_id, payload")
+	rows, err := e.pool.Query(context.Background(), "DELETE FROM webhook_deliveries WHERE kind = 'webhook' RETURNING client_id, payload")
 	if err != nil {
 		e.t.Fatal(err)
 	}

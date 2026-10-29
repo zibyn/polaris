@@ -14,12 +14,15 @@ UPDATE webhook_deliveries AS d SET next_at = now() + interval '5 minutes', attem
 FROM applications a
 WHERE a.client_id = d.client_id
   AND d.id IN (SELECT w.id FROM webhook_deliveries w WHERE w.next_at <= now() ORDER BY w.next_at LIMIT 20 FOR UPDATE SKIP LOCKED)
-RETURNING d.id, d.client_id, d.payload, d.attempts, COALESCE(a.webhook_url, '')::text AS url, a.webhook_secret AS secret
+RETURNING d.id, d.client_id, d.kind, d.payload, d.attempts,
+          COALESCE(CASE d.kind WHEN 'logout' THEN a.backchannel_logout_uri ELSE a.webhook_url END, '')::text AS url,
+          a.webhook_secret AS secret
 `
 
 type ClaimDeliveriesRow struct {
 	ID       string
 	ClientID string
+	Kind     string
 	Payload  []byte
 	Attempts int32
 	Url      string
@@ -40,6 +43,7 @@ func (q *Queries) ClaimDeliveries(ctx context.Context) ([]ClaimDeliveriesRow, er
 		if err := rows.Scan(
 			&i.ID,
 			&i.ClientID,
+			&i.Kind,
 			&i.Payload,
 			&i.Attempts,
 			&i.Url,

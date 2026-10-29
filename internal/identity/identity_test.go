@@ -473,7 +473,7 @@ func TestBindingAnIdentifierAtLoginQueuesUserUpdated(t *testing.T) {
 		t.Helper()
 		var got []string
 		if err := s.pool.QueryRow(ctx, `
-			WITH d AS (DELETE FROM webhook_deliveries RETURNING client_id, payload)
+			WITH d AS (DELETE FROM webhook_deliveries WHERE kind = 'webhook' RETURNING client_id, payload)
 			SELECT COALESCE(array_agg(d.client_id || ' ' || (d.payload->>'type') || ' ' || (d.payload->'data')::text), '{}') FROM d`).Scan(&got); err != nil {
 			t.Fatal(err)
 		}
