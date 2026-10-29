@@ -163,6 +163,7 @@ const currentSettings = (a: Application): ApplicationSettings => ({
 	sessionIdleTimeout: a.sessionIdleTimeout,
 	sessionMaxLifetime: a.sessionMaxLifetime,
 	refreshTokens: a.refreshTokens,
+	requireRole: a.requireRole,
 	webhookUrl: a.webhookUrl,
 	backchannelLogoutUri: a.backchannelLogoutUri,
 	appleAppIds: a.appleAppIds,
@@ -301,9 +302,18 @@ function BasicTab({ app, editable }: TabProps) {
 			save.mutate({ name: value.name.trim() }, { onSuccess: saved }),
 	});
 	const apiForm = useForm({
-		defaultValues: { defaultApi: app.defaultApi ?? "" },
-		onSubmit: ({ value }) => saveApi.mutate(value, { onSuccess: saved }),
+		defaultValues: {
+			defaultApi: app.defaultApi ?? "",
+			requireRole: app.requireRole ?? false,
+		},
+		onSubmit: ({ value }) =>
+			saveApi.mutate(
+				// The Roles checked are on the default API: none, nothing to require.
+				{ ...value, requireRole: !!value.defaultApi && value.requireRole },
+				{ onSuccess: saved },
+			),
 	});
+	const chosenApi = useStore(apiForm.store, (s) => s.values.defaultApi);
 	return (
 		<div className="space-y-10">
 			<Section
@@ -433,6 +443,30 @@ function BasicTab({ app, editable }: TabProps) {
 												</Link>
 											)}
 										</div>
+									)}
+								</FormField>
+							)}
+						</apiForm.Field>
+					)}
+					{registered.length > 0 && (
+						<apiForm.Field name="requireRole">
+							{(field) => (
+								<FormField
+									field={field}
+									label="要求用户有角色"
+									help={
+										chosenApi
+											? "开启后，用户在默认 API 资源上一个角色都没有时，不能登录这个应用，已登录的也不能再续期。"
+											: "先选默认 API 资源：检查的是用户在它上面的角色。"
+									}
+								>
+									{({ id }) => (
+										<Switch
+											id={id}
+											disabled={!editable || !chosenApi}
+											checked={!!chosenApi && field.state.value}
+											onCheckedChange={field.handleChange}
+										/>
 									)}
 								</FormField>
 							)}

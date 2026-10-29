@@ -377,7 +377,7 @@ SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_re
        COALESCE(default_api, '')::text AS default_api,
        COALESCE(extract(epoch FROM session_idle_timeout), 0)::int AS session_idle_timeout,
        COALESCE(extract(epoch FROM session_max_lifetime), 0)::int AS session_max_lifetime,
-       refresh_tokens, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
+       refresh_tokens, require_role, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
        COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps
 FROM applications
 WHERE $1::text = '' OR client_id = $1
@@ -396,6 +396,7 @@ type ListApplicationsRow struct {
 	SessionIdleTimeout     int32
 	SessionMaxLifetime     int32
 	RefreshTokens          bool
+	RequireRole            bool
 	WebhookUrl             string
 	WebhookSecretUpdatedAt pgtype.Timestamptz
 	BackchannelLogoutUri   string
@@ -425,6 +426,7 @@ func (q *Queries) ListApplications(ctx context.Context, clientID string) ([]List
 			&i.SessionIdleTimeout,
 			&i.SessionMaxLifetime,
 			&i.RefreshTokens,
+			&i.RequireRole,
 			&i.WebhookUrl,
 			&i.WebhookSecretUpdatedAt,
 			&i.BackchannelLogoutUri,
@@ -934,15 +936,16 @@ UPDATE applications SET
     session_idle_timeout = NULLIF($5::int, 0) * interval '1 second',
     session_max_lifetime = NULLIF($6::int, 0) * interval '1 second',
     refresh_tokens = $7,
-    webhook_url = NULLIF($8::text, ''),
-    webhook_secret = CASE WHEN $8 = '' THEN NULL ELSE COALESCE($9, webhook_secret) END,
-    webhook_secret_updated_at = CASE WHEN $8 = '' THEN NULL
-                                     WHEN $9 IS NOT NULL THEN now()
+    require_role = $8,
+    webhook_url = NULLIF($9::text, ''),
+    webhook_secret = CASE WHEN $9 = '' THEN NULL ELSE COALESCE($10, webhook_secret) END,
+    webhook_secret_updated_at = CASE WHEN $9 = '' THEN NULL
+                                     WHEN $10 IS NOT NULL THEN now()
                                      ELSE webhook_secret_updated_at END,
-    backchannel_logout_uri = NULLIF($10::text, ''),
-    apple_app_ids = $11,
-    android_apps = $12
-WHERE client_id = $13 AND NOT builtin
+    backchannel_logout_uri = NULLIF($11::text, ''),
+    apple_app_ids = $12,
+    android_apps = $13
+WHERE client_id = $14 AND NOT builtin
 `
 
 type UpdateApplicationParams struct {
@@ -953,6 +956,7 @@ type UpdateApplicationParams struct {
 	IdleSecs               int32
 	MaxSecs                int32
 	RefreshTokens          bool
+	RequireRole            bool
 	WebhookUrl             string
 	WebhookSecret          []byte
 	BackchannelLogoutUri   string
@@ -972,6 +976,7 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 		arg.IdleSecs,
 		arg.MaxSecs,
 		arg.RefreshTokens,
+		arg.RequireRole,
 		arg.WebhookUrl,
 		arg.WebhookSecret,
 		arg.BackchannelLogoutUri,

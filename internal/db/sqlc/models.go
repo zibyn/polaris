@@ -33,6 +33,7 @@ type Application struct {
 	AppleAppIds            []string
 	AndroidApps            []byte
 	BackchannelLogoutUri   pgtype.Text
+	RequireRole            bool
 	SessionMaxLifetime     pgtype.Interval
 }
 
