@@ -101,7 +101,8 @@ SELECT data FROM oidc_logout_sessions WHERE id = $1 AND expires_at > now();
 WITH g AS (DELETE FROM oidc_grants WHERE oidc_grants.expires_at < now()),
      a AS (DELETE FROM oidc_authn_sessions WHERE oidc_authn_sessions.expires_at < now()),
      c AS (DELETE FROM oidc_challenge_sessions WHERE oidc_challenge_sessions.expires_at < now()),
-     p AS (DELETE FROM provider_logins WHERE provider_logins.expires_at < now())
+     p AS (DELETE FROM provider_logins WHERE provider_logins.expires_at < now()),
+     j AS (DELETE FROM oidc_jtis WHERE oidc_jtis.expires_at < now())
 DELETE FROM oidc_logout_sessions WHERE oidc_logout_sessions.expires_at < now();
 
 -- name: InsertSigningKey :exec
@@ -147,3 +148,6 @@ SELECT COALESCE(array_agg(DISTINCT ar.role ORDER BY ar.role), '{}')::text[] AS r
                 FILTER (WHERE rp.permission IS NOT NULL), '{}')::text[] AS entitlements
 FROM application_roles ar LEFT JOIN role_permissions rp USING (api, role)
 WHERE ar.client_id = $1 AND ar.api = $2;
+
+-- name: ConsumeJTI :execrows
+INSERT INTO oidc_jtis (jti, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING;
