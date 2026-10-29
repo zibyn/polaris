@@ -450,3 +450,49 @@ func TestM2MApplicationRoles(t *testing.T) {
 		t.Errorf("the Application kept %v", held.Roles)
 	}
 }
+
+// TestRequireRole covers the switch that turns away Users without a Role on
+// the Application's default API (#155): it needs a default API, and an M2M
+// Application has no Users to turn away.
+func TestRequireRole(t *testing.T) {
+	e := start(t)
+	owner := e.token(e.owner, nil)
+	e.call("PUT", owner, apiPath(track), map[string]any{"name": "Track"}, nil)
+	settings := map[string]any{"name": "Web", "redirectUris": []string{"https://web.example/cb"}, "postLogoutRedirectUris": []string{},
+		"refreshTokens": true, "requireRole": true, "appleAppIds": []string{}, "androidApps": []any{}}
+	if code := e.call("POST", owner, "/applications", map[string]any{"type": "public", "settings": settings}, nil); code != 422 {
+		t.Errorf("no default API: %d", code)
+	}
+	settings["defaultApi"] = track
+	var created struct {
+		Application struct {
+			ClientID    string
+			RequireRole bool
+		}
+	}
+	if code := e.call("POST", owner, "/applications", map[string]any{"type": "public", "settings": settings}, &created); code != 200 || !created.Application.RequireRole {
+		t.Fatalf("create: %d %+v", code, created)
+	}
+	path := "/applications/" + created.Application.ClientID
+	settings["defaultApi"] = ""
+	if code := e.call("PUT", owner, path, settings, nil); code != 422 {
+		t.Errorf("default API dropped with the switch on: %d", code)
+	}
+	settings["defaultApi"], settings["requireRole"] = track, false
+	if code := e.call("PUT", owner, path, settings, nil); code != 204 {
+		t.Fatalf("turn off: %d", code)
+	}
+	var got struct{ RequireRole bool }
+	if e.get(owner, path, &got); got.RequireRole {
+		t.Errorf("after turning off: %+v", got)
+	}
+	if ev := e.audited("update-application"); ev.ByUser != "owner" {
+		t.Errorf("audit: %+v", ev)
+	}
+
+	m2m := m2mSettings(track)
+	m2m["requireRole"] = true
+	if code := e.call("POST", owner, "/applications", map[string]any{"type": "m2m", "settings": m2m}, nil); code != 422 {
+		t.Errorf("M2M Application: %d", code)
+	}
+}

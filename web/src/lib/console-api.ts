@@ -141,6 +141,7 @@ export type ApplicationSettings = {
 	defaultApi?: string;
 	sessionIdleTimeout?: number; // seconds; 0 or absent for the default
 	refreshTokens: boolean;
+	requireRole?: boolean; // needs defaultApi; not for m2m
 	webhookUrl?: string;
 	webhookSecret?: string; // write-only; empty keeps the stored one
 	backchannelLogoutUri?: string; // confidential only; empty for none
