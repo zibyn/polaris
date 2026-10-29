@@ -24,6 +24,7 @@ import (
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
+	hosted "github.com/zibyn/polaris/internal/login"
 	"github.com/zibyn/polaris/internal/oidcstore"
 	"github.com/zibyn/polaris/internal/otp"
 	"github.com/zibyn/polaris/internal/passkey"
@@ -449,7 +450,7 @@ func (s *Service) reauth(ctx context.Context, in *reauthInput) (*struct{}, error
 			if err != nil || len(ids) == 0 {
 				return cmp.Or(err, error(identity.ErrBadCredentials))
 			}
-			sub, err := s.ids.CheckPassword(ctx, identity.Attempt{IP: c.ip, UA: c.ua}, ids[0].Value, in.Body.Password)
+			sub, err := s.ids.CheckPassword(ctx, identity.Attempt{ClientID: hosted.AccountClientID, IP: c.ip, UA: c.ua}, ids[0].Value, in.Body.Password)
 			if err == nil && sub != c.sub {
 				err = identity.ErrBadCredentials
 			}

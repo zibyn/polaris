@@ -283,6 +283,14 @@ func TestReauthentication(t *testing.T) {
 	if c := e.call("POST", tok, "/v1/account/reauth", map[string]string{"password": "password1"}, nil); c != 204 {
 		t.Errorf("reauth by password: %d", c)
 	}
+	// Wrong passwords lock it as at login, audited at the account center.
+	for range 5 {
+		e.call("POST", tok, "/v1/account/reauth", map[string]string{"password": "wrong-one"}, nil)
+	}
+	var client string
+	if err := e.pool.QueryRow(context.Background(), "SELECT detail->>'client_id' FROM audit_log WHERE event = 'login.password_locked' AND sub = 'ALICE'").Scan(&client); err != nil || client != login.AccountClientID {
+		t.Errorf("password lockout audited from %q: %v", client, err)
+	}
 }
 
 // password sets sub's password.
