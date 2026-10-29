@@ -81,7 +81,8 @@ func serve() error {
 	if err := db.Migrate(ctx, pool); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	if err := oidcstore.NewKeys(pool, keyring).Ensure(ctx); err != nil {
+	keys := oidcstore.NewKeys(pool, keyring)
+	if err := keys.Ensure(ctx); err != nil {
 		return fmt.Errorf("signing key: %w", err)
 	}
 	if token, err := identity.New(pool, keyring).SetupToken(ctx); err != nil {
@@ -130,6 +131,7 @@ func serve() error {
 			}
 		}()
 	}
+	cleanupTasks = append(cleanupTasks, func(ctx context.Context, _ *pgxpool.Pool) error { return keys.RotateDue(ctx) })
 	go runCleanup(ctx, pool)
 	go webhook.New(pool, keyring, cfg.Issuer).Run(ctx)
 	drained := make(chan struct{})

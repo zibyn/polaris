@@ -33,6 +33,9 @@ type Application struct {
 	AppleAppIds            []string
 	AndroidApps            []byte
 	BackchannelLogoutUri   pgtype.Text
+	RequireRole            bool
+	TokenAuthMethod        string
+	Jwks                   []byte
 }
 
 type ApplicationRole struct {
@@ -134,6 +137,11 @@ type OidcGrant struct {
 	SessionID        pgtype.Text
 }
 
+type OidcJti struct {
+	Jti       string
+	ExpiresAt pgtype.Timestamptz
+}
+
 type OidcLogoutSession struct {
 	ID        string
 	ExpiresAt pgtype.Timestamptz
@@ -143,6 +151,7 @@ type OidcLogoutSession struct {
 type OidcSpentRefreshToken struct {
 	Hash    []byte
 	GrantID string
+	SpentAt pgtype.Timestamptz
 }
 
 type Passkey struct {
@@ -272,6 +281,7 @@ type Setting struct {
 	AuditRetentionDays  int32
 	AdminsNeedTwoFactor bool
 	PasskeyLogin        bool
+	OpenRegistration    bool
 }
 
 type SigningKey struct {

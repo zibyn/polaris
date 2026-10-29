@@ -37,6 +37,7 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
   - 一期:手机号或邮箱(请求发码)、验证码、Identifier + 密码;
   - 二期起:WebAuthn 断言、TOTP、Provider ID + 客户端令牌:`provider` + `authorization_code`,只接受启用中、类型声明了客户端令牌型的 Provider(目前只有 Apple:App 只转交 Sign in with Apple 给的 `authorization_code`,服务端以 Bundle ID 换码,见 ADR 0011)。Provider 不是这一类或已停用时返回 `400 invalid_request`;上游换码失败返回 `400 invalid_grant`,App 须让 User 重新用 Apple 登录。之后的两步验证、绑手机号与验证码登录相同,按 `next` 继续;`amr` 为 `fed`。
   - Passkey:见下面一节。
+- **未开放注册**:实例关闭开放注册时,发码请求的目标不属于任何 User,或 Provider 客户端令牌对应的 External Identity 没有绑定过,返回 `400 registration_closed`(非标准错误码),`error_description` 为"本实例未开放注册";不发验证码。错误码集合只新增,不改名(ADR 0010、ADR 0021)。
 - **多步认证**:用草案中的 `auth_session` 串联各步。`403 insufficient_authorization` 多带一个非标准字段 `next`,指明下一步:`code`(输入刚发出的验证码)、`password`(账号待激活:在同一 `auth_session` 里提交新的 `password`)、`phone`(先绑定手机号)、`totp`(开了两步验证:在同一 `auth_session` 里提交 `totp` 或 `recovery_code`;先于 `phone`)。`next: "password"` 排在所有步之前,连带两步验证;那一步提交的密码不带 PoW——密码本身就是证明。待激活的 User 也可以带 `delete` 注销账号。`totp` / `recovery_code` 输错时返回 `400 invalid_request` 并带回原 `auth_session`;第 5 次输错后返回 `invalid_session`,须从头登录。以后只新增取值,不改名、不删除;客户端遇到不认识的取值按失败处理。(ADR 0010)
 - **每个请求必须携带**:
   - 所同意的协议版本号,见 [security-compliance.md](security-compliance.md#协议同意);
@@ -60,11 +61,11 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
 |---|---|---|---|
 | access token | JWT,RFC 9068(`typ: at+jwt`),RS256 | 10 分钟 | `aud` 为 API 标识符;带 `client_id`、`roles`、`entitlements`(只限当前 API) |
 | ID token | JWT,RS256 | — | `sub`、`amr`、`sid`(签发它的 Session);scope 为 `phone` / `email` 时带对应 claim;不带角色 |
-| refresh token | 不透明 | 跟随 Session | 每次刷新都轮换;一旦重用,终止整个 Session |
+| refresh token | 不透明 | 跟随 Session | 每次刷新都轮换;最近换下的那个 60 秒内再来,再轮换一次签发新令牌(宽限,审计 `refresh_token.grace`);其余重用终止整个 Session |
 
 - **`amr`**:按 RFC 8176 取 `sms`、`otp`、`pwd`、`hwk` / `swk`;做过两步验证(TOTP 或恢复码)时为 `[第一因素, "otp", "mfa"]`(第一因素的值加上 `otp`、`mfa`,不重复:邮箱验证码登录为 `["otp", "mfa"]`,短信为 `["sms", "otp", "mfa"]`);Passkey 登录为 `["swk", "mfa"]`(凭证可跨设备同步)或 `["hwk", "mfa"]`(仅本机),Passkey 本身已验证持有与本人,不再加 `otp`;Application 以 `mfa` 判断是否做过两步验证;Provider 登录一律为自定义值 `fed`;接受注册邀请建立的那次会话为 `["otp"]`(链接证明邮箱控制权,与邮箱验证码同一种证据,见 [authentication.md](authentication.md#注册邀请))。
 - **业务后端校验**:用 JWKS 本地验签,检查签名、`aud`、`typ`,权限读 `entitlements`。
-- **签名**:只用 RS256;由管理员手动轮换。最新的 key 签发新 token;旧 key 在它的下一把 key 创建后继续留在 JWKS 里 1 小时(最长 token 寿命 10 分钟加上 RP 缓存 JWKS 的余量),期满即不再发布,随后由每小时的清理任务删除。只剩一把 key 时它一直有效。
+- **签名**:只用 RS256;每 90 天自动轮换(每小时的清理任务检查最新 key 的创建时间),管理员也可以手动轮换。最新的 key 签发新 token;旧 key 在它的下一把 key 创建后继续留在 JWKS 里 1 小时(最长 token 寿命 10 分钟加上 RP 缓存 JWKS 的余量),期满即不再发布,随后由每小时的清理任务删除。只剩一把 key 时它一直有效。
 - **吊销**:最多滞后一个 access token 的寿命。
 
 ## Session
@@ -80,6 +81,14 @@ Session 是一个 User 在一台设备或一个浏览器上的一次登录。
 ## Webhook
 
 - **配置**:每个 Application 可以选配一个 URL 和签名共享密钥。
-- **事件**:只有一种,`user.deleted`(带 `sub`),在 User 注销或被管理员删除时发送。
+- **收件方**:每个配置了 Webhook 的 Application 都收到每一条事件,不看 User 用没用过它,也不能按类型订阅。
+- **事件**:都是薄事件(ADR 0022),只带 `sub`,不带新值;要新值就调 Management API。payload 统一为 `{"type", "timestamp", "data"}`,`timestamp` 是 UTC 的 RFC 3339 时间。
+  - `user.deleted`,`data: {sub}`:User 注销或被管理员删除。
+  - `user.disabled` / `user.enabled`,`data: {sub}`:User 被禁用或恢复;状态本来就是这样时不发。
+  - `user.updated`,`data: {sub, changed}`:`changed` 是非空数组,取 `phone`、`email`、`username`、`profile`、`roles` 的子集,列出这次变了哪几项。不论是管理员改、User 在账号中心自己改,还是登录时绑定了已验证的 Identifier,都会发。改某个 User 的 Role 分配算 `roles`;强制删除 Role 或 API 时,原来持有其 Role 的每个 User 各发一条。
+  - 不发事件的:只改 Role 里的 Permission;Credential 变更(密码、Passkey、两步验证、恢复码);从待激活转为 active;External Identity 绑定或解绑;Session 终止(走 Back-Channel Logout)。
+- **事务**:事件和触发它的变更在同一个事务里排进投递队列;变更回滚,事件也不产生。
+- **顺序**:不保证投递顺序。接收方应按 `timestamp` 丢弃过时事件,或调 Management API 取当前状态。
+- **兼容**:接收方必须忽略不认识的 `type`,以后可能加新事件。
 - **签名与重试**:用共享密钥签名;失败会重试。
 - **Session 终止**:不走 Webhook,走 [Back-Channel Logout](#back-channel-logout)。

@@ -31,6 +31,9 @@ type Store struct {
 	// longer-lived secret (auth code, refresh token) does; at least the
 	// access token lifetime.
 	GrantTTL time.Duration
+	// JTITTL keeps a used jti until its JWT can no longer be valid: go-oidc's
+	// longest JWT lifetime plus clock skew. ConsumeJTI never sees the JWT's exp.
+	JTITTL time.Duration
 }
 
 var (
@@ -45,11 +48,40 @@ var (
 // was issued in; such a grant works only while that Session lives.
 const SessionKey = "session"
 
+// GraceWindow is how long the refresh token a rotation spent last still
+// rotates its grant again instead of counting as reuse (ADR 0019).
+const GraceWindow = 60 * time.Second
+
+// graceKey marks, in the grant Store, a grant loaded by a spent refresh token
+// in its grace window; never saved.
+const graceKey = "polaris.grace"
+
 // errReused answers a refresh token that was already rotated away.
 var errReused = goidc.NewError(goidc.ErrorCodeInvalidGrant, "refresh token reused")
 
 func New(pool *pgxpool.Pool, keyring *crypt.Keyring) *Store {
-	return &Store{q: sqlc.New(pool), keyring: keyring, GrantTTL: time.Hour}
+	// 600s is go-oidc's default JWTLifetimeSecs, which login does not override.
+	return &Store{q: sqlc.New(pool), keyring: keyring, GrantTTL: time.Hour, JTITTL: 600*time.Second + time.Minute}
+}
+
+// errJTIReplayed answers a jti seen before; go-oidc maps it to the error code
+// of the DPoP proof or client assertion it came in.
+var errJTIReplayed = errors.New("jti already used")
+
+// ConsumeJTI is the goidc.ConsumeJTIFunc: a jti is good once until it
+// expires. The primary key makes one of concurrent uses win, across replicas.
+func (s *Store) ConsumeJTI(ctx context.Context, jti string) error {
+	n, err := s.q.ConsumeJTI(ctx, sqlc.ConsumeJTIParams{
+		Jti:       jti,
+		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(s.JTITTL), Valid: true},
+	})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errJTIReplayed
+	}
+	return nil
 }
 
 // DeleteExpired removes expired grants, sessions and retired signing keys;
@@ -63,9 +95,11 @@ func DeleteExpired(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 // Client resolves an Application. Confidential Applications authenticate with
-// their secret (basic or post); public ones with PKCE only. An M2M Application
-// authenticates with its secret too, but only for the client_credentials
-// grant: it has no login, so no authorization code (ADR 0015).
+// their secret (basic or post), or with an assertion signed by a registered
+// key once switched to private_key_jwt (ADR 0023); public ones with PKCE
+// only. An M2M Application authenticates the same ways, but only for the
+// client_credentials grant: it has no login, so no authorization code
+// (ADR 0015).
 func (s *Store) Client(ctx context.Context, id string) (*goidc.Client, error) {
 	app, err := s.q.Application(ctx, id)
 	if err != nil {
@@ -94,6 +128,13 @@ func (s *Store) Client(ctx context.Context, id string) (*goidc.Client, error) {
 	case "confidential":
 		c.TokenAuthnMethod = goidc.AuthnMethodSecretBasic
 		c.Secret = hex.EncodeToString(app.SecretHash)
+	}
+	if app.Type != "public" && app.TokenAuthMethod == string(goidc.AuthnMethodPrivateKeyJWT) {
+		c.TokenAuthnMethod, c.Secret = goidc.AuthnMethodPrivateKeyJWT, ""
+		c.JWKS = &goidc.JSONWebKeySet{}
+		if err := json.Unmarshal(app.Jwks, c.JWKS); err != nil {
+			return nil, err
+		}
 	}
 	return c, nil
 }
@@ -145,6 +186,8 @@ func VerifyClientSecret(_ context.Context, stored, presented string) error {
 }
 
 func (s *Store) SaveGrant(ctx context.Context, g *goidc.Grant) error {
+	_, grace := g.Store[graceKey]
+	delete(g.Store, graceKey)
 	data, err := json.Marshal(g)
 	if err != nil {
 		return err
@@ -162,13 +205,28 @@ func (s *Store) SaveGrant(ctx context.Context, g *goidc.Grant) error {
 		if err != nil {
 			return err
 		}
-		if n == 0 { // a concurrent request rotated it first: the token was used twice
+		if n == 0 {
+			// Spent already: a retry in the grace window, or a concurrent
+			// request rotated it first. Either way rotate from the current token.
+			n, err = s.q.GraceRotateRefreshToken(ctx, sqlc.GraceRotateRefreshTokenParams{
+				OldHash: hash(g.PreviousRefreshToken), GraceSecs: int32(GraceWindow.Seconds()),
+				NewHash: hash(g.RefreshToken), ExpiresAt: s.grantExpiry(g), Sealed: sealed,
+			})
+			if err != nil {
+				return err
+			}
+		}
+		if n == 0 {
 			if err := s.q.EndReusedRefreshToken(ctx, hash(g.PreviousRefreshToken)); err != nil {
 				return err
 			}
 			return errReused
 		}
 		return nil
+	}
+	if g.RevokedAt != 0 && grace {
+		// Revoking a spent token ends the Session, grace window or not.
+		return s.q.EndReusedRefreshToken(ctx, hash(g.RefreshToken))
 	}
 	session, _ := g.Store[SessionKey].(string)
 	return s.q.SaveGrant(ctx, sqlc.SaveGrantParams{
@@ -201,15 +259,35 @@ func (s *Store) GrantByAuthCode(ctx context.Context, code string) (*goidc.Grant,
 
 // GrantByRefreshToken also catches reuse: a token that a rotation replaced
 // ends the Session it was issued in, wherever it shows up (refresh or
-// revocation, from any client), since it has leaked.
+// revocation, from any client), since it has leaked. The token rotated away
+// last gets a grace window: its grant comes back as if the token were still
+// current, and SaveGrant rotates it from the actual current one (ADR 0019).
 func (s *Store) GrantByRefreshToken(ctx context.Context, token string) (*goidc.Grant, error) {
 	g, err := s.openGrant(s.q.GrantByRefreshTokenHash(ctx, hash(token)))
-	if errors.Is(err, goidc.ErrNotFound) {
-		if err := s.q.EndReusedRefreshToken(ctx, hash(token)); err != nil {
+	if !errors.Is(err, goidc.ErrNotFound) {
+		return g, err
+	}
+	id, err := s.q.GraceRefreshToken(ctx, sqlc.GraceRefreshTokenParams{Hash: hash(token), GraceSecs: int32(GraceWindow.Seconds())})
+	if err == nil {
+		g, err := s.Grant(ctx, id)
+		if err == nil {
+			g.RefreshToken = token
+			if g.Store == nil {
+				g.Store = map[string]any{}
+			}
+			g.Store[graceKey] = true
+			return g, nil
+		}
+		if !errors.Is(err, goidc.ErrNotFound) {
 			return nil, err
 		}
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
 	}
-	return g, err
+	if err := s.q.EndReusedRefreshToken(ctx, hash(token)); err != nil {
+		return nil, err
+	}
+	return nil, goidc.ErrNotFound
 }
 
 func (s *Store) openGrant(row sqlc.OidcGrant, err error) (*goidc.Grant, error) {

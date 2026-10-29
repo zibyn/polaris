@@ -69,6 +69,27 @@ func (q *Queries) AssignRole(ctx context.Context, arg AssignRoleParams) error {
 	return err
 }
 
+const bindIdentifier = `-- name: BindIdentifier :exec
+WITH put AS (
+    INSERT INTO identifiers (user_id, kind, value) VALUES ($1, $2, $3)
+)
+INSERT INTO webhook_deliveries (client_id, payload)
+SELECT e.client_id, e.payload FROM user_event('user.updated', $1, ARRAY[$2::text]) e
+`
+
+type BindIdentifierParams struct {
+	UserID string
+	Kind   string
+	Value  string
+}
+
+// Adds an Identifier to an existing User (logging in binds a verified one),
+// queuing user.updated.
+func (q *Queries) BindIdentifier(ctx context.Context, arg BindIdentifierParams) error {
+	_, err := q.db.Exec(ctx, bindIdentifier, arg.UserID, arg.Kind, arg.Value)
+	return err
+}
+
 const closeSetup = `-- name: CloseSetup :exec
 UPDATE settings SET setup_token = NULL, setup_done = true
 `
@@ -134,6 +155,20 @@ func (q *Queries) LockSetup(ctx context.Context) (LockSetupRow, error) {
 	var i LockSetupRow
 	err := row.Scan(&i.SetupToken, &i.SetupDone)
 	return i, err
+}
+
+const maySignUp = `-- name: MaySignUp :one
+SELECT (s.open_registration OR EXISTS (SELECT 1 FROM identifiers i WHERE i.value = $1::text))::boolean
+FROM settings s
+`
+
+// Whether value may be signed in with by code (ADR 0021): a User holds it,
+// or the instance is open to new ones.
+func (q *Queries) MaySignUp(ctx context.Context, value string) (bool, error) {
+	row := q.db.QueryRow(ctx, maySignUp, value)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const needsConsent = `-- name: NeedsConsent :one
@@ -208,12 +243,26 @@ func (q *Queries) RecordConsent(ctx context.Context, arg RecordConsentParams) er
 	return err
 }
 
+const registrationOpen = `-- name: RegistrationOpen :one
+SELECT open_registration FROM settings
+`
+
+func (q *Queries) RegistrationOpen(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, registrationOpen)
+	var open_registration bool
+	err := row.Scan(&open_registration)
+	return open_registration, err
+}
+
 const replaceIdentifier = `-- name: ReplaceIdentifier :execrows
 WITH put AS (
     INSERT INTO identifiers (user_id, kind, value)
     SELECT users.id, $1, $3 FROM users WHERE users.id = $4
     ON CONFLICT (user_id, kind) DO UPDATE SET value = EXCLUDED.value
     RETURNING identifiers.user_id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM put, user_event('user.updated', put.user_id, ARRAY[$1::text]) e
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', $1::text, 'by', $2::text) FROM put
@@ -227,7 +276,7 @@ type ReplaceIdentifierParams struct {
 }
 
 // Sets a User's Identifier of a kind, replacing the one they had. Audited
-// with who did it, without the values.
+// with who did it, without the values, and queues user.updated.
 func (q *Queries) ReplaceIdentifier(ctx context.Context, arg ReplaceIdentifierParams) (int64, error) {
 	result, err := q.db.Exec(ctx, replaceIdentifier,
 		arg.Kind,

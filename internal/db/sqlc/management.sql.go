@@ -94,9 +94,17 @@ func (q *Queries) Caller(ctx context.Context, arg CallerParams) (CallerRow, erro
 }
 
 const deleteAPI = `-- name: DeleteAPI :execrows
-DELETE FROM apis
-WHERE apis.identifier = $1 AND NOT apis.builtin
-  AND ($2::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = apis.identifier))
+WITH gone AS (
+    DELETE FROM apis
+    WHERE apis.identifier = $1 AND NOT apis.builtin
+      AND ($2::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = apis.identifier))
+    RETURNING apis.identifier
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM (SELECT DISTINCT ur.user_id FROM user_roles ur JOIN gone ON ur.api = gone.identifier) h,
+                    user_event('user.updated', h.user_id, '{roles}') e
+)
+SELECT 1 FROM gone
 `
 
 type DeleteAPIParams struct {
@@ -105,7 +113,8 @@ type DeleteAPIParams struct {
 }
 
 // Its Permissions, Roles and their assignments go with it, but only when
-// force confirms that; no row while someone holds one of its Roles.
+// force confirms that; no row while someone holds one of its Roles. Each
+// User who held one gets user.updated.
 func (q *Queries) DeleteAPI(ctx context.Context, arg DeleteAPIParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteAPI, arg.Identifier, arg.Force)
 	if err != nil {
@@ -142,10 +151,18 @@ func (q *Queries) DeletePermission(ctx context.Context, arg DeletePermissionPara
 }
 
 const deleteRole = `-- name: DeleteRole :execrows
-DELETE FROM roles
-WHERE roles.api = $1 AND roles.key = $2 AND NOT roles.builtin
-  AND ($3::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = roles.api AND ur.role = roles.key)
-                             AND NOT EXISTS (SELECT 1 FROM application_roles ar WHERE ar.api = roles.api AND ar.role = roles.key))
+WITH gone AS (
+    DELETE FROM roles
+    WHERE roles.api = $1 AND roles.key = $2 AND NOT roles.builtin
+      AND ($3::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = roles.api AND ur.role = roles.key)
+                                 AND NOT EXISTS (SELECT 1 FROM application_roles ar WHERE ar.api = roles.api AND ar.role = roles.key))
+    RETURNING roles.api, roles.key
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM user_roles ur JOIN gone ON ur.api = gone.api AND ur.role = gone.key,
+                    user_event('user.updated', ur.user_id, '{roles}') e
+)
+SELECT 1 FROM gone
 `
 
 type DeleteRoleParams struct {
@@ -155,7 +172,8 @@ type DeleteRoleParams struct {
 }
 
 // Its assignments go with it (user_roles and application_roles cascade), but
-// only when force confirms that; no row while anyone holds it.
+// only when force confirms that; no row while anyone holds it. Each User
+// who held it gets user.updated.
 func (q *Queries) DeleteRole(ctx context.Context, arg DeleteRoleParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteRole, arg.Api, arg.Key, arg.Force)
 	if err != nil {
@@ -172,11 +190,7 @@ WITH gone AS (
     WHERE audit_log.sub IN (SELECT gone.id FROM gone)
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT a.client_id, jsonb_build_object(
-        'type', 'user.deleted',
-        'timestamp', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-        'data', jsonb_build_object('sub', gone.id))
-    FROM gone, applications a WHERE a.webhook_url IS NOT NULL
+    SELECT e.client_id, e.payload FROM gone, user_event('user.deleted', gone.id) e
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'user.deleted', gone.id, jsonb_build_object('by', $1::text) FROM gone
@@ -201,7 +215,7 @@ func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) (int64, 
 
 const getSettings = `-- name: GetSettings :one
 SELECT password_login, require_phone, daily_send_limit, terms_url, privacy_url, terms_version, audit_retention_days,
-       admins_need_two_factor, passkey_login
+       admins_need_two_factor, passkey_login, open_registration
 FROM settings
 `
 
@@ -215,6 +229,7 @@ type GetSettingsRow struct {
 	AuditRetentionDays  int32
 	AdminsNeedTwoFactor bool
 	PasskeyLogin        bool
+	OpenRegistration    bool
 }
 
 func (q *Queries) GetSettings(ctx context.Context) (GetSettingsRow, error) {
@@ -230,6 +245,7 @@ func (q *Queries) GetSettings(ctx context.Context) (GetSettingsRow, error) {
 		&i.AuditRetentionDays,
 		&i.AdminsNeedTwoFactor,
 		&i.PasskeyLogin,
+		&i.OpenRegistration,
 	)
 	return i, err
 }
@@ -360,8 +376,9 @@ const listApplications = `-- name: ListApplications :many
 SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_redirect_uris,
        COALESCE(default_api, '')::text AS default_api,
        COALESCE(extract(epoch FROM session_idle_timeout), 0)::int AS session_idle_timeout,
-       refresh_tokens, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
-       COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps
+       refresh_tokens, require_role, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
+       COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps,
+       token_auth_method, jwks
 FROM applications
 WHERE $1::text = '' OR client_id = $1
 ORDER BY builtin DESC, created_at, client_id
@@ -378,11 +395,14 @@ type ListApplicationsRow struct {
 	DefaultApi             string
 	SessionIdleTimeout     int32
 	RefreshTokens          bool
+	RequireRole            bool
 	WebhookUrl             string
 	WebhookSecretUpdatedAt pgtype.Timestamptz
 	BackchannelLogoutUri   string
 	AppleAppIds            []string
 	AndroidApps            []byte
+	TokenAuthMethod        string
+	Jwks                   []byte
 }
 
 // One Application, or all of them for an empty client_id.
@@ -406,11 +426,14 @@ func (q *Queries) ListApplications(ctx context.Context, clientID string) ([]List
 			&i.DefaultApi,
 			&i.SessionIdleTimeout,
 			&i.RefreshTokens,
+			&i.RequireRole,
 			&i.WebhookUrl,
 			&i.WebhookSecretUpdatedAt,
 			&i.BackchannelLogoutUri,
 			&i.AppleAppIds,
 			&i.AndroidApps,
+			&i.TokenAuthMethod,
+			&i.Jwks,
 		); err != nil {
 			return nil, err
 		}
@@ -798,7 +821,8 @@ func (q *Queries) SetApplicationRoles(ctx context.Context, arg SetApplicationRol
 }
 
 const setApplicationSecret = `-- name: SetApplicationSecret :execrows
-UPDATE applications SET secret_hash = $2 WHERE client_id = $1 AND type <> 'public' AND NOT builtin
+UPDATE applications SET secret_hash = $2
+WHERE client_id = $1 AND type <> 'public' AND token_auth_method = 'client_secret_basic' AND NOT builtin
 `
 
 type SetApplicationSecretParams struct {
@@ -835,11 +859,36 @@ func (q *Queries) SetRolePermissions(ctx context.Context, arg SetRolePermissions
 	return err
 }
 
+const setTokenAuthMethod = `-- name: SetTokenAuthMethod :execrows
+UPDATE applications SET token_auth_method = $1, secret_hash = $2
+WHERE client_id = $3 AND type <> 'public' AND NOT builtin
+  AND ($1 <> 'private_key_jwt' OR jsonb_array_length(jwks -> 'keys') > 0)
+`
+
+type SetTokenAuthMethodParams struct {
+	Method     string
+	SecretHash []byte
+	ClientID   string
+}
+
+// Switches how the Application authenticates (ADR 0023): a secret_hash for
+// client_secret_basic, NULL for private_key_jwt, which needs a registered key.
+func (q *Queries) SetTokenAuthMethod(ctx context.Context, arg SetTokenAuthMethodParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setTokenAuthMethod, arg.Method, arg.SecretHash, arg.ClientID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setUserDisabled = `-- name: SetUserDisabled :execrows
 WITH changed AS (
     UPDATE users SET disabled_at = CASE WHEN $1::boolean THEN now() END
     WHERE users.id = $3 AND (users.disabled_at IS NOT NULL) <> $1::boolean
     RETURNING users.id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM changed, user_event(CASE WHEN $1::boolean THEN 'user.disabled' ELSE 'user.enabled' END, changed.id) e
 ), ended AS (
     UPDATE sessions SET ended_at = now()
     WHERE sessions.user_id IN (SELECT changed.id FROM changed) AND $1::boolean AND sessions.ended_at IS NULL
@@ -869,10 +918,16 @@ const setUserRoles = `-- name: SetUserRoles :exec
 WITH gone AS (
     DELETE FROM user_roles
     WHERE user_roles.user_id = $1 AND user_roles.api = $2 AND NOT (user_roles.role = ANY ($3::text[]))
+    RETURNING user_roles.user_id
 ), added AS (
     INSERT INTO user_roles (user_id, api, role)
     SELECT $1, $2, r FROM unnest($3::text[]) AS r
     ON CONFLICT DO NOTHING
+    RETURNING user_roles.user_id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM user_event('user.updated', $1, '{roles}') e
+    WHERE EXISTS (SELECT 1 FROM gone) OR EXISTS (SELECT 1 FROM added)
 )
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('roles.assigned', $1::text, jsonb_build_object('api', $2::text, 'roles', $3::text[], 'by', $4::text))
@@ -885,7 +940,8 @@ type SetUserRolesParams struct {
 	By     string
 }
 
-// Makes roles a User's Roles on an API; audited with who did it.
+// Makes roles a User's Roles on an API; audited with who did it, and queues
+// user.updated when that changed anything.
 func (q *Queries) SetUserRoles(ctx context.Context, arg SetUserRolesParams) error {
 	_, err := q.db.Exec(ctx, setUserRoles,
 		arg.UserID,
@@ -904,15 +960,17 @@ UPDATE applications SET
     default_api = NULLIF($4::text, ''),
     session_idle_timeout = NULLIF($5::int, 0) * interval '1 second',
     refresh_tokens = $6,
-    webhook_url = NULLIF($7::text, ''),
-    webhook_secret = CASE WHEN $7 = '' THEN NULL ELSE COALESCE($8, webhook_secret) END,
-    webhook_secret_updated_at = CASE WHEN $7 = '' THEN NULL
-                                     WHEN $8 IS NOT NULL THEN now()
+    require_role = $7,
+    webhook_url = NULLIF($8::text, ''),
+    webhook_secret = CASE WHEN $8 = '' THEN NULL ELSE COALESCE($9, webhook_secret) END,
+    webhook_secret_updated_at = CASE WHEN $8 = '' THEN NULL
+                                     WHEN $9 IS NOT NULL THEN now()
                                      ELSE webhook_secret_updated_at END,
-    backchannel_logout_uri = NULLIF($9::text, ''),
-    apple_app_ids = $10,
-    android_apps = $11
-WHERE client_id = $12 AND NOT builtin
+    backchannel_logout_uri = NULLIF($10::text, ''),
+    apple_app_ids = $11,
+    android_apps = $12,
+    jwks = COALESCE($13, jwks)
+WHERE client_id = $14 AND NOT builtin
 `
 
 type UpdateApplicationParams struct {
@@ -922,16 +980,19 @@ type UpdateApplicationParams struct {
 	DefaultApi             string
 	IdleSecs               int32
 	RefreshTokens          bool
+	RequireRole            bool
 	WebhookUrl             string
 	WebhookSecret          []byte
 	BackchannelLogoutUri   string
 	AppleAppIds            []string
 	AndroidApps            []byte
+	Jwks                   []byte
 	ClientID               string
 }
 
 // An empty webhook_url turns the webhook off; a NULL webhook_secret keeps
-// the stored one. idle_secs 0 means the default Session lifetime.
+// the stored one, as does a NULL jwks. idle_secs 0 means the default
+// Session lifetime.
 func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateApplication,
 		arg.Name,
@@ -940,11 +1001,13 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 		arg.DefaultApi,
 		arg.IdleSecs,
 		arg.RefreshTokens,
+		arg.RequireRole,
 		arg.WebhookUrl,
 		arg.WebhookSecret,
 		arg.BackchannelLogoutUri,
 		arg.AppleAppIds,
 		arg.AndroidApps,
+		arg.Jwks,
 		arg.ClientID,
 	)
 	if err != nil {
@@ -958,7 +1021,8 @@ WITH u AS (
     UPDATE settings SET password_login = $2, require_phone = $3,
         daily_send_limit = $4, terms_url = $5, privacy_url = $6,
         terms_version = $7, audit_retention_days = $8,
-        admins_need_two_factor = $9, passkey_login = $10
+        admins_need_two_factor = $9, passkey_login = $10,
+        open_registration = $11
 )
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('settings.updated', NULL, jsonb_build_object('by', $1::text))
@@ -975,6 +1039,7 @@ type UpdateSettingsParams struct {
 	AuditRetentionDays  int32
 	AdminsNeedTwoFactor bool
 	PasskeyLogin        bool
+	OpenRegistration    bool
 }
 
 // Changes the login policy; audited with who did it.
@@ -990,6 +1055,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.AuditRetentionDays,
 		arg.AdminsNeedTwoFactor,
 		arg.PasskeyLogin,
+		arg.OpenRegistration,
 	)
 	return err
 }

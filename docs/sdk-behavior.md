@@ -10,6 +10,7 @@
 - **多步**:`403 insufficient_authorization` 带回 `auth_session`,下一步带上它。**必须**按 `next` 决定下一步,不要解析 `error_description`:`code` 表示"输入验证码"(给绑定的手机号发码后也是 `code`);`phone` 表示"需要绑定手机号",在同一 `auth_session` 内给手机号发码再验证;`totp` 表示"User 开了两步验证",在同一 `auth_session` 内提交 `totp`(验证器上的 6 位码)或 `recovery_code`(恢复码),先于 `phone`。`totp` 输错返回 `invalid_request` 并带回 `auth_session`,可以重输;第 5 次输错后返回 `invalid_session`。`next` 以后只新增取值;遇到不认识的取值**必须**按失败处理(KMP SDK 抛 `PolarisException`,`error` 为 `unsupported_step`),提示 User 升级 App。
 - **外部登录**(Apple):App 用系统的 Sign in with Apple 拿到 `authorization_code`,原样作为 `authorization_code`、连同 Provider ID 作为 `provider` 提交(KMP:`signInWithProvider`),不提交 identity token,也不需要 nonce(ADR 0011)。code 只能用一次,`400 invalid_grant` 表示 Apple 没认这个 code,让 User 重新用 Apple 登录。之后照常按 `next` 走。
 - **用户错误**:`400 invalid_request` 的 `error_description` 可直接展示;返回了 `auth_session` 时它仍然可用(比如重输验证码)。`invalid_session` 表示从头再来。
+- **没有权限**:`403 application_access_denied` 表示 User 登录成功,但这个 Application 要求 User 在它的默认 API 上有 Role,而他一个都没有。不带 `auth_session`,重试没用:提示"你没有使用该应用的权限,请联系管理员",并允许切换账号。见 [rbac.md](spec/rbac.md#签发时检查-role)。
 
 ## Passkey
 
@@ -22,11 +23,13 @@
 
 ## 刷新
 
-- **single-flight(必须)**:同一时间只有一个刷新请求,其余调用方等它的结果。服务端没有宽限窗口:同一个 refresh token 用两次即视为泄露。
+- **single-flight(必须)**:同一时间只有一个刷新请求,其余调用方等它的结果。服务端的宽限窗口(见下)只兜住丢失的响应,不能代替 single-flight。
 - **时机**:access token 剩余不足 30 秒时刷新;刷新后旧 refresh token 立刻作废,新令牌原子地写入存储。
-- **网络失败、5xx**:保留现有令牌,下次再试。注意:若服务端已完成轮换而响应丢失,下次刷新会用到旧 token,按重用处理。
+- **网络失败、5xx**:保留现有令牌,下次再试。若服务端已完成轮换而响应丢失,下次刷新会用到旧 token:60 秒内服务端走宽限,签发一组新令牌;超过 60 秒则按重用处理。
 
 ## refresh token 重用后
+
+最近一次被换下的 refresh token,换下后 60 秒内再拿来刷新,服务端不算重用:基于当前状态再轮换一次,签发一组全新的令牌(不是丢失的那组),Session 照常。并发刷新的输家同样走宽限。更早换下的 token,或超过 60 秒才回来的 token,算重用。用已用 token 调 `/revoke` 始终终止 Session。
 
 服务端发现重用时终止整个 Session:旧 token、新 token 和这个 Session 签发的 access token(在 Account API 上立即,在业务后端最多滞后 10 分钟)都失效。`/token` 返回 `invalid_grant` 时 SDK 清空本地令牌,报告"已登出"(KMP:`PolarisException.SIGNED_OUT`),App 应回到登录页。被吊销、过期、在账号中心下线、账号被删除,表现相同。
 

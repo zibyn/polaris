@@ -150,8 +150,10 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 		oidcop.WithNoneAuthn(),
 		oidcop.WithSecretBasicAuthn(),
 		oidcop.WithSecretPostAuthn(),
+		oidcop.WithPrivateKeyJWTAuthn(goidc.SigAlgRS256, goidc.SigAlgES256),
 		oidcop.WithClientManager(store),
 		oidcop.WithClientSecretVerifier(oidcstore.VerifyClientSecret),
+		oidcop.WithJTIConsumer(store.ConsumeJTI),
 		oidcop.WithAuthCodeGrant(
 			oidcop.AuthCodeGrantConfig{Manager: store, ResponseTypes: []goidc.ResponseType{goidc.ResponseTypeCode}},
 			oidcop.WithPKCE([]goidc.CodeChallengeMethod{goidc.CodeChallengeMethodSHA256}),
@@ -162,6 +164,16 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 				s.authenticate)),
 		),
 		oidcop.WithRefreshTokenGrant(store, oidcop.WithRefreshTokenRotation()),
+		// A User whose Roles were all taken away cannot renew forever.
+		oidcop.WithGrantHandler(func(ctx context.Context, typ goidc.GrantType, g *goidc.Grant) error {
+			if typ != goidc.GrantRefreshToken {
+				return nil
+			}
+			if ok, err := s.mayUse(ctx, g.ClientID, g.Subject); err != nil || ok {
+				return err
+			}
+			return goidc.NewError(goidc.ErrorCodeInvalidGrant, errNoRole)
+		}),
 		// Only an M2M Application advertises this grant; it mints a token for
 		// the Application itself (ADR 0015).
 		oidcop.WithClientCredentialsGrant(),
@@ -235,7 +247,8 @@ func (s *Service) Register(mux *http.ServeMux) {
 // clientCredentialsRules applies ADR 0015 to a client_credentials request:
 // its scope is ignored (the token is for the Application's default API and
 // grants nothing else), and the secret goes in the Authorization header, not
-// the body — an M2M Application authenticates with client_secret_basic only.
+// the body — an M2M Application authenticates with client_secret_basic, or
+// private_key_jwt once switched (ADR 0023), never client_secret_post.
 // Only an m2m Application may use the grant, so the grant type alone
 // identifies such a request, wherever the token endpoint ends up mounted.
 func clientCredentialsRules(next http.Handler) http.Handler {
@@ -480,6 +493,9 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		if err == nil {
 			err = s.pow.Verify(ctx, r.PostFormValue("altcha"))
 		}
+		if err == nil && pending == "" {
+			err = s.ids.MaySignUp(ctx, value)
+		}
 		if err == nil {
 			err = s.codes.Send(ctx, kind, value, clientIP(r))
 		}
@@ -505,6 +521,11 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			return s.render(w, r, as, c, loginPage{})
 		}
 		form.Identifier, form.CodeSent = value, true
+		if pending == "" {
+			if err := s.ids.MaySignUp(ctx, value); err != nil {
+				return fail(err)
+			}
+		}
 		if err := s.codes.Send(ctx, kind, value, clientIP(r)); err != nil {
 			return fail(err)
 		}
@@ -709,8 +730,34 @@ func (s *Service) complete(w http.ResponseWriter, r *http.Request, as *goidc.Aut
 			return goidc.StatusFailure, err
 		}
 	}
+	// Turned away only now: the User did sign in, so the browser keeps the
+	// Session, and 切换账号 starts over on the login form.
+	if ok, err := s.mayUse(r.Context(), c.ID, sub); err != nil {
+		return goidc.StatusFailure, err
+	} else if !ok {
+		if strings.Contains(string(as.Prompt), string(goidc.PromptTypeNone)) {
+			return goidc.StatusFailure, goidc.NewError(goidc.ErrorCodeAccessDenied, errNoRole)
+		}
+		as.Store = nil
+		page(w, http.StatusForbidden, "denied", loginPage{Client: c.Name, Action: "/authorize/" + as.ID})
+		return goidc.StatusPending, nil
+	}
 	grant(as, session, sub, authTime, amr)
 	return goidc.StatusSuccess, nil
+}
+
+const errNoRole = "the User holds no Role on the Application's API"
+
+// mayUse reports whether sub may get tokens for the Application clientID.
+// One that requires a Role lets in only a User holding one on its default
+// API, read as the access token's roles are (docs/spec/rbac.md).
+func (s *Service) mayUse(ctx context.Context, clientID, sub string) (bool, error) {
+	app, err := s.q.Application(ctx, clientID)
+	if err != nil || !app.RequireRole || !app.DefaultApi.Valid {
+		return err == nil, err
+	}
+	r, err := s.q.TokenRoles(ctx, sqlc.TokenRolesParams{UserID: sub, Api: app.DefaultApi.String})
+	return len(r.Roles) > 0, err
 }
 
 // binderCookie ties a login past its first factor, or through a Provider,

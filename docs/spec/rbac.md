@@ -21,6 +21,18 @@ API (aud)
 - ID token 不带角色,也不使用 `groups`。
 - **生效时机**:业务 API 以令牌为准,Role 变更最多滞后 10 分钟。
 
+## 签发时检查 Role
+
+默认情况下签发令牌不检查 Role:任何 User 都能登录任意 Application,挡人靠业务后端检查 `roles`。
+
+让 User 登录的 Application 可以打开「要求 Role」(`requireRole`,默认关):User 在它的默认 API 上一个 Role 都没有时,拒绝签发。判定读的就是填 `roles` 的那份数据,非空就放行,不看具体是哪个 Role 或 Permission。
+
+- **检查两处**:发 authorization code 之前,以及刷新令牌时。刷新被拒返回 `invalid_grant`,Role 全被撤掉的 User 不能靠 refresh token 一直续期。
+- **托管页**:显示「你没有使用 <Application 名> 的权限,请联系管理员」和「切换账号」。浏览器 Session 照常保留,不登出,因为 User 已经通过了认证。`prompt=none` 时不出页面,按 OIDC 返回 `access_denied`。
+- **直连 API**:返回 403,`error` 为 `application_access_denied`,不和普通的认证失败混用。
+- **需要默认 API**:没有默认 API 的 Application 不能打开,Management API 拒绝这样的写入(422),管理端把开关置灰并说明原因。
+- **M2M Application 不适用**:它没有 User 登录。
+
 ## Management API
 
 Polaris 自带的内置 API,是一套 REST 接口。管理端前端只调用它;业务后端以 M2M Application 的身份调用,接入步骤见 [Management API 接入指南](../management-api.md)。

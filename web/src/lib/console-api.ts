@@ -126,6 +126,7 @@ export type Policy = {
 	auditRetentionDays: number;
 	adminsNeedTwoFactor: boolean;
 	passkeyLogin: boolean;
+	openRegistration: boolean;
 };
 export type SigningKey = { kid: string; createdAt: string; current: boolean };
 
@@ -140,16 +141,24 @@ export type ApplicationSettings = {
 	defaultApi?: string;
 	sessionIdleTimeout?: number; // seconds; 0 or absent for the default
 	refreshTokens: boolean;
+	requireRole?: boolean; // needs defaultApi; not for m2m
 	webhookUrl?: string;
 	webhookSecret?: string; // write-only; empty keeps the stored one
 	backchannelLogoutUri?: string; // confidential only; empty for none
 	appleAppIds: string[];
 	androidApps: AndroidApp[];
+	jwks?: { keys: unknown[] }; // Application 公钥; absent keeps the stored set
 };
+// TokenAuthMethod is the 客户端认证方式; none for a public Application.
+export type TokenAuthMethod =
+	| "none"
+	| "client_secret_basic"
+	| "private_key_jwt";
 export type Application = ApplicationSettings & {
 	clientId: string;
 	type: "public" | "confidential" | "m2m";
 	builtin: boolean;
+	tokenAuthMethod: TokenAuthMethod;
 	createdAt: string;
 	webhookSecretUpdatedAt?: string;
 };

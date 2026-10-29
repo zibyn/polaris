@@ -32,6 +32,11 @@ const (
 	errInsufficientAuthorization = "insufficient_authorization"
 	// RFC 6749's: a Provider turned the client token down.
 	errInvalidGrant = "invalid_grant"
+	// Ours: 开放注册 is off and the sign-in would sign a stranger up (ADR 0021).
+	errRegistrationClosed = "registration_closed"
+	// Ours: the Application requires a Role on its default API, and the User
+	// holds none (docs/spec/rbac.md). Only ever added to, like next.
+	errApplicationAccessDenied = "application_access_denied"
 )
 
 // Values of next (ADR 0010): only ever added to, never renamed or removed.
@@ -223,6 +228,11 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr}, ""
 			return next(nextPhone, "a phone number must be bound: send a code to one")
 		}
+		if ok, err := s.mayUse(ctx, c.ID, sub); err != nil {
+			return answer{}, err
+		} else if !ok {
+			return answer{}, &challengeError{status: http.StatusForbidden, Code: errApplicationAccessDenied, Description: errNoRole}
+		}
 		// Spent before the code exists: one auth_session, one code.
 		if token != "" {
 			if err := s.q.DeleteChallengeSession(ctx, hash(token)); err != nil {
@@ -254,7 +264,11 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if !errors.As(err, &bad) {
 			return answer{}, err
 		}
-		return answer{}, &challengeError{status: http.StatusBadRequest, Code: string(goidc.ErrorCodeInvalidRequest), Description: bad.Error(), AuthSession: token}
+		code := string(goidc.ErrorCodeInvalidRequest)
+		if bad == identity.ErrRegistrationClosed {
+			code = errRegistrationClosed
+		}
+		return answer{}, &challengeError{status: http.StatusBadRequest, Code: code, Description: bad.Error(), AuthSession: token}
 	}
 
 	switch {
@@ -395,6 +409,9 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		}
 		if err == nil {
 			err = s.pow.Verify(ctx, r.PostFormValue("altcha"))
+		}
+		if err == nil && st.Pending == nil {
+			err = s.ids.MaySignUp(ctx, value)
 		}
 		if err == nil {
 			err = s.codes.Send(ctx, kind, value, clientIP(r))

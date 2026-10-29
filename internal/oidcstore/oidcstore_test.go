@@ -409,3 +409,114 @@ func TestReplicasStartingTogetherCreateOneKey(t *testing.T) {
 		t.Fatalf("signing keys = %d, want 1", n)
 	}
 }
+
+// age backdates every signing key by d, as if they were created that long ago.
+func age(t *testing.T, pool *pgxpool.Pool, d string) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `UPDATE signing_keys SET created_at = created_at - $1::interval`, d); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func systemRotations(t *testing.T, pool *pgxpool.Pool) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM audit_log WHERE event = 'keys.rotated' AND detail->>'by' = 'system'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestRotateDueLeavesYoungKeyAlone(t *testing.T) {
+	pool, keyring := setup(t)
+	ctx := context.Background()
+	keys := NewKeys(pool, keyring)
+	if err := keys.Ensure(ctx); err != nil {
+		t.Fatal(err)
+	}
+	age(t, pool, "89 days")
+	if err := keys.RotateDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := keys.Published(ctx); len(got) != 1 {
+		t.Fatalf("keys = %d, want 1", len(got))
+	}
+	if n := systemRotations(t, pool); n != 0 {
+		t.Fatalf("audit rows = %d, want 0", n)
+	}
+}
+
+func TestRotateDueReplacesOldKey(t *testing.T) {
+	pool, keyring := setup(t)
+	ctx := context.Background()
+	keys := NewKeys(pool, keyring)
+	if err := keys.Ensure(ctx); err != nil {
+		t.Fatal(err)
+	}
+	age(t, pool, "91 days")
+	old, _ := keys.Published(ctx)
+	if err := keys.RotateDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, err := keys.Published(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Kid == old[0].Kid {
+		t.Fatalf("keys = %v, want a new current key ahead of %s", got, old[0].Kid)
+	}
+	if n := systemRotations(t, pool); n != 1 {
+		t.Fatalf("audit rows = %d, want 1", n)
+	}
+}
+
+func TestReplicasRotateDueOnce(t *testing.T) {
+	pool, keyring := setup(t)
+	ctx := context.Background()
+	if err := NewKeys(pool, keyring).Ensure(ctx); err != nil {
+		t.Fatal(err)
+	}
+	age(t, pool, "91 days")
+	var g errgroup.Group
+	for range 2 {
+		g.Go(func() error { return NewKeys(pool, keyring).RotateDue(ctx) })
+	}
+	if err := g.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM signing_keys`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("signing keys = %d, want 2", n)
+	}
+}
+
+func TestManualRotationRestartsRotateDueClock(t *testing.T) {
+	pool, keyring := setup(t)
+	ctx := context.Background()
+	keys := NewKeys(pool, keyring)
+	if err := keys.Ensure(ctx); err != nil {
+		t.Fatal(err)
+	}
+	age(t, pool, "100 days")
+	if err := keys.Rotate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	age(t, pool, "89 days") // the manual key is 89 days old, its predecessor 189
+	if err := keys.RotateDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := systemRotations(t, pool); n != 0 {
+		t.Fatalf("rotated %d times at 89 days after a manual rotation, want 0", n)
+	}
+	age(t, pool, "2 days")
+	if err := keys.RotateDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := systemRotations(t, pool); n != 1 {
+		t.Fatalf("rotated %d times at 91 days after a manual rotation, want 1", n)
+	}
+}

@@ -56,6 +56,8 @@ import {
 	androidLines,
 	backchannelSchema,
 	basicSchema,
+	jwksSchema,
+	jwksText,
 	loginSchema,
 	m2mAPIs,
 	nativeSchema,
@@ -68,6 +70,7 @@ import {
 	type ApplicationRoles,
 	type ApplicationSettings,
 	api,
+	type TokenAuthMethod,
 } from "#/lib/console-api";
 import {
 	checklist,
@@ -162,6 +165,7 @@ const currentSettings = (a: Application): ApplicationSettings => ({
 	defaultApi: a.defaultApi,
 	sessionIdleTimeout: a.sessionIdleTimeout,
 	refreshTokens: a.refreshTokens,
+	requireRole: a.requireRole,
 	webhookUrl: a.webhookUrl,
 	backchannelLogoutUri: a.backchannelLogoutUri,
 	appleAppIds: a.appleAppIds,
@@ -300,9 +304,18 @@ function BasicTab({ app, editable }: TabProps) {
 			save.mutate({ name: value.name.trim() }, { onSuccess: saved }),
 	});
 	const apiForm = useForm({
-		defaultValues: { defaultApi: app.defaultApi ?? "" },
-		onSubmit: ({ value }) => saveApi.mutate(value, { onSuccess: saved }),
+		defaultValues: {
+			defaultApi: app.defaultApi ?? "",
+			requireRole: app.requireRole ?? false,
+		},
+		onSubmit: ({ value }) =>
+			saveApi.mutate(
+				// The Roles checked are on the default API: none, nothing to require.
+				{ ...value, requireRole: !!value.defaultApi && value.requireRole },
+				{ onSuccess: saved },
+			),
 	});
+	const chosenApi = useStore(apiForm.store, (s) => s.values.defaultApi);
 	return (
 		<div className="space-y-10">
 			<Section
@@ -310,27 +323,22 @@ function BasicTab({ app, editable }: TabProps) {
 				editable={editable}
 				form={form}
 				extra={
-					<>
-						<Field>
-							<FieldLabel htmlFor="client-id">client_id</FieldLabel>
-							<div className="flex gap-2">
-								<Input
-									id="client-id"
-									readOnly
-									value={app.clientId}
-									className="font-mono"
-								/>
-								<CopyButton value={app.clientId} />
-							</div>
-							<FieldDescription>
-								应用的唯一编号。在 SDK
-								或登录请求里填它，认证服务就知道是哪个应用。
-							</FieldDescription>
-						</Field>
-						{app.type !== "public" && (
-							<ClientSecret app={app} editable={editable} />
-						)}
-					</>
+					<Field>
+						<FieldLabel htmlFor="client-id">client_id</FieldLabel>
+						<div className="flex gap-2">
+							<Input
+								id="client-id"
+								readOnly
+								value={app.clientId}
+								className="font-mono"
+							/>
+							<CopyButton value={app.clientId} />
+						</div>
+						<FieldDescription>
+							应用的唯一编号。在 SDK
+							或登录请求里填它，认证服务就知道是哪个应用。
+						</FieldDescription>
+					</Field>
 				}
 				footer={editable && <SaveBar save={save} />}
 			>
@@ -349,6 +357,7 @@ function BasicTab({ app, editable }: TabProps) {
 					<FieldDescription>{typeWhy[app.type]}</FieldDescription>
 				</Field>
 			</Section>
+			{app.type !== "public" && <ClientAuthn app={app} editable={editable} />}
 			{isM2M ? (
 				<Section title="访问令牌" editable={false}>
 					<Field>
@@ -437,6 +446,30 @@ function BasicTab({ app, editable }: TabProps) {
 							)}
 						</apiForm.Field>
 					)}
+					{registered.length > 0 && (
+						<apiForm.Field name="requireRole">
+							{(field) => (
+								<FormField
+									field={field}
+									label="要求用户有角色"
+									help={
+										chosenApi
+											? "开启后，用户在默认 API 资源上一个角色都没有时，不能登录这个应用，已登录的也不能再续期。"
+											: "先选默认 API 资源：检查的是用户在它上面的角色。"
+									}
+								>
+									{({ id }) => (
+										<Switch
+											id={id}
+											disabled={!editable || !chosenApi}
+											checked={!!chosenApi && field.state.value}
+											onCheckedChange={field.handleChange}
+										/>
+									)}
+								</FormField>
+							)}
+						</apiForm.Field>
+					)}
 				</Section>
 			)}
 			{editable && <DeleteApplication app={app} />}
@@ -444,7 +477,136 @@ function BasicTab({ app, editable }: TabProps) {
 	);
 }
 
-function ClientSecret({ app, editable }: TabProps) {
+// authMethods are the two 客户端认证方式 a non-public Application picks
+// from; only one works at a time (ADR 0023).
+const authMethods: {
+	value: Exclude<TokenAuthMethod, "none">;
+	label: string;
+	help: string;
+}[] = [
+	{
+		value: "client_secret_basic",
+		label: "共享密钥",
+		help: "后端用 client secret 换取令牌。",
+	},
+	{
+		value: "private_key_jwt",
+		label: "私钥签名",
+		help: "后端用自己的私钥签名（RS256 或 ES256），认证服务用下面登记的公钥验证。secret 不再可用。",
+	},
+];
+
+// ClientAuthn is the 客户端认证方式 block: which method is on, the secret
+// while it is the shared one, and the Application 公钥, saved apart from the
+// method so a backend can be given its keys before the switch.
+function ClientAuthn({ app, editable }: TabProps) {
+	const client = useQueryClient();
+	const save = useSave(app);
+	const [asked, setAsked] = useState<TokenAuthMethod | null>(null);
+	// The secret switching back issued; shown this once, like on create.
+	const [issued, setIssued] = useState<string>();
+	const change = useMutation({
+		mutationFn: (method: TokenAuthMethod) =>
+			api<{ secret?: string }>(`/applications/${app.clientId}/auth-method`, {
+				method: "POST",
+				body: { method },
+			}),
+		onSuccess: (out) => {
+			setIssued(out.secret);
+			client.invalidateQueries(applicationsQuery);
+		},
+		onError: failed("切换客户端认证方式失败"),
+	});
+	const form = useForm({
+		defaultValues: { jwks: jwksText(app.jwks) },
+		validationLogic: revalidateLogic(),
+		validators: { onDynamic: jwksSchema },
+		onSubmit: ({ value }) =>
+			save.mutate({ jwks: JSON.parse(value.jwks) }, { onSuccess: saved }),
+	});
+	const keyless = !app.jwks?.keys.length;
+	const toKeys = asked === "private_key_jwt";
+	return (
+		<Section
+			title="客户端认证方式"
+			intro="后端换取令牌时怎样证明自己是这个应用。两种方式同一时刻只认一种。"
+			editable={editable}
+			form={form}
+			footer={editable && <SaveBar save={save} />}
+		>
+			<Field>
+				<FieldTitle>认证方式</FieldTitle>
+				{authMethods.map((m) => (
+					<Label key={m.value} className="items-start font-normal">
+						<input
+							type="radio"
+							name="token-auth-method"
+							className="mt-1 accent-primary"
+							checked={app.tokenAuthMethod === m.value}
+							disabled={
+								change.isPending || (m.value === "private_key_jwt" && keyless)
+							}
+							onChange={() => setAsked(m.value)}
+						/>
+						<span>
+							{m.label}
+							<span className="block text-muted-foreground text-sm">
+								{m.help}
+								{m.value === "private_key_jwt" &&
+									keyless &&
+									" 先登记并保存公钥，才能切换。"}
+							</span>
+						</span>
+					</Label>
+				))}
+			</Field>
+			{app.tokenAuthMethod === "client_secret_basic" && (
+				<ClientSecret app={app} editable={editable} issued={issued} />
+			)}
+			<form.Field name="jwks">
+				{(field) => (
+					<FormField
+						field={field}
+						label="Application 公钥"
+						help="JWKS 格式，只放公钥：RSA（至少 2048 位）或 EC P-256，每把要有不同的 kid，最多 5 把。轮换时让新旧公钥并存一段时间。"
+					>
+						{(control) => (
+							<Textarea
+								{...control}
+								rows={8}
+								className="font-mono text-xs"
+								placeholder='{"keys": [...]}'
+							/>
+						)}
+					</FormField>
+				)}
+			</form.Field>
+			<ConfirmDialog
+				open={asked !== null}
+				onOpenChange={(open) => !open && setAsked(null)}
+				title={toKeys ? "切换到私钥签名？" : "切换回共享密钥？"}
+				action={toKeys ? "切换到私钥签名" : "切换并生成 secret"}
+				destructive={toKeys}
+				onConfirm={() => {
+					if (asked) {
+						change.mutate(asked);
+					}
+					setAsked(null);
+				}}
+			>
+				{toKeys
+					? "当前 secret 将立即失效，还在用它的后端会换不到令牌。请先让后端改用私钥签名，再切换。"
+					: "将生成新的 secret，只显示这一次；私钥签名随即不再可用，已登记的公钥保留。"}
+			</ConfirmDialog>
+		</Section>
+	);
+}
+
+function ClientSecret({
+	app,
+	editable,
+	issued,
+}: TabProps & { issued?: string }) {
 	const rotate = useMutation({
 		mutationFn: () =>
 			api<{ secret: string }>(`/applications/${app.clientId}/secret`, {
@@ -452,16 +614,15 @@ function ClientSecret({ app, editable }: TabProps) {
 			}),
 		onError: failed("重新生成 client secret 失败"),
 	});
+	const shown = rotate.data?.secret ?? issued;
 	return (
 		<Field>
 			<FieldTitle>client secret</FieldTitle>
-			{rotate.data ? (
+			{shown ? (
 				<Alert variant="warning">
 					<AlertDescription>
 						新的 client secret 只显示这一次：
-						<span className="block break-all font-mono">
-							{rotate.data.secret}
-						</span>
+						<span className="block break-all font-mono">{shown}</span>
 					</AlertDescription>
 				</Alert>
 			) : (

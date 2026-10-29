@@ -3,6 +3,7 @@
 package identity
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -40,6 +41,9 @@ const (
 	ErrPasswordTooShort Invalid = "密码至少 8 位"
 	ErrBadCredentials   Invalid = "用户名或密码错误"
 	ErrDisabled         Invalid = "已被管理员禁用,无法登录"
+	// ErrRegistrationClosed: 开放注册 is off and no User holds the
+	// Identifier or External Identity (ADR 0021).
+	ErrRegistrationClosed Invalid = "本实例未开放注册"
 )
 
 type Store struct {
@@ -224,14 +228,32 @@ func ParseIdentifier(s string) (kind, value string, err error) {
 	return "phone", "+86" + m[1], nil
 }
 
+// MaySignUp refuses, with ErrRegistrationClosed, a code login to value, a
+// normalised phone number or email, that would sign a stranger up while 开放
+// 注册 is off. Callers ask before sending the code, so a refusal counts
+// against no send limit.
+func (s *Store) MaySignUp(ctx context.Context, value string) error {
+	ok, err := s.q.MaySignUp(ctx, value)
+	if err == nil && !ok {
+		return ErrRegistrationClosed
+	}
+	return err
+}
+
 // SignIn returns the User holding a phone number or email that was just
-// verified, creating one if nobody does: logging in is signing up.
+// verified, creating one if nobody does and 开放注册 is on: logging in is
+// signing up.
 func (s *Store) SignIn(ctx context.Context, kind, value string) (string, error) {
 	u, err := s.q.UserByIdentifier(ctx, value)
 	if err == nil && u.Disabled {
 		return "", ErrDisabled
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return u.UserID, err
+	}
+	// Sending the code checked this already; this is the backstop for any
+	// path that got here without one.
+	if open, err := s.q.RegistrationOpen(ctx); err != nil || !open {
+		return "", cmp.Or(err, error(ErrRegistrationClosed))
 	}
 	sub := rand.Text()
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -248,9 +270,9 @@ func (s *Store) SignIn(ctx context.Context, kind, value string) (string, error) 
 }
 
 // AddIdentifier binds a verified phone number or email to sub; never one
-// another User holds (ADR 0003).
+// another User holds (ADR 0003). Applications hear of it by webhook.
 func (s *Store) AddIdentifier(ctx context.Context, sub, kind, value string) error {
-	err := s.q.AddIdentifier(ctx, sqlc.AddIdentifierParams{UserID: sub, Kind: kind, Value: value})
+	err := s.q.BindIdentifier(ctx, sqlc.BindIdentifierParams{UserID: sub, Kind: kind, Value: value})
 	if isUniqueViolation(err) {
 		return ErrIdentifierTaken
 	}
