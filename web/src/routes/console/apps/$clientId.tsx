@@ -164,6 +164,7 @@ const currentSettings = (a: Application): ApplicationSettings => ({
 	postLogoutRedirectUris: a.postLogoutRedirectUris,
 	defaultApi: a.defaultApi,
 	sessionIdleTimeout: a.sessionIdleTimeout,
+	sessionMaxLifetime: a.sessionMaxLifetime,
 	refreshTokens: a.refreshTokens,
 	requireRole: a.requireRole,
 	webhookUrl: a.webhookUrl,
@@ -708,6 +709,7 @@ function LoginTab({ app, editable }: TabProps) {
 			idleDays: app.sessionIdleTimeout
 				? `${app.sessionIdleTimeout / day}`
 				: "0",
+			maxDays: app.sessionMaxLifetime ? `${app.sessionMaxLifetime / day}` : "0",
 			refreshTokens: app.refreshTokens,
 		},
 		validationLogic: revalidateLogic(),
@@ -718,6 +720,7 @@ function LoginTab({ app, editable }: TabProps) {
 					redirectUris: lines(value.redirectUris),
 					postLogoutRedirectUris: lines(value.postLogoutRedirectUris),
 					sessionIdleTimeout: Number(value.idleDays.trim() || 0) * day,
+					sessionMaxLifetime: Number(value.maxDays.trim() || 0) * day,
 					refreshTokens: value.refreshTokens,
 				},
 				{ onSuccess: saved },
@@ -811,6 +814,44 @@ function LoginTab({ app, editable }: TabProps) {
 													value={[days]}
 													disabled={!editable}
 													aria-label="闲置天数"
+													onValueChange={(v) =>
+														field.handleChange(
+															String(Array.isArray(v) ? v[0] : v),
+														)
+													}
+												/>
+												<Input
+													{...control}
+													type="number"
+													min={0}
+													max={365}
+													className="w-20"
+												/>
+												<span className="shrink-0 text-sm">天</span>
+											</div>
+										)}
+									</FormField>
+								);
+							}}
+						</form.Field>
+						<form.Field name="maxDays">
+							{(field) => {
+								const days = Number(field.state.value) || 0;
+								return (
+									<FormField
+										field={field}
+										label="最长多久需重新登录"
+										help="从上次登录或重新验证身份算起，到期必须重新登录；0 表示默认值（App 180 天，浏览器 90 天）。改动只对之后新登录的会话生效。"
+									>
+										{(control) => (
+											<div className="flex max-w-md items-center gap-4">
+												<Slider
+													min={0}
+													max={365}
+													step={1}
+													value={[days]}
+													disabled={!editable}
+													aria-label="最长天数"
 													onValueChange={(v) =>
 														field.handleChange(
 															String(Array.isArray(v) ? v[0] : v),

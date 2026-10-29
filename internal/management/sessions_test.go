@@ -82,3 +82,75 @@ func TestAdminEndsAUsersSession(t *testing.T) {
 		t.Errorf("unknown User: %d", code)
 	}
 }
+
+// An Application's sessionMaxLifetime caps the Sessions it starts, counted
+// from auth_time; 0 means the default (App 180 days, browser 90 days). It
+// cannot be shorter than the idle timeout in effect.
+func TestApplicationSetsTheSessionLifespanCap(t *testing.T) {
+	e := start(t)
+	e.user("ALICE", nil)
+	owner := e.token(e.owner, nil)
+	day := 24 * time.Hour
+	settings := map[string]any{
+		"name": "App", "redirectUris": []string{"com.example.app:/cb"}, "postLogoutRedirectUris": []string{},
+		"refreshTokens": true, "appleAppIds": []string{}, "androidApps": []any{},
+		"sessionIdleTimeout": 7 * 86400, "sessionMaxLifetime": 10 * 86400,
+	}
+	var created struct {
+		Application struct {
+			ClientID           string
+			SessionMaxLifetime int
+		}
+	}
+	if code := e.call("POST", owner, "/applications", map[string]any{"type": "public", "settings": settings}, &created); code != 200 ||
+		created.Application.SessionMaxLifetime != 10*86400 {
+		t.Fatalf("create: %d %+v", code, created)
+	}
+	id := created.Application.ClientID
+	expiry := func(sid string) time.Duration {
+		var list struct{ Sessions []session }
+		e.get(owner, "/users/ALICE/sessions", &list)
+		for _, s := range list.Sessions {
+			if s.ID == sid {
+				return time.Until(s.ExpiresAt).Round(day)
+			}
+		}
+		t.Fatalf("no Session %s", sid)
+		return 0
+	}
+	// The idle timeout ends it first, then the cap once auth_time is old.
+	sid := e.session("ALICE", id, false)
+	if got := expiry(sid); got != 7*day {
+		t.Errorf("new Session ends in %v, want 7 days", got)
+	}
+	if _, err := e.pool.Exec(t.Context(), "UPDATE sessions SET auth_time = now() - interval '5 days' WHERE id = $1", sid); err != nil {
+		t.Fatal(err)
+	}
+	if got := expiry(sid); got != 5*day {
+		t.Errorf("Session signed in 5 days ago ends in %v, want 5 days", got)
+	}
+
+	// 0: the default.
+	settings["sessionIdleTimeout"], settings["sessionMaxLifetime"] = 0, 0
+	if code := e.call("PUT", owner, "/applications/"+id, settings, nil); code != 204 {
+		t.Fatalf("update: %d", code)
+	}
+	app, browser := e.session("ALICE", id, false), e.session("ALICE", id, true)
+	if _, err := e.pool.Exec(t.Context(), "UPDATE sessions SET auth_time = now() - CASE WHEN id = $1 THEN interval '100 days' ELSE interval '85 days' END WHERE id IN ($1, $2)", app, browser); err != nil {
+		t.Fatal(err)
+	}
+	if got := expiry(app); got != 80*day {
+		t.Errorf("default App Session ends in %v, want 80 days", got)
+	}
+	if got := expiry(browser); got != 5*day {
+		t.Errorf("default browser Session ends in %v, want 5 days", got)
+	}
+
+	// Shorter than the idle timeout in effect: the set one, or the longest default.
+	for name, st := range map[string][2]int{"set idle": {7 * 86400, 6 * 86400}, "default idle": {0, 60 * 86400}} {
+		settings["sessionIdleTimeout"], settings["sessionMaxLifetime"] = st[0], st[1]
+		if code := e.call("PUT", owner, "/applications/"+id, settings, nil); code != 422 {
+			t.Errorf("%s: %d, want 422", name, code)
+		}
+	}
+}

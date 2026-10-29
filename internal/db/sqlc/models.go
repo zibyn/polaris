@@ -36,6 +36,7 @@ type Application struct {
 	RequireRole            bool
 	TokenAuthMethod        string
 	Jwks                   []byte
+	SessionMaxLifetime     pgtype.Interval
 }
 
 type ApplicationRole struct {
@@ -267,6 +268,7 @@ type Session struct {
 	EndedAt     pgtype.Timestamptz
 	Ip          pgtype.Text
 	UserAgent   pgtype.Text
+	MaxLifetime pgtype.Interval
 }
 
 type SessionApplication struct {

@@ -86,17 +86,21 @@ export const backchannelSchema = z.object({
 	),
 });
 
-// loginSchema checks the 登录 tab; 0 or an empty idleDays means the default.
+const days = z
+	.string()
+	.trim()
+	.refine(
+		(v) => !v || (/^\d+$/.test(v) && +v >= 0 && +v <= 365),
+		"请填写 0 到 365 之间的整数，0 表示默认值。",
+	);
+
+// loginSchema checks the 登录 tab; 0 or an empty idleDays / maxDays means
+// the default. The backend rejects a maxDays shorter than the idle timeout.
 export const loginSchema = z.object({
 	redirectUris: uriLines,
 	postLogoutRedirectUris: uriLines,
-	idleDays: z
-		.string()
-		.trim()
-		.refine(
-			(v) => !v || (/^\d+$/.test(v) && +v >= 0 && +v <= 365),
-			"请填写 0 到 365 之间的整数，0 表示默认值。",
-		),
+	idleDays: days,
+	maxDays: days,
 	refreshTokens: z.boolean(),
 });
 

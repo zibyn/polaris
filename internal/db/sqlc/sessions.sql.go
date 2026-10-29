@@ -12,10 +12,12 @@ import (
 )
 
 const createSession = `-- name: CreateSession :one
-INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, ip, user_agent, idle_timeout)
+INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, ip, user_agent, idle_timeout, max_lifetime)
 SELECT $1, $2::text, u.id, $3, $4, $5, $6,
        COALESCE((SELECT session_idle_timeout FROM applications WHERE applications.client_id = $2),
-                CASE WHEN $1::bytea IS NULL THEN interval '90 days' ELSE interval '30 days' END)
+                CASE WHEN $1::bytea IS NULL THEN interval '90 days' ELSE interval '30 days' END),
+       COALESCE((SELECT session_max_lifetime FROM applications WHERE applications.client_id = $2),
+                CASE WHEN $1::bytea IS NULL THEN interval '180 days' ELSE interval '90 days' END)
 FROM users u WHERE u.id = $7 AND u.disabled_at IS NULL
 RETURNING id, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs
 `
@@ -35,8 +37,8 @@ type CreateSessionRow struct {
 	IdleSecs int32
 }
 
-// A NULL id_hash makes an App Session. The idle timeout is the
-// Application's, or the default of the Session's kind. No row for a
+// A NULL id_hash makes an App Session. The idle timeout and lifespan cap
+// are the Application's, or the defaults of the Session's kind. No row for a
 // disabled User.
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (CreateSessionRow, error) {
 	row := q.db.QueryRow(ctx, createSession,
@@ -57,9 +59,10 @@ const deleteOldSessions = `-- name: DeleteOldSessions :exec
 DELETE FROM sessions
 WHERE ended_at < now() - interval '30 days'
    OR last_seen_at + idle_timeout < now() - interval '30 days'
+   OR auth_time + max_lifetime < now() - interval '30 days'
 `
 
-// Ended or idle for more than 30 days (docs/spec/security-compliance.md).
+// Ended or lapsed for more than 30 days (docs/spec/security-compliance.md).
 func (q *Queries) DeleteOldSessions(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, deleteOldSessions)
 	return err
@@ -174,7 +177,7 @@ func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) (Tou
 const userSessions = `-- name: UserSessions :many
 SELECT s.id, (s.id_hash IS NULL)::boolean AS app, s.client_id, COALESCE(a.name, s.client_id, '')::text AS application_name,
        s.auth_time, s.amr, s.last_seen_at, s.ip, s.user_agent,
-       (s.last_seen_at + s.idle_timeout)::timestamptz AS expires_at, s.ended_at,
+       LEAST(s.last_seen_at + s.idle_timeout, s.auth_time + s.max_lifetime)::timestamptz AS expires_at, s.ended_at,
        (s.id IN (SELECT l.id FROM live_sessions l))::boolean AS active
 FROM sessions s LEFT JOIN applications a USING (client_id) WHERE s.user_id = $1
 ORDER BY s.last_seen_at DESC

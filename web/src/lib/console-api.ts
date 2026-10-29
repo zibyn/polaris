@@ -143,6 +143,7 @@ export type ApplicationSettings = {
 	postLogoutRedirectUris: string[];
 	defaultApi?: string;
 	sessionIdleTimeout?: number; // seconds; 0 or absent for the default
+	sessionMaxLifetime?: number; // seconds from the last sign-in; 0 or absent for the default
 	refreshTokens: boolean;
 	requireRole?: boolean; // needs defaultApi; not for m2m
 	webhookUrl?: string;

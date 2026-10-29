@@ -16,7 +16,7 @@ type Session struct {
 	AuthTime    time.Time  `json:"authTime"`
 	AMR         []string   `json:"amr" nullable:"false"`
 	LastSeenAt  time.Time  `json:"lastSeenAt"`
-	ExpiresAt   time.Time  `json:"expiresAt" doc:"When it ends if left idle"`
+	ExpiresAt   time.Time  `json:"expiresAt" doc:"When it ends if left idle, or at its 寿命上限 if sooner"`
 	EndedAt     *time.Time `json:"endedAt,omitempty" doc:"When it was ended: logout, an admin, or a reused refresh token"`
 	Active      bool       `json:"active"`
 	IP          string     `json:"ip" doc:"The client IP it was last used from; empty for a Session from before IPs were kept"`

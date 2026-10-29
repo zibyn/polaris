@@ -161,6 +161,7 @@ test("sign-in redirects are URLs and idle days a whole number up to a year", () 
 		redirectUris: "com.example.shop://callback",
 		postLogoutRedirectUris: "",
 		idleDays: "",
+		maxDays: "",
 		refreshTokens: true,
 	};
 	assert.equal(loginSchema.safeParse(ok).success, true);
@@ -169,6 +170,12 @@ test("sign-in redirects are URLs and idle days a whole number up to a year", () 
 	for (const idleDays of ["1.5", "366", "abc"]) {
 		assert.deepEqual(fieldErrors(loginSchema.safeParse({ ...ok, idleDays })), {
 			idleDays: "请填写 0 到 365 之间的整数，0 表示默认值。",
+		});
+	}
+	assert.equal(loginSchema.safeParse({ ...ok, maxDays: "180" }).success, true);
+	for (const maxDays of ["1.5", "366", "abc"]) {
+		assert.deepEqual(fieldErrors(loginSchema.safeParse({ ...ok, maxDays })), {
+			maxDays: "请填写 0 到 365 之间的整数，0 表示默认值。",
 		});
 	}
 	assert.deepEqual(

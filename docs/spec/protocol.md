@@ -25,7 +25,7 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
 按 OIDC Back-Channel Logout 1.0 实现(ADR 0022)。发现文档声明 `backchannel_logout_supported` 与 `backchannel_logout_session_supported`;`backchannel_logout_session_required` 对所有 Application 恒为真,不做成选项。
 
 - **配置**:只有 Web Application(confidential)可以选配一个 `backchannel_logout_uri`,在管理端和 Management API 里设置或清除。原生 App 和 M2M Application 没有。
-- **何时发**:Session 被**主动**终止时:管理员终止单个 Session、禁用 User(终止其全部 Session)、删除或注销 User、User 自己退出登录(RP-Initiated Logout,账户中心退出也走它),refresh token 重放,以及同一浏览器换成另一个 User 登录。闲置到期不发。
+- **何时发**:Session 被**主动**终止时:管理员终止单个 Session、禁用 User(终止其全部 Session)、删除或注销 User、User 自己退出登录(RP-Initiated Logout,账户中心退出也走它),refresh token 重放,以及同一浏览器换成另一个 User 登录。闲置到期、到达寿命上限都不发。
 - **发给谁**:这个 Session 签发过令牌、且配了 `backchannel_logout_uri` 的每个 Application,各一个。Session 在签发 authorization code 时记下 Application,所以只走 code flow、不拿 refresh token 的也收得到。
 - **logout token**:RS256 JWT,`typ: logout+jwt`,带 `iss`、`aud`(client_id)、`iat`、`exp`(2 分钟)、`jti`、`events`(`http://schemas.openid.net/event/backchannel-logout`),并且总是同时带 `sub` 和 `sid`;`sid` 与这个 Session 签发的 ID token、access token 里的一致;不带 `nonce`。每次投递时现签。
 - **投递**:按规范 `POST`,`application/x-www-form-urlencoded`,`logout_token=<JWT>`,不带 Standard Webhooks 签名。与 Webhook 共用投递队列和退避重试:非 2xx 时从 1 分钟起翻倍、最长 12 小时,约一天后放弃并记审计 `webhook.failed`。User 被删除后,已排队的 logout token 照样发出。
@@ -75,7 +75,9 @@ Session 是一个 User 在一台设备或一个浏览器上的一次登录。
 
 - **App Session**:由 refresh token 链承载,只属于一个 Application。闲置 90 天过期。
 - **浏览器 Session**:由 cookie 承载,跨 Application 单点登录。经 OIDC 签发的 refresh token 挂在它下面,随之终止。闲置 30 天过期。
-- **过期规则**:滑动过期,没有绝对上限;管理员可按 Application 调整。
+- **过期规则**:两条,先到者为准,管理员都可按 Application 调整(跨 Application 的浏览器 Session 用发起它的那个 Application 的设置):
+  - **闲置时长**:多久没有活动就失效,每次活动重新计时。默认浏览器 30 天、App 90 天。
+  - **寿命上限**:从上次证明身份(`auth_time`,登录或重新认证)算起,到期即失效,不随活动延长;重新认证会重新计时。默认浏览器 90 天、App 180 天;不能短于生效的闲置时长。
 - **设备数**:不限;User 可以在账号中心逐个下线。
 - **跨原生 App 共享 Session**:暂不设计,倾向 Token Exchange(RFC 8693)。
 
