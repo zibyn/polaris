@@ -53,13 +53,18 @@ func (s *Store) FromIP(ctx context.Context, ip string, check func() error) error
 		return ErrIPLocked
 	}
 	err := check()
-	if err == ErrBadCredentials || err == ErrPasswordLocked || err == ErrWrongCode || err == ErrWrongTOTP || err == ErrWrongRecoveryCode { //nolint:errorlint // never wrapped
+	if counted(err) {
 		detail, _ := json.Marshal(map[string]string{"ip": ip})
-		if _, dbErr := s.failed(ctx, key, ipFailures, ipWindow, ipLock, sqlc.AuditParams{Event: "login.ip_locked", Detail: detail}); dbErr != nil {
+		if _, dbErr := s.failed(ctx, key, ipFailures, ipWindow, ipLock, func(time.Time) sqlc.AuditParams { return sqlc.AuditParams{Event: "login.ip_locked", Detail: detail} }); dbErr != nil {
 			return dbErr
 		}
 	}
 	return err
+}
+
+// counted reports whether err is a failure FromIP counts.
+func counted(err error) bool {
+	return err == ErrBadCredentials || err == ErrPasswordLocked || err == ErrWrongCode || err == ErrWrongTOTP || err == ErrWrongRecoveryCode //nolint:errorlint // never wrapped
 }
 
 // Start counts a sign-in started from ip against the per-IP budget, and
@@ -77,7 +82,7 @@ func (s *Store) Start(ctx context.Context, ip string) error {
 		return ErrIPLocked
 	}
 	detail, _ := json.Marshal(map[string]string{"ip": ip})
-	_, err := s.failed(ctx, start, startTries, startWindow, startLock, sqlc.AuditParams{Event: "login.ip_locked", Detail: detail})
+	_, err := s.failed(ctx, start, startTries, startWindow, startLock, func(time.Time) sqlc.AuditParams { return sqlc.AuditParams{Event: "login.ip_locked", Detail: detail} })
 	return err
 }
 
@@ -95,19 +100,21 @@ func (s *Store) lockedOut(ctx context.Context, keys ...string) (bool, error) {
 }
 
 // failed counts a failure of key; the max-th within window locks key out
-// for lock, audited as audit. It reports whether it did.
+// for lock, audited as audit says given when the lockout ends. It reports
+// whether it did.
 // ponytail: concurrent failures can both miss the max; the next one locks.
-func (s *Store) failed(ctx context.Context, key string, max int32, window, lock time.Duration, audit sqlc.AuditParams) (bool, error) {
+func (s *Store) failed(ctx context.Context, key string, max int32, window, lock time.Duration, audit func(until time.Time) sqlc.AuditParams) (bool, error) {
 	n, err := s.q.LoginFailed(ctx, sqlc.LoginFailedParams{Key: key, WindowSecs: window.Seconds()})
 	if err != nil || n < max {
 		return false, err
 	}
 	return true, pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if err := q.LockOut(ctx, sqlc.LockOutParams{Key: key, LockSecs: lock.Seconds()}); err != nil {
+		until, err := q.LockOut(ctx, sqlc.LockOutParams{Key: key, LockSecs: lock.Seconds()})
+		if err != nil {
 			return err
 		}
-		return q.Audit(ctx, audit)
+		return q.Audit(ctx, audit(until.Time))
 	})
 }
 

@@ -167,6 +167,9 @@ func (q *Queries) DeleteRole(ctx context.Context, arg DeleteRoleParams) (int64, 
 const deleteUser = `-- name: DeleteUser :execrows
 WITH gone AS (
     DELETE FROM users WHERE users.id = $2 RETURNING users.id
+), scrubbed AS (
+    UPDATE audit_log SET detail = detail - 'ip' - 'ua'
+    WHERE audit_log.sub IN (SELECT gone.id FROM gone)
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
     SELECT a.client_id, jsonb_build_object(
@@ -185,8 +188,9 @@ type DeleteUserParams struct {
 }
 
 // Deletes a User with everything of theirs (foreign keys cascade); their
-// audit events keep only the sub. Audited with who did it, and queues
-// user.deleted for every Application with a webhook.
+// audit events keep only the sub, with no IP or UA in any detail. Audited
+// with who did it, and queues user.deleted for every Application with a
+// webhook.
 func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteUser, arg.By, arg.UserID)
 	if err != nil {
@@ -525,35 +529,6 @@ func (q *Queries) ListRoles(ctx context.Context) ([]ListRolesRow, error) {
 			&i.Name,
 			&i.Builtin,
 		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listSigningKeys = `-- name: ListSigningKeys :many
-SELECT kid, created_at FROM signing_keys ORDER BY created_at DESC, kid
-`
-
-type ListSigningKeysRow struct {
-	Kid       string
-	CreatedAt pgtype.Timestamptz
-}
-
-func (q *Queries) ListSigningKeys(ctx context.Context) ([]ListSigningKeysRow, error) {
-	rows, err := q.db.Query(ctx, listSigningKeys)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListSigningKeysRow
-	for rows.Next() {
-		var i ListSigningKeysRow
-		if err := rows.Scan(&i.Kid, &i.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

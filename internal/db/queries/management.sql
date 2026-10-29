@@ -232,9 +232,6 @@ WITH u AS (
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('settings.updated', NULL, jsonb_build_object('by', @by::text));
 
--- name: ListSigningKeys :many
-SELECT kid, created_at FROM signing_keys ORDER BY created_at DESC, kid;
-
 -- name: SetUserDisabled :execrows
 -- Disables or restores a User; disabling ends all their Sessions. Audited
 -- with who did it; no row when nothing changed.
@@ -252,10 +249,14 @@ FROM changed;
 
 -- name: DeleteUser :execrows
 -- Deletes a User with everything of theirs (foreign keys cascade); their
--- audit events keep only the sub. Audited with who did it, and queues
--- user.deleted for every Application with a webhook.
+-- audit events keep only the sub, with no IP or UA in any detail. Audited
+-- with who did it, and queues user.deleted for every Application with a
+-- webhook.
 WITH gone AS (
     DELETE FROM users WHERE users.id = @user_id RETURNING users.id
+), scrubbed AS (
+    UPDATE audit_log SET detail = detail - 'ip' - 'ua'
+    WHERE audit_log.sub IN (SELECT gone.id FROM gone)
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
     SELECT a.client_id, jsonb_build_object(

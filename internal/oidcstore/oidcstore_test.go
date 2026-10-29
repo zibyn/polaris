@@ -102,7 +102,7 @@ func TestSigningKeyIsSealed(t *testing.T) {
 	}
 }
 
-func TestRotationKeepsPreviousKey(t *testing.T) {
+func TestRotationKeepsOldKeysForAnHour(t *testing.T) {
 	pool, keyring := setup(t)
 	ctx := context.Background()
 	keys := NewKeys(pool, keyring)
@@ -132,7 +132,8 @@ func TestRotationKeepsPreviousKey(t *testing.T) {
 		t.Fatalf("token signed with the new key does not verify: %v", err)
 	}
 
-	// The next rotation retires the original key.
+	// A second rotation within the hour keeps all three.
+	midToken := sign(t, after.Keys[0])
 	if err := keys.Rotate(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -140,11 +141,66 @@ func TestRotationKeepsPreviousKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(last.Keys) != 2 || last.Keys[1].KeyID != after.Keys[0].KeyID {
-		t.Fatalf("after second rotation = %v, want [newest, %s]", last.Keys, after.Keys[0].KeyID)
+	oldest, middle := before.Keys[0].KeyID, after.Keys[0].KeyID
+	if len(last.Keys) != 3 || last.Keys[1].KeyID != middle || last.Keys[2].KeyID != oldest {
+		t.Fatalf("after second rotation = %v, want [newest, %s, %s]", last.Keys, middle, oldest)
 	}
-	if err := verify(t, last, oldToken); err == nil {
+	for _, tok := range []string{oldToken, midToken, sign(t, last.Keys[0])} {
+		if err := verify(t, last, tok); err != nil {
+			t.Fatalf("token no longer verifies: %v", err)
+		}
+	}
+
+	// The middle key came over an hour ago: the oldest is past retention, the
+	// middle one's successor is new so it stays.
+	if _, err := pool.Exec(ctx, `UPDATE signing_keys SET created_at = created_at - interval '2 hours' WHERE kid IN ($1, $2)`, oldest, middle); err != nil {
+		t.Fatal(err)
+	}
+	aged, err := keys.JWKS(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aged.Keys) != 2 || aged.Keys[0].KeyID != last.Keys[0].KeyID || aged.Keys[1].KeyID != middle {
+		t.Fatalf("JWKS = %v, want [%s %s]", aged.Keys, last.Keys[0].KeyID, middle)
+	}
+	if err := verify(t, aged, oldToken); err == nil {
 		t.Fatal("token from a retired key still verifies")
+	}
+
+	if err := DeleteExpired(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM signing_keys`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("signing_keys after cleanup = %d rows, want 2", n)
+	}
+}
+
+func TestLoneKeyNeverRetires(t *testing.T) {
+	pool, keyring := setup(t)
+	ctx := context.Background()
+	keys := NewKeys(pool, keyring)
+	if err := keys.Ensure(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE signing_keys SET created_at = now() - interval '5 years'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteExpired(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	jwks, err := keys.JWKS(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jwks.Keys) != 1 {
+		t.Fatalf("JWKS has %d keys, want the old lone key", len(jwks.Keys))
+	}
+	if err := verify(t, jwks, sign(t, jwks.Keys[0])); err != nil {
+		t.Fatal(err)
 	}
 }
 

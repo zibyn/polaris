@@ -66,16 +66,16 @@ func TestBootstrap(t *testing.T) {
 	}
 
 	// The owner logs in by password, the username case-insensitively.
-	if got, err := s.CheckPassword(ctx, "root", "密码八位密码八位"); got != sub || err != nil {
+	if got, err := s.CheckPassword(ctx, Attempt{}, "root", "密码八位密码八位"); got != sub || err != nil {
 		t.Errorf("CheckPassword = %q %v, want %q", got, err, sub)
 	}
 	for _, login := range []string{"ROOT", " root "} {
-		if got, _ := s.CheckPassword(ctx, login, "密码八位密码八位"); got != sub {
+		if got, _ := s.CheckPassword(ctx, Attempt{}, login, "密码八位密码八位"); got != sub {
 			t.Errorf("login %q: %q", login, got)
 		}
 	}
 	for _, tc := range [][2]string{{"root", "wrong-password"}, {"nobody", "密码八位密码八位"}} {
-		if _, err := s.CheckPassword(ctx, tc[0], tc[1]); !errors.Is(err, ErrBadCredentials) {
+		if _, err := s.CheckPassword(ctx, Attempt{}, tc[0], tc[1]); !errors.Is(err, ErrBadCredentials) {
 			t.Errorf("CheckPassword(%q, %q) = %v", tc[0], tc[1], err)
 		}
 	}
@@ -120,11 +120,11 @@ func TestPasswordLoginSetting(t *testing.T) {
 		if _, err := s.pool.Exec(ctx, "UPDATE settings SET password_login = $1", tc.setting); err != nil {
 			t.Fatal(err)
 		}
-		got, err := s.CheckPassword(ctx, "owner", "password1")
+		got, err := s.CheckPassword(ctx, Attempt{}, "owner", "password1")
 		if (got == owner) != tc.owner {
 			t.Errorf("%s: owner = %q %v", tc.setting, got, err)
 		}
-		got, err = s.CheckPassword(ctx, "user", "password2")
+		got, err = s.CheckPassword(ctx, Attempt{}, "user", "password2")
 		if (got == "u2") != tc.user {
 			t.Errorf("%s: user = %q %v", tc.setting, got, err)
 		}
@@ -158,15 +158,15 @@ func TestFiveWrongPasswordsLockPasswordLogin(t *testing.T) {
 
 	// A right password in between starts the count over.
 	for range 4 {
-		if _, err := s.CheckPassword(ctx, "owner", "wrong"); !errors.Is(err, ErrBadCredentials) {
+		if _, err := s.CheckPassword(ctx, Attempt{}, "owner", "wrong"); !errors.Is(err, ErrBadCredentials) {
 			t.Fatal(err)
 		}
 	}
-	if got, err := s.CheckPassword(ctx, "owner", "password1"); got != sub {
+	if got, err := s.CheckPassword(ctx, Attempt{}, "owner", "password1"); got != sub {
 		t.Fatal(got, err)
 	}
 	for range 4 {
-		if _, err := s.CheckPassword(ctx, "owner", "wrong"); !errors.Is(err, ErrBadCredentials) {
+		if _, err := s.CheckPassword(ctx, Attempt{}, "owner", "wrong"); !errors.Is(err, ErrBadCredentials) {
 			t.Fatal(err)
 		}
 	}
@@ -177,10 +177,10 @@ func TestFiveWrongPasswordsLockPasswordLogin(t *testing.T) {
 	if audited(t, s, "login.password_locked") != 0 {
 		t.Fatal("locked after 4 in a row")
 	}
-	if _, err := s.CheckPassword(ctx, "owner", "wrong"); !errors.Is(err, ErrPasswordLocked) {
+	if _, err := s.CheckPassword(ctx, Attempt{}, "owner", "wrong"); !errors.Is(err, ErrPasswordLocked) {
 		t.Fatalf("5th wrong password: %v", err)
 	}
-	if _, err := s.CheckPassword(ctx, "owner", "password1"); !errors.Is(err, ErrPasswordLocked) {
+	if _, err := s.CheckPassword(ctx, Attempt{}, "owner", "password1"); !errors.Is(err, ErrPasswordLocked) {
 		t.Fatalf("right password while locked: %v", err)
 	}
 	if n := audited(t, s, "login.password_locked"); n != 1 {
@@ -191,7 +191,7 @@ func TestFiveWrongPasswordsLockPasswordLogin(t *testing.T) {
 	if _, err := s.pool.Exec(ctx, "UPDATE lockouts SET until = now() - interval '1 second'"); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := s.CheckPassword(ctx, "owner", "password1"); got != sub {
+	if got, err := s.CheckPassword(ctx, Attempt{}, "owner", "password1"); got != sub {
 		t.Fatalf("after the lockout: %q %v", got, err)
 	}
 }
@@ -206,7 +206,7 @@ func TestFiftyFailuresLockAnIPOut(t *testing.T) {
 	for i := range 49 {
 		user := []string{"owner", "nobody"}[i%2] // known or not, all count
 		if err := s.FromIP(ctx, "192.0.2.1", func() error {
-			_, err := s.CheckPassword(ctx, user, "wrong")
+			_, err := s.CheckPassword(ctx, Attempt{}, user, "wrong")
 			return err
 		}); !errors.Is(err, ErrBadCredentials) && !errors.Is(err, ErrPasswordLocked) {
 			t.Fatal(i, err)
@@ -237,10 +237,10 @@ func TestDisabledUserCannotSignIn(t *testing.T) {
 	if _, err := s.pool.Exec(ctx, "UPDATE users SET disabled_at = now()"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CheckPassword(ctx, "owner", "password1"); !errors.Is(err, ErrDisabled) {
+	if _, err := s.CheckPassword(ctx, Attempt{}, "owner", "password1"); !errors.Is(err, ErrDisabled) {
 		t.Errorf("password: %v", err)
 	}
-	if _, err := s.CheckPassword(ctx, "owner", "wrong"); !errors.Is(err, ErrBadCredentials) {
+	if _, err := s.CheckPassword(ctx, Attempt{}, "owner", "wrong"); !errors.Is(err, ErrBadCredentials) {
 		t.Errorf("wrong password: %v", err) // being disabled tells no one the password
 	}
 	if _, err := s.SignIn(ctx, "email", "a@example.com"); !errors.Is(err, ErrDisabled) {
@@ -334,7 +334,7 @@ func TestCreatePendingUser(t *testing.T) {
 		t.Fatal("no sub")
 	}
 	// 标识符按既有口径归一化并用它登录.
-	if got, err := s.CheckPassword(ctx, "alice@example.com", "password1"); err != nil || got != sub {
+	if got, err := s.CheckPassword(ctx, Attempt{}, "alice@example.com", "password1"); err != nil || got != sub {
 		t.Errorf("sign in with the initial password: %q %v, want %q", got, err, sub)
 	}
 	if pending, err := s.Pending(ctx, sub); err != nil || !pending {
@@ -397,10 +397,10 @@ func TestSetPasswordIfPendingActivates(t *testing.T) {
 	if pending, _ := s.Pending(ctx, sub); pending {
 		t.Error("still 待激活 after setting a password")
 	}
-	if _, err := s.CheckPassword(ctx, "alice@example.com", "mine-mine-mine"); err != nil {
+	if _, err := s.CheckPassword(ctx, Attempt{}, "alice@example.com", "mine-mine-mine"); err != nil {
 		t.Errorf("sign in with the new password: %v", err)
 	}
-	if _, err := s.CheckPassword(ctx, "alice@example.com", "password1"); !errors.Is(err, ErrBadCredentials) {
+	if _, err := s.CheckPassword(ctx, Attempt{}, "alice@example.com", "password1"); !errors.Is(err, ErrBadCredentials) {
 		t.Errorf("the initial password still works: %v", err)
 	}
 	if n := audited(t, s, "password.changed"); n != changes+1 {
@@ -411,7 +411,7 @@ func TestSetPasswordIfPendingActivates(t *testing.T) {
 	if err := s.SetPasswordIfPending(ctx, sub, "someone-else"); !errors.Is(err, ErrNotPending) {
 		t.Errorf("on an active User: %v, want ErrNotPending", err)
 	}
-	if _, err := s.CheckPassword(ctx, "alice@example.com", "mine-mine-mine"); err != nil {
+	if _, err := s.CheckPassword(ctx, Attempt{}, "alice@example.com", "mine-mine-mine"); err != nil {
 		t.Errorf("the password changed anyway: %v", err)
 	}
 	if n := audited(t, s, "password.changed"); n != changes+1 {
@@ -444,7 +444,7 @@ func TestDisabledBeatsPending(t *testing.T) {
 	if pending, err := s.Pending(ctx, sub); err != nil || pending {
 		t.Errorf("a disabled User is 待激活: %v %v", pending, err)
 	}
-	if _, err := s.CheckPassword(ctx, "alice@example.com", "password1"); !errors.Is(err, ErrDisabled) {
+	if _, err := s.CheckPassword(ctx, Attempt{}, "alice@example.com", "password1"); !errors.Is(err, ErrDisabled) {
 		t.Errorf("sign in: %v, want ErrDisabled", err)
 	}
 }

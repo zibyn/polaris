@@ -8,11 +8,12 @@ WITH f AS (INSERT INTO login_failures (key) VALUES (@key))
 SELECT (count(*) + 1)::int FROM login_failures
 WHERE login_failures.key = @key AND login_failures.at > now() - make_interval(secs => @window_secs::float8);
 
--- name: LockOut :exec
--- Locks key out for a while; its count starts over.
+-- name: LockOut :one
+-- Locks key out for a while, until the time it returns; its count starts over.
 WITH cleared AS (DELETE FROM login_failures WHERE login_failures.key = @key)
 INSERT INTO lockouts (key, until) VALUES (@key, now() + make_interval(secs => @lock_secs::float8))
-ON CONFLICT (key) DO UPDATE SET until = EXCLUDED.until;
+ON CONFLICT (key) DO UPDATE SET until = EXCLUDED.until
+RETURNING until;
 
 -- name: ClearLoginFailures :exec
 DELETE FROM login_failures WHERE key = $1;
