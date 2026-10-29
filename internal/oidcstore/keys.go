@@ -23,6 +23,9 @@ import (
 // arrives: the longest token lifetime (10 min) plus room for RP JWKS caches.
 const KeyRetention = time.Hour
 
+// KeyLifetime is how long the newest key signs before RotateDue replaces it.
+const KeyLifetime = 90 * 24 * time.Hour
+
 var keyRetention = pgtype.Interval{Microseconds: KeyRetention.Microseconds(), Valid: true}
 
 // Keys holds the RS256 signing keys, sealed with the master key. The newest
@@ -64,6 +67,31 @@ func (k *Keys) Ensure(ctx context.Context) error {
 // KeyRetention); the hourly cleanup deletes them.
 func (k *Keys) Rotate(ctx context.Context) error {
 	return add(ctx, k.q, k.keyring)
+}
+
+// RotateDue makes a new key current once the newest is KeyLifetime old, and
+// audits it. Every replica runs it hourly; the lock and recheck keep it to one.
+func (k *Keys) RotateDue(ctx context.Context) error {
+	tx, err := k.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
+	q := k.q.WithTx(tx)
+	if err := q.LockSigningKeys(ctx); err != nil {
+		return err
+	}
+	keys, err := q.SigningKeys(ctx, keyRetention)
+	if err != nil || len(keys) == 0 || time.Since(keys[0].CreatedAt.Time) < KeyLifetime {
+		return err
+	}
+	if err := add(ctx, q, k.keyring); err != nil {
+		return err
+	}
+	if err := q.Audit(ctx, sqlc.AuditParams{Event: "keys.rotated", Detail: []byte(`{"by":"system"}`)}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // Published lists the keys in the JWKS, newest (current) first.
