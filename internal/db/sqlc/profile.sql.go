@@ -22,7 +22,14 @@ func (q *Queries) LockUserProfile(ctx context.Context, id string) (string, error
 }
 
 const setAvatar = `-- name: SetAvatar :execrows
-UPDATE users SET avatar = NULLIF($1::text, '') WHERE id = $2
+WITH put AS (
+    UPDATE users SET avatar = NULLIF($1::text, '') WHERE users.id = $2 RETURNING users.id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM users u, user_event('user.updated', u.id, '{profile}') e
+    WHERE u.id = $2 AND u.avatar IS DISTINCT FROM NULLIF($1::text, '')
+)
+SELECT 1 FROM put
 `
 
 type SetAvatarParams struct {
@@ -30,6 +37,7 @@ type SetAvatarParams struct {
 	UserID string
 }
 
+// Queues user.updated (changed: profile) when the avatar changes.
 func (q *Queries) SetAvatar(ctx context.Context, arg SetAvatarParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setAvatar, arg.Avatar, arg.UserID)
 	if err != nil {
@@ -39,7 +47,14 @@ func (q *Queries) SetAvatar(ctx context.Context, arg SetAvatarParams) (int64, er
 }
 
 const setNickname = `-- name: SetNickname :execrows
-UPDATE users SET nickname = NULLIF($1::text, '') WHERE id = $2
+WITH put AS (
+    UPDATE users SET nickname = NULLIF($1::text, '') WHERE users.id = $2 RETURNING users.id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM users u, user_event('user.updated', u.id, '{profile}') e
+    WHERE u.id = $2 AND u.nickname IS DISTINCT FROM NULLIF($1::text, '')
+)
+SELECT 1 FROM put
 `
 
 type SetNicknameParams struct {
@@ -47,6 +62,8 @@ type SetNicknameParams struct {
 	UserID   string
 }
 
+// Queues user.updated (changed: profile) when the nickname changes; the
+// hooks CTE reads the row as it was before the update.
 func (q *Queries) SetNickname(ctx context.Context, arg SetNicknameParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setNickname, arg.Nickname, arg.UserID)
 	if err != nil {

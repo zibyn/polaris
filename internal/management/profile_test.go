@@ -89,3 +89,23 @@ func TestAdminDeletingAUserDeletesTheAvatar(t *testing.T) {
 		t.Errorf("%d blobs left", n)
 	}
 }
+
+// Changing 用户资料 queues user.updated with changed [profile]; a write that
+// changes nothing queues none.
+func TestWebhookProfileUpdated(t *testing.T) {
+	e := start(t)
+	e.hooked()
+	e.user("ALICE", nil, "email:alice@example.com")
+	owner := e.token(e.owner, nil)
+
+	e.call("PATCH", owner, "/users/ALICE/profile", map[string]string{"nickname": "小 A"}, nil)
+	e.queued("set nickname", event("user.updated", "ALICE", "profile"))
+	e.call("PATCH", owner, "/users/ALICE/profile", map[string]string{"nickname": " 小 A "}, nil)
+	e.queued("same nickname")
+	e.avatar("ALICE")
+	e.queued("upload", event("user.updated", "ALICE", "profile"))
+	e.call("DELETE", owner, "/users/ALICE/avatar", nil, nil)
+	e.queued("remove avatar", event("user.updated", "ALICE", "profile"))
+	e.call("DELETE", owner, "/users/ALICE/avatar", nil, nil)
+	e.queued("remove again")
+}
