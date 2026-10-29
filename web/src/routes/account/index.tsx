@@ -49,12 +49,14 @@ import {
 	APIError,
 	api,
 	forget,
+	type Login,
 	logout,
 	type Me,
 	type Session,
 	type TOTPSetup,
 } from "#/lib/account-api";
 import { deviceLabel } from "#/lib/device";
+import { loginLine } from "#/lib/logins";
 import {
 	type AssertionOptions,
 	type CreationOptions,
@@ -73,13 +75,23 @@ export const Route = createFileRoute("/account/")({
 	loader: ({ context }) =>
 		context.queryClient
 			.ensureQueryData(passkeysQuery)
-			.then(() => context.queryClient.ensureQueryData(sessionsQuery)),
+			.then(() =>
+				Promise.all([
+					context.queryClient.ensureQueryData(sessionsQuery),
+					context.queryClient.ensureQueryData(loginsQuery),
+				]),
+			),
 	component: Account,
 });
 
 const sessionsQuery = queryOptions({
 	queryKey: ["account", "sessions"],
 	queryFn: () => api<{ sessions: Session[] }>("/sessions"),
+});
+
+const loginsQuery = queryOptions({
+	queryKey: ["account", "logins"],
+	queryFn: () => api<{ logins: Login[]; failedCount: number }>("/logins"),
 });
 
 const passkeysQuery = queryOptions({
@@ -154,6 +166,7 @@ function Account() {
 				<LoginMethods me={user} guard={guard} />
 				<Security me={user} guard={guard} />
 				<Sessions />
+				<RecentLogins />
 				<Section title="数据与隐私">
 					<ItemList>
 						<Row
@@ -920,6 +933,7 @@ function Sessions() {
 	return (
 		<Section
 			title="设备与会话"
+			id="sessions"
 			intro="不限设备数,可逐个下线或一次下线其他设备;已结束的保留 30 天"
 		>
 			{others.length > 0 && (
@@ -974,6 +988,63 @@ function Sessions() {
 					</Row>
 				))}
 			</ItemList>
+		</Section>
+	);
+}
+
+// RecentLogins is the User's own login history: no actions per row, only a
+// pointer to the password and to signing other devices out.
+function RecentLogins() {
+	const { logins, failedCount } = useSuspenseQuery(loginsQuery).data;
+	return (
+		<Section
+			title="最近登录"
+			intro={
+				failedCount > 0
+					? `过去 30 天有 ${failedCount} 次登录失败`
+					: "过去 30 天的登录,最多 50 条"
+			}
+		>
+			{logins.length === 0 ? (
+				<p className="text-muted-foreground">过去 30 天没有登录记录</p>
+			) : (
+				<ItemList>
+					{logins.map((l, i) => {
+						const line = loginLine(l);
+						return (
+							<Row
+								// biome-ignore lint/suspicious/noArrayIndexKey: events carry no id; the list is never reordered
+								key={i}
+								label={
+									<span className="flex items-center gap-2">
+										{line.what} · {l.application}
+										<Badge
+											variant={
+												l.result === "succeeded" ? "secondary" : "destructive"
+											}
+										>
+											{line.result}
+										</Badge>
+									</span>
+								}
+								hint={`${date(l.at)} · ${line.device}`}
+							>
+								{null}
+							</Row>
+						);
+					})}
+				</ItemList>
+			)}
+			<p className="mt-3 text-[13px] text-muted-foreground">
+				有不认识的登录?
+				<a className="underline" href="#passkeys">
+					修改密码
+				</a>
+				,并在上方
+				<a className="underline" href="#sessions">
+					下线其他设备
+				</a>
+			</p>
 		</Section>
 	);
 }
