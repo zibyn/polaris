@@ -204,7 +204,10 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 // Register adds the OIDC endpoints, the direct auth API and the setup page
 // to mux.
 func (s *Service) Register(mux *http.ServeMux) {
-	s.op.RegisterRoutes(mux, clientCredentialsRules)
+	s.op.RegisterRoutes(mux, clientCredentialsRules, s.cors) // cors outermost: rejected requests get it too
+	for path := range corsMethods {
+		mux.Handle("OPTIONS "+path, s.cors(http.HandlerFunc(preflight)))
+	}
 	mux.HandleFunc("GET /altcha/challenge", s.pow.ServeChallenge)
 	mux.HandleFunc("GET /altcha/altcha.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=86400")
