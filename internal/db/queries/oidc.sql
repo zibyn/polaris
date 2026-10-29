@@ -57,6 +57,36 @@ WITH spent AS (
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'refresh_token.reused', ended.user_id, jsonb_build_object('session', ended.id) FROM ended;
 
+-- name: GraceRefreshToken :one
+-- The grant of a spent refresh token still in its grace window: the token
+-- spent last on that grant, no more than grace_secs ago (ADR 0019).
+SELECT s.grant_id FROM oidc_spent_refresh_tokens s
+WHERE s.hash = @hash AND s.spent_at > now() - make_interval(secs => @grace_secs::int)
+  AND s.spent_at = (SELECT max(t.spent_at) FROM oidc_spent_refresh_tokens t WHERE t.grant_id = s.grant_id);
+
+-- name: GraceRotateRefreshToken :execrows
+-- Rotates a grant whose old_hash is in its grace window from whatever token
+-- is current now, like RotateRefreshToken, and audits the grace. No row: the
+-- token is out of grace.
+WITH spent AS (
+    SELECT s.grant_id FROM oidc_spent_refresh_tokens s
+    WHERE s.hash = @old_hash AND s.spent_at > now() - make_interval(secs => @grace_secs::int)
+      AND s.spent_at = (SELECT max(t.spent_at) FROM oidc_spent_refresh_tokens t WHERE t.grant_id = s.grant_id)
+), cur AS (
+    SELECT g.id, g.refresh_token_hash FROM oidc_grants g WHERE g.id = (SELECT spent.grant_id FROM spent) FOR UPDATE
+), g AS (
+    UPDATE oidc_grants SET refresh_token_hash = @new_hash, expires_at = @expires_at, sealed = @sealed
+    FROM cur WHERE oidc_grants.id = cur.id
+    RETURNING oidc_grants.id, oidc_grants.session_id, cur.refresh_token_hash AS old_hash
+), touched AS (
+    UPDATE sessions SET last_seen_at = now() WHERE sessions.id = (SELECT g.session_id FROM g)
+    RETURNING sessions.id, sessions.user_id
+), audited AS (
+    INSERT INTO audit_log (event, sub, detail)
+    SELECT 'refresh_token.grace', touched.user_id, jsonb_build_object('session', touched.id) FROM touched
+)
+INSERT INTO oidc_spent_refresh_tokens (hash, grant_id) SELECT g.old_hash, g.id FROM g;
+
 -- name: Grant :one
 SELECT * FROM oidc_grants
 WHERE oidc_grants.id = $1 AND (expires_at IS NULL OR expires_at > now())

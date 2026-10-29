@@ -60,7 +60,7 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
 |---|---|---|---|
 | access token | JWT,RFC 9068(`typ: at+jwt`),RS256 | 10 分钟 | `aud` 为 API 标识符;带 `client_id`、`roles`、`entitlements`(只限当前 API) |
 | ID token | JWT,RS256 | — | `sub`、`amr`、`sid`(签发它的 Session);scope 为 `phone` / `email` 时带对应 claim;不带角色 |
-| refresh token | 不透明 | 跟随 Session | 每次刷新都轮换;一旦重用,终止整个 Session |
+| refresh token | 不透明 | 跟随 Session | 每次刷新都轮换;最近换下的那个 60 秒内再来,再轮换一次签发新令牌(宽限,审计 `refresh_token.grace`);其余重用终止整个 Session |
 
 - **`amr`**:按 RFC 8176 取 `sms`、`otp`、`pwd`、`hwk` / `swk`;做过两步验证(TOTP 或恢复码)时为 `[第一因素, "otp", "mfa"]`(第一因素的值加上 `otp`、`mfa`,不重复:邮箱验证码登录为 `["otp", "mfa"]`,短信为 `["sms", "otp", "mfa"]`);Passkey 登录为 `["swk", "mfa"]`(凭证可跨设备同步)或 `["hwk", "mfa"]`(仅本机),Passkey 本身已验证持有与本人,不再加 `otp`;Application 以 `mfa` 判断是否做过两步验证;Provider 登录一律为自定义值 `fed`;接受注册邀请建立的那次会话为 `["otp"]`(链接证明邮箱控制权,与邮箱验证码同一种证据,见 [authentication.md](authentication.md#注册邀请))。
 - **业务后端校验**:用 JWKS 本地验签,检查签名、`aud`、`typ`,权限读 `entitlements`。

@@ -198,6 +198,72 @@ func (q *Queries) EndReusedRefreshToken(ctx context.Context, hash []byte) error 
 	return err
 }
 
+const graceRefreshToken = `-- name: GraceRefreshToken :one
+SELECT s.grant_id FROM oidc_spent_refresh_tokens s
+WHERE s.hash = $1 AND s.spent_at > now() - make_interval(secs => $2::int)
+  AND s.spent_at = (SELECT max(t.spent_at) FROM oidc_spent_refresh_tokens t WHERE t.grant_id = s.grant_id)
+`
+
+type GraceRefreshTokenParams struct {
+	Hash      []byte
+	GraceSecs int32
+}
+
+// The grant of a spent refresh token still in its grace window: the token
+// spent last on that grant, no more than grace_secs ago (ADR 0019).
+func (q *Queries) GraceRefreshToken(ctx context.Context, arg GraceRefreshTokenParams) (string, error) {
+	row := q.db.QueryRow(ctx, graceRefreshToken, arg.Hash, arg.GraceSecs)
+	var grant_id string
+	err := row.Scan(&grant_id)
+	return grant_id, err
+}
+
+const graceRotateRefreshToken = `-- name: GraceRotateRefreshToken :execrows
+WITH spent AS (
+    SELECT s.grant_id FROM oidc_spent_refresh_tokens s
+    WHERE s.hash = $1 AND s.spent_at > now() - make_interval(secs => $2::int)
+      AND s.spent_at = (SELECT max(t.spent_at) FROM oidc_spent_refresh_tokens t WHERE t.grant_id = s.grant_id)
+), cur AS (
+    SELECT g.id, g.refresh_token_hash FROM oidc_grants g WHERE g.id = (SELECT spent.grant_id FROM spent) FOR UPDATE
+), g AS (
+    UPDATE oidc_grants SET refresh_token_hash = $3, expires_at = $4, sealed = $5
+    FROM cur WHERE oidc_grants.id = cur.id
+    RETURNING oidc_grants.id, oidc_grants.session_id, cur.refresh_token_hash AS old_hash
+), touched AS (
+    UPDATE sessions SET last_seen_at = now() WHERE sessions.id = (SELECT g.session_id FROM g)
+    RETURNING sessions.id, sessions.user_id
+), audited AS (
+    INSERT INTO audit_log (event, sub, detail)
+    SELECT 'refresh_token.grace', touched.user_id, jsonb_build_object('session', touched.id) FROM touched
+)
+INSERT INTO oidc_spent_refresh_tokens (hash, grant_id) SELECT g.old_hash, g.id FROM g
+`
+
+type GraceRotateRefreshTokenParams struct {
+	OldHash   []byte
+	GraceSecs int32
+	NewHash   []byte
+	ExpiresAt pgtype.Timestamptz
+	Sealed    []byte
+}
+
+// Rotates a grant whose old_hash is in its grace window from whatever token
+// is current now, like RotateRefreshToken, and audits the grace. No row: the
+// token is out of grace.
+func (q *Queries) GraceRotateRefreshToken(ctx context.Context, arg GraceRotateRefreshTokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, graceRotateRefreshToken,
+		arg.OldHash,
+		arg.GraceSecs,
+		arg.NewHash,
+		arg.ExpiresAt,
+		arg.Sealed,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const grant = `-- name: Grant :one
 SELECT id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id FROM oidc_grants
 WHERE oidc_grants.id = $1 AND (expires_at IS NULL OR expires_at > now())
