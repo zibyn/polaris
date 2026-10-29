@@ -96,27 +96,29 @@ func (q *Queries) Caller(ctx context.Context, arg CallerParams) (CallerRow, erro
 const deleteAPI = `-- name: DeleteAPI :execrows
 WITH gone AS (
     DELETE FROM apis
-    WHERE apis.identifier = $1 AND NOT apis.builtin
-      AND ($2::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = apis.identifier))
+    WHERE apis.identifier = $3 AND NOT apis.builtin
+      AND ($1::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = apis.identifier))
     RETURNING apis.identifier
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
     SELECT e.client_id, e.payload FROM (SELECT DISTINCT ur.user_id FROM user_roles ur JOIN gone ON ur.api = gone.identifier) h,
                     user_event('user.updated', h.user_id, '{roles}') e
 )
-SELECT 1 FROM gone
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'api.deleted', NULL, jsonb_build_object('api', gone.identifier, 'force', $1::boolean, 'by', $2::text) FROM gone
 `
 
 type DeleteAPIParams struct {
-	Identifier string
 	Force      bool
+	By         string
+	Identifier string
 }
 
 // Its Permissions, Roles and their assignments go with it, but only when
 // force confirms that; no row while someone holds one of its Roles. Each
-// User who held one gets user.updated.
+// User who held one gets user.updated. Audited with who did it.
 func (q *Queries) DeleteAPI(ctx context.Context, arg DeleteAPIParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteAPI, arg.Identifier, arg.Force)
+	result, err := q.db.Exec(ctx, deleteAPI, arg.Force, arg.By, arg.Identifier)
 	if err != nil {
 		return 0, err
 	}
@@ -124,26 +126,43 @@ func (q *Queries) DeleteAPI(ctx context.Context, arg DeleteAPIParams) (int64, er
 }
 
 const deleteApplication = `-- name: DeleteApplication :exec
-DELETE FROM applications WHERE client_id = $1 AND NOT builtin
+WITH gone AS (
+    DELETE FROM applications WHERE client_id = $2 AND NOT builtin
+    RETURNING client_id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'application.deleted', NULL, jsonb_build_object('clientId', gone.client_id, 'by', $1::text) FROM gone
 `
 
-func (q *Queries) DeleteApplication(ctx context.Context, clientID string) error {
-	_, err := q.db.Exec(ctx, deleteApplication, clientID)
+type DeleteApplicationParams struct {
+	By       string
+	ClientID string
+}
+
+// Audited with who did it.
+func (q *Queries) DeleteApplication(ctx context.Context, arg DeleteApplicationParams) error {
+	_, err := q.db.Exec(ctx, deleteApplication, arg.By, arg.ClientID)
 	return err
 }
 
 const deletePermission = `-- name: DeletePermission :execrows
-DELETE FROM permissions WHERE api = $1 AND key = $2 AND NOT builtin
+WITH gone AS (
+    DELETE FROM permissions WHERE permissions.api = $2 AND permissions.key = $3 AND NOT permissions.builtin
+    RETURNING permissions.api, permissions.key
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'permission.deleted', NULL, jsonb_build_object('api', gone.api, 'key', gone.key, 'by', $1::text) FROM gone
 `
 
 type DeletePermissionParams struct {
+	By  string
 	Api string
 	Key string
 }
 
-// Its Roles lose it too (role_permissions cascades).
+// Its Roles lose it too (role_permissions cascades). Audited with who did it.
 func (q *Queries) DeletePermission(ctx context.Context, arg DeletePermissionParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deletePermission, arg.Api, arg.Key)
+	result, err := q.db.Exec(ctx, deletePermission, arg.By, arg.Api, arg.Key)
 	if err != nil {
 		return 0, err
 	}
@@ -153,8 +172,8 @@ func (q *Queries) DeletePermission(ctx context.Context, arg DeletePermissionPara
 const deleteRole = `-- name: DeleteRole :execrows
 WITH gone AS (
     DELETE FROM roles
-    WHERE roles.api = $1 AND roles.key = $2 AND NOT roles.builtin
-      AND ($3::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = roles.api AND ur.role = roles.key)
+    WHERE roles.api = $3 AND roles.key = $4 AND NOT roles.builtin
+      AND ($1::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = roles.api AND ur.role = roles.key)
                                  AND NOT EXISTS (SELECT 1 FROM application_roles ar WHERE ar.api = roles.api AND ar.role = roles.key))
     RETURNING roles.api, roles.key
 ), hooks AS (
@@ -162,20 +181,27 @@ WITH gone AS (
     SELECT e.client_id, e.payload FROM user_roles ur JOIN gone ON ur.api = gone.api AND ur.role = gone.key,
                     user_event('user.updated', ur.user_id, '{roles}') e
 )
-SELECT 1 FROM gone
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'role.deleted', NULL, jsonb_build_object('api', gone.api, 'key', gone.key, 'force', $1::boolean, 'by', $2::text) FROM gone
 `
 
 type DeleteRoleParams struct {
+	Force bool
+	By    string
 	Api   string
 	Key   string
-	Force bool
 }
 
 // Its assignments go with it (user_roles and application_roles cascade), but
 // only when force confirms that; no row while anyone holds it. Each User
-// who held it gets user.updated.
+// who held it gets user.updated. Audited with who did it.
 func (q *Queries) DeleteRole(ctx context.Context, arg DeleteRoleParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteRole, arg.Api, arg.Key, arg.Force)
+	result, err := q.db.Exec(ctx, deleteRole,
+		arg.Force,
+		arg.By,
+		arg.Api,
+		arg.Key,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -708,17 +734,24 @@ func (q *Queries) Overview(ctx context.Context) (OverviewRow, error) {
 }
 
 const putAPI = `-- name: PutAPI :execrows
-INSERT INTO apis (identifier, name) VALUES ($1, $2)
-ON CONFLICT (identifier) DO UPDATE SET name = EXCLUDED.name WHERE NOT apis.builtin
+WITH put AS (
+    INSERT INTO apis (identifier, name) VALUES ($2, $3)
+    ON CONFLICT (identifier) DO UPDATE SET name = EXCLUDED.name WHERE NOT apis.builtin
+    RETURNING apis.identifier
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'api.saved', NULL, jsonb_build_object('api', put.identifier, 'by', $1::text) FROM put
 `
 
 type PutAPIParams struct {
+	By         string
 	Identifier string
 	Name       string
 }
 
+// Audited with who did it; no row for a built-in API.
 func (q *Queries) PutAPI(ctx context.Context, arg PutAPIParams) (int64, error) {
-	result, err := q.db.Exec(ctx, putAPI, arg.Identifier, arg.Name)
+	result, err := q.db.Exec(ctx, putAPI, arg.By, arg.Identifier, arg.Name)
 	if err != nil {
 		return 0, err
 	}
@@ -726,18 +759,29 @@ func (q *Queries) PutAPI(ctx context.Context, arg PutAPIParams) (int64, error) {
 }
 
 const putPermission = `-- name: PutPermission :exec
-INSERT INTO permissions (api, key, name) VALUES ($1, $2, $3)
-ON CONFLICT (api, key) DO UPDATE SET name = EXCLUDED.name
+WITH put AS (
+    INSERT INTO permissions (api, key, name) VALUES ($1, $2, $4)
+    ON CONFLICT (api, key) DO UPDATE SET name = EXCLUDED.name
+)
+INSERT INTO audit_log (event, sub, detail)
+VALUES ('permission.saved', NULL, jsonb_build_object('api', $1::text, 'key', $2::text, 'by', $3::text))
 `
 
 type PutPermissionParams struct {
 	Api  string
 	Key  string
+	By   string
 	Name string
 }
 
+// Audited with who did it.
 func (q *Queries) PutPermission(ctx context.Context, arg PutPermissionParams) error {
-	_, err := q.db.Exec(ctx, putPermission, arg.Api, arg.Key, arg.Name)
+	_, err := q.db.Exec(ctx, putPermission,
+		arg.Api,
+		arg.Key,
+		arg.By,
+		arg.Name,
+	)
 	return err
 }
 
@@ -829,17 +873,24 @@ func (q *Queries) SetApplicationRoles(ctx context.Context, arg SetApplicationRol
 }
 
 const setApplicationSecret = `-- name: SetApplicationSecret :execrows
-UPDATE applications SET secret_hash = $2
-WHERE client_id = $1 AND type <> 'public' AND token_auth_method = 'client_secret_basic' AND NOT builtin
+WITH put AS (
+    UPDATE applications SET secret_hash = $2
+    WHERE client_id = $3 AND type <> 'public' AND token_auth_method = 'client_secret_basic' AND NOT builtin
+    RETURNING client_id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'application.secret_regenerated', NULL, jsonb_build_object('clientId', put.client_id, 'by', $1::text) FROM put
 `
 
 type SetApplicationSecretParams struct {
-	ClientID   string
+	By         string
 	SecretHash []byte
+	ClientID   string
 }
 
+// Audited with who did it.
 func (q *Queries) SetApplicationSecret(ctx context.Context, arg SetApplicationSecretParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setApplicationSecret, arg.ClientID, arg.SecretHash)
+	result, err := q.db.Exec(ctx, setApplicationSecret, arg.By, arg.SecretHash, arg.ClientID)
 	if err != nil {
 		return 0, err
 	}
@@ -868,12 +919,18 @@ func (q *Queries) SetRolePermissions(ctx context.Context, arg SetRolePermissions
 }
 
 const setTokenAuthMethod = `-- name: SetTokenAuthMethod :execrows
-UPDATE applications SET token_auth_method = $1, secret_hash = $2
-WHERE client_id = $3 AND type <> 'public' AND NOT builtin
-  AND ($1 <> 'private_key_jwt' OR jsonb_array_length(jwks -> 'keys') > 0)
+WITH put AS (
+    UPDATE applications SET token_auth_method = $2, secret_hash = $3
+    WHERE client_id = $4 AND type <> 'public' AND NOT builtin
+      AND ($2 <> 'private_key_jwt' OR jsonb_array_length(jwks -> 'keys') > 0)
+    RETURNING client_id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'application.auth_method_changed', NULL, jsonb_build_object('clientId', put.client_id, 'by', $1::text) FROM put
 `
 
 type SetTokenAuthMethodParams struct {
+	By         string
 	Method     string
 	SecretHash []byte
 	ClientID   string
@@ -881,8 +938,14 @@ type SetTokenAuthMethodParams struct {
 
 // Switches how the Application authenticates (ADR 0023): a secret_hash for
 // client_secret_basic, NULL for private_key_jwt, which needs a registered key.
+// Audited with who did it.
 func (q *Queries) SetTokenAuthMethod(ctx context.Context, arg SetTokenAuthMethodParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setTokenAuthMethod, arg.Method, arg.SecretHash, arg.ClientID)
+	result, err := q.db.Exec(ctx, setTokenAuthMethod,
+		arg.By,
+		arg.Method,
+		arg.SecretHash,
+		arg.ClientID,
+	)
 	if err != nil {
 		return 0, err
 	}

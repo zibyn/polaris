@@ -3,6 +3,7 @@ package management
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -12,6 +13,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/zibyn/polaris/internal/channel"
+	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 )
 
@@ -43,11 +45,11 @@ type putChannelInput struct {
 }
 
 func (s *Service) putChannel(ctx context.Context, in *putChannelInput) (*struct{}, error) {
-	return nil, invalid(s.channels.Put(ctx, in.Kind, in.Body.Plugin, in.Body.Config))
+	return nil, invalid(s.channels.Put(ctx, in.Kind, in.Body.Plugin, in.Body.Config, callerSub(ctx)))
 }
 
 func (s *Service) deleteChannel(ctx context.Context, in *kindPath) (*struct{}, error) {
-	return nil, s.channels.Delete(ctx, in.Kind)
+	return nil, s.channels.Delete(ctx, in.Kind, callerSub(ctx))
 }
 
 type testChannelInput struct {
@@ -87,7 +89,10 @@ func (s *Service) testChannel(ctx context.Context, in *testChannelInput) (*testC
 	if err := ch.Send(ctx, in.Body.To, out.Body.Code); err != nil {
 		return nil, huma.Error502BadGateway("发送失败:" + err.Error())
 	}
-	return out, nil
+	// Nothing in PG changed, so there is no transaction to share; the
+	// recipient stays out of the log.
+	detail, _ := json.Marshal(map[string]string{"kind": in.Kind, "by": callerSub(ctx)})
+	return out, s.q.Audit(ctx, sqlc.AuditParams{Event: "channel.tested", Detail: detail})
 }
 
 // invalid turns an error safe to show the admin into a 422.

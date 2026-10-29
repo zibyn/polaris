@@ -31,10 +31,22 @@ INSERT INTO providers (id, type, name, config) VALUES ($1, $2, $3, $4);
 UPDATE providers SET name = $2, config = $3 WHERE id = $1;
 
 -- name: SetProviderEnabled :execrows
-UPDATE providers SET enabled = $2 WHERE id = $1;
+-- Audited with who did it.
+WITH put AS (
+    UPDATE providers SET enabled = @enabled WHERE providers.id = @id RETURNING providers.id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT CASE WHEN @enabled::boolean THEN 'provider.enabled' ELSE 'provider.disabled' END, NULL,
+       jsonb_build_object('id', put.id, 'by', @by::text)
+FROM put;
 
 -- name: DeleteProvider :execrows
-DELETE FROM providers WHERE id = $1;
+-- Audited with who did it.
+WITH gone AS (
+    DELETE FROM providers WHERE providers.id = @id RETURNING providers.id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'provider.deleted', NULL, jsonb_build_object('id', gone.id, 'by', @by::text) FROM gone;
 
 -- name: ProviderSecrets :many
 SELECT field, value FROM provider_secrets WHERE provider = $1;

@@ -92,7 +92,7 @@ func start(t *testing.T) *env {
 	hook := httptest.NewServer(e.inbox)
 	t.Cleanup(hook.Close)
 	for _, kind := range []string{"phone", "email"} {
-		if err := channel.NewStore(pool, keyring).Put(ctx, kind, "webhook", map[string]string{"url": hook.URL, "secret": "s"}); err != nil {
+		if err := channel.NewStore(pool, keyring).Put(ctx, kind, "webhook", map[string]string{"url": hook.URL, "secret": "s"}, ""); err != nil {
 			t.Fatal(err)
 		}
 	}

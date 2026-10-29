@@ -18,7 +18,7 @@ import (
 func (e *env) addApple() *appletest.Fake {
 	e.t.Helper()
 	f := appletest.Start(e.t)
-	if err := e.providers().Create(context.Background(), "apple", "apple", "Apple", f.Config()); err != nil {
+	if err := e.providers().Create(context.Background(), "apple", "apple", "Apple", f.Config(), ""); err != nil {
 		e.t.Fatal(err)
 	}
 	return f
@@ -283,7 +283,7 @@ func TestAppleInTheAppRefusals(t *testing.T) {
 
 	// Disabled: refused before Apple is asked.
 	f.FailToken = false
-	if err := e.providers().SetEnabled(context.Background(), "apple", false); err != nil {
+	if err := e.providers().SetEnabled(context.Background(), "apple", false, ""); err != nil {
 		t.Fatal(err)
 	}
 	asked := len(f.ClientSecrets)

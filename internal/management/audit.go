@@ -3,53 +3,15 @@ package management
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
-	"net/http"
-	"regexp"
 	"time"
 
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/zibyn/polaris/internal/db/sqlc"
 )
 
-// selfAudited are the writes that audit themselves, in the same
-// transaction and with more detail; auditWrite audits the rest.
-var selfAudited = map[string]bool{
-	"end-session": true, "disable-user": true, "enable-user": true, "delete-user": true, "create-user": true,
-	"replace-identifier": true, "set-user-roles": true, "put-settings": true, "rotate-signing-keys": true,
-	"reset-two-factor": true, "create-provider": true, "unbind-external-identity": true,
-	"remove-user-passkey": true, "set-application-roles": true,
-	"send-invite": true, "revoke-invite": true, "set-user-nickname": true, "remove-user-avatar": true,
-}
-
-var pathParam = regexp.MustCompile(`\{(\w+)\}`)
-
-// auditWrite records a successful Management API write by sub as an event
-// named after its operation, with its path and query parameters.
-// ponytail: written after the response, so a PG failure here loses the
-// event (logged); move into each handler's transaction if that matters.
-func (s *Service) auditWrite(ctx huma.Context, by string) {
-	op := ctx.Operation()
-	if op.Method == http.MethodGet || selfAudited[op.OperationID] || ctx.Status() >= 300 {
-		return
-	}
-	detail := map[string]string{}
-	u := ctx.URL()
-	for k, v := range u.Query() {
-		detail[k] = v[0]
-	}
-	for _, m := range pathParam.FindAllStringSubmatch(op.Path, -1) {
-		detail[m[1]] = ctx.Param(m[1])
-	}
-	detail["by"] = by
-	sub := pgtype.Text{String: detail["sub"], Valid: detail["sub"] != ""}
-	raw, _ := json.Marshal(detail)
-	if err := s.q.Audit(context.WithoutCancel(ctx.Context()), sqlc.AuditParams{Event: op.OperationID, Sub: sub, Detail: raw}); err != nil {
-		slog.Error("audit", "event", op.OperationID, "err", err)
-	}
-}
+// Every write audits itself, in the transaction that makes the change
+// (ADR 0025); TestEveryWriteIsAudited holds each one to it.
 
 type AuditEvent struct {
 	ID     int64          `json:"id"`

@@ -237,7 +237,6 @@ func (s *Service) authorize(api huma.API) func(huma.Context, func(huma.Context))
 			return
 		}
 		next(huma.WithValue(ctx, callerKey{}, call))
-		s.auditWrite(ctx, sub)
 	}
 }
 

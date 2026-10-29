@@ -63,8 +63,8 @@ func (s *Store) List(ctx context.Context) ([]Settings, error) {
 
 // Put enables plugin for kind with config. An empty secret field keeps the
 // stored value, so the console never needs to read secrets back; switching
-// plugin drops the old plugin's secrets.
-func (s *Store) Put(ctx context.Context, kind, plugin string, config map[string]string) error {
+// plugin drops the old plugin's secrets. Audited as done by by.
+func (s *Store) Put(ctx context.Context, kind, plugin string, config map[string]string, by string) error {
 	p := Get(plugin)
 	if p == nil {
 		return identity.Invalid("没有这个 Channel 插件:" + plugin)
@@ -135,7 +135,8 @@ func (s *Store) Put(ctx context.Context, kind, plugin string, config map[string]
 				return err
 			}
 		}
-		return nil
+		detail, _ := json.Marshal(map[string]string{"kind": kind, "by": by})
+		return q.Audit(ctx, sqlc.AuditParams{Event: "channel.saved", Detail: detail})
 	})
 }
 
@@ -154,9 +155,9 @@ func (f Field) Check(v string) error {
 	return nil
 }
 
-// Delete turns off codes of kind.
-func (s *Store) Delete(ctx context.Context, kind string) error {
-	return sqlc.New(s.pool).DeleteChannel(ctx, kind)
+// Delete turns off codes of kind, audited as done by by.
+func (s *Store) Delete(ctx context.Context, kind, by string) error {
+	return sqlc.New(s.pool).DeleteChannel(ctx, sqlc.DeleteChannelParams{Kind: kind, By: by})
 }
 
 // Channel returns the enabled Channel for kind, or ErrNotConfigured.

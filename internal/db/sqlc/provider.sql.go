@@ -59,11 +59,21 @@ func (q *Queries) BindExternalIdentity(ctx context.Context, arg BindExternalIden
 }
 
 const deleteProvider = `-- name: DeleteProvider :execrows
-DELETE FROM providers WHERE id = $1
+WITH gone AS (
+    DELETE FROM providers WHERE providers.id = $2 RETURNING providers.id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'provider.deleted', NULL, jsonb_build_object('id', gone.id, 'by', $1::text) FROM gone
 `
 
-func (q *Queries) DeleteProvider(ctx context.Context, id string) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteProvider, id)
+type DeleteProviderParams struct {
+	By string
+	ID string
+}
+
+// Audited with who did it.
+func (q *Queries) DeleteProvider(ctx context.Context, arg DeleteProviderParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteProvider, arg.By, arg.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -428,16 +438,24 @@ func (q *Queries) SetExternalIdentityToken(ctx context.Context, arg SetExternalI
 }
 
 const setProviderEnabled = `-- name: SetProviderEnabled :execrows
-UPDATE providers SET enabled = $2 WHERE id = $1
+WITH put AS (
+    UPDATE providers SET enabled = $1 WHERE providers.id = $3 RETURNING providers.id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT CASE WHEN $1::boolean THEN 'provider.enabled' ELSE 'provider.disabled' END, NULL,
+       jsonb_build_object('id', put.id, 'by', $2::text)
+FROM put
 `
 
 type SetProviderEnabledParams struct {
-	ID      string
 	Enabled bool
+	By      string
+	ID      string
 }
 
+// Audited with who did it.
 func (q *Queries) SetProviderEnabled(ctx context.Context, arg SetProviderEnabledParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setProviderEnabled, arg.ID, arg.Enabled)
+	result, err := q.db.Exec(ctx, setProviderEnabled, arg.Enabled, arg.By, arg.ID)
 	if err != nil {
 		return 0, err
 	}

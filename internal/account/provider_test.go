@@ -24,7 +24,7 @@ func (e *env) addGoogle() *providertest.Upstream {
 	e.t.Helper()
 	up := providertest.Start(e.t, provider.CallbackURL(e.issuer, "google"))
 	if err := provider.NewStore(e.pool, e.keyring).Create(context.Background(), "google", "oidc", "Google",
-		map[string]string{"issuer": up.Issuer, "client_id": "upstream", "client_secret": "shh"}); err != nil {
+		map[string]string{"issuer": up.Issuer, "client_id": "upstream", "client_secret": "shh"}, ""); err != nil {
 		e.t.Fatal(err)
 	}
 	return up
@@ -34,7 +34,7 @@ func (e *env) addGoogle() *providertest.Upstream {
 func (e *env) addOAuth2() *oauth2test.Fake {
 	e.t.Helper()
 	f := oauth2test.Start(e.t)
-	if err := provider.NewStore(e.pool, e.keyring).Create(context.Background(), "oauth2", "oauth2", "OAuth2", f.Config()); err != nil {
+	if err := provider.NewStore(e.pool, e.keyring).Create(context.Background(), "oauth2", "oauth2", "OAuth2", f.Config(), ""); err != nil {
 		e.t.Fatal(err)
 	}
 	return f
@@ -165,7 +165,7 @@ func TestUnbindExternalIdentity(t *testing.T) {
 	e.user("ALICE", "phone:+8613800138000")
 	e.addGoogle()
 	providers := provider.NewStore(e.pool, e.keyring)
-	if err := providers.Create(ctx, "apple", "revoking", "Apple", map[string]string{}); err != nil {
+	if err := providers.Create(ctx, "apple", "revoking", "Apple", map[string]string{}, ""); err != nil {
 		t.Fatal(err)
 	}
 	tok := e.signIn("ALICE", 0)
@@ -220,10 +220,10 @@ func TestUnbindExternalIdentity(t *testing.T) {
 	if _, err := e.pool.Exec(ctx, `INSERT INTO external_identities (provider, subject, user_id, token) VALUES ('apple', 'apple-2', 'BOB', $1)`, sealed); err != nil {
 		t.Fatal(err)
 	}
-	if err := providers.Update(ctx, "apple", "Apple", map[string]string{"fail": "apple is down"}); err != nil {
+	if err := providers.Update(ctx, "apple", "Apple", map[string]string{"fail": "apple is down"}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := providers.SetEnabled(ctx, "apple", false); err != nil {
+	if err := providers.SetEnabled(ctx, "apple", false, ""); err != nil {
 		t.Fatal(err)
 	}
 	if c := e.call("DELETE", e.signIn("BOB", 0), "/v1/account/providers/apple", nil, nil); c != 204 {
@@ -245,7 +245,7 @@ func TestDisabledProviderIsNoLoginPath(t *testing.T) {
 	if q := e.redirect(tok, "/v1/account/providers/google/bind"); q.Get("bound") != "google" {
 		t.Fatalf("bind: %v", q)
 	}
-	if err := provider.NewStore(e.pool, e.keyring).SetEnabled(context.Background(), "google", false); err != nil {
+	if err := provider.NewStore(e.pool, e.keyring).SetEnabled(context.Background(), "google", false, ""); err != nil {
 		t.Fatal(err)
 	}
 	if c := e.call("DELETE", tok, "/v1/account/identifiers/phone", nil, nil); c != 422 {

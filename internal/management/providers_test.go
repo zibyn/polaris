@@ -128,7 +128,7 @@ func TestAdminAddsAndEditsProvider(t *testing.T) {
 	for _, ev := range audit.Events {
 		events = append(events, ev.Event)
 	}
-	if !slices.Contains(events, "create-provider") || !slices.Contains(events, "update-provider") {
+	if !slices.Contains(events, "provider.created") || !slices.Contains(events, "provider.updated") {
 		t.Errorf("audit: %v", events)
 	}
 }
@@ -207,7 +207,7 @@ func TestProviderWithBindingsCanOnlyBeDisabled(t *testing.T) {
 	for _, ev := range audit.Events {
 		events = append(events, ev.Event)
 	}
-	for _, want := range []string{"disable-provider", "delete-provider"} {
+	for _, want := range []string{"provider.disabled", "provider.deleted"} {
 		if !slices.Contains(events, want) {
 			t.Errorf("audit lacks %s: %v", want, events)
 		}

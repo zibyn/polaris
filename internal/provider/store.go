@@ -86,8 +86,8 @@ func (s *Store) List(ctx context.Context) ([]Settings, error) {
 
 var idRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
-// Create adds an enabled Provider of type typ.
-func (s *Store) Create(ctx context.Context, id, typ, name string, config map[string]string) error {
+// Create adds an enabled Provider of type typ, audited as done by by.
+func (s *Store) Create(ctx context.Context, id, typ, name string, config map[string]string, by string) error {
 	t := GetType(typ)
 	if t == nil {
 		return identity.Invalid("没有这个 Provider 类型:" + typ)
@@ -107,13 +107,18 @@ func (s *Store) Create(ctx context.Context, id, typ, name string, config map[str
 		} else if err != nil {
 			return err
 		}
-		return s.putSecrets(ctx, q, id, fresh)
+		if err := s.putSecrets(ctx, q, id, fresh); err != nil {
+			return err
+		}
+		detail, _ := json.Marshal(map[string]string{"id": id, "type": typ, "by": by})
+		return q.Audit(ctx, sqlc.AuditParams{Event: "provider.created", Detail: detail})
 	})
 }
 
-// Update changes a Provider's name and settings. An empty secret field keeps
-// the stored value; an Immutable field must stay as it is.
-func (s *Store) Update(ctx context.Context, id, name string, config map[string]string) error {
+// Update changes a Provider's name and settings, audited as done by by. An
+// empty secret field keeps the stored value; an Immutable field must stay as
+// it is.
+func (s *Store) Update(ctx context.Context, id, name string, config map[string]string, by string) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		r, err := q.GetProviderForUpdate(ctx, id)
@@ -137,7 +142,11 @@ func (s *Store) Update(ctx context.Context, id, name string, config map[string]s
 		if err := q.UpdateProvider(ctx, sqlc.UpdateProviderParams{ID: id, Name: strings.TrimSpace(name), Config: plain}); err != nil {
 			return err
 		}
-		return s.putSecrets(ctx, q, id, fresh)
+		if err := s.putSecrets(ctx, q, id, fresh); err != nil {
+			return err
+		}
+		detail, _ := json.Marshal(map[string]string{"id": id, "by": by})
+		return q.Audit(ctx, sqlc.AuditParams{Event: "provider.updated", Detail: detail})
 	})
 }
 
@@ -201,18 +210,18 @@ func (s *Store) putSecrets(ctx context.Context, q *sqlc.Queries, id string, fres
 }
 
 // SetEnabled turns a Provider on or off. A disabled one leaves the login
-// page, and its External Identities sign nobody in.
-func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool) error {
-	n, err := s.q.SetProviderEnabled(ctx, sqlc.SetProviderEnabledParams{ID: id, Enabled: enabled})
+// page, and its External Identities sign nobody in. Audited as done by by.
+func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool, by string) error {
+	n, err := s.q.SetProviderEnabled(ctx, sqlc.SetProviderEnabledParams{ID: id, Enabled: enabled, By: by})
 	if err == nil && n == 0 {
 		return ErrNotFound
 	}
 	return err
 }
 
-// Delete removes a Provider no External Identity uses.
-func (s *Store) Delete(ctx context.Context, id string) error {
-	n, err := s.q.DeleteProvider(ctx, id)
+// Delete removes a Provider no External Identity uses, audited as done by by.
+func (s *Store) Delete(ctx context.Context, id, by string) error {
+	n, err := s.q.DeleteProvider(ctx, sqlc.DeleteProviderParams{ID: id, By: by})
 	if isCode(err, "23503") {
 		return ErrBound
 	} else if err == nil && n == 0 {

@@ -159,8 +159,10 @@ func (s *Service) createApplication(ctx context.Context, in *createApplicationIn
 		if err := q.InsertApplication(ctx, sqlc.InsertApplicationParams{ClientID: clientID, Type: in.Body.Type, SecretHash: secretHash}); err != nil {
 			return err
 		}
-		_, err := s.saveSettings(ctx, q, clientID, in.Body.Type, &in.Body.Settings)
-		return err
+		if _, err := s.saveSettings(ctx, q, clientID, in.Body.Type, &in.Body.Settings); err != nil {
+			return err
+		}
+		return auditApplication(ctx, q, "application.created", clientID)
 	})
 	if err != nil {
 		return nil, err
@@ -188,8 +190,19 @@ func (s *Service) updateApplication(ctx context.Context, in *struct {
 	if app.TokenAuthMethod == privateKeyJWT && in.Body.JWKS != nil && emptyJWKS(in.Body.JWKS) {
 		return nil, huma.Error422UnprocessableEntity("私钥签名认证时不能清空 Application 公钥")
 	}
-	_, err = s.saveSettings(ctx, s.q, in.ClientID, app.Type, &in.Body)
-	return nil, err
+	return nil, pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		if n, err := s.saveSettings(ctx, q, in.ClientID, app.Type, &in.Body); err != nil || n == 0 { // n == 0: deleted meanwhile
+			return err
+		}
+		return auditApplication(ctx, q, "application.updated", in.ClientID)
+	})
+}
+
+// auditApplication records event about an Application, done by the caller.
+func auditApplication(ctx context.Context, q *sqlc.Queries, event, clientID string) error {
+	detail, _ := json.Marshal(map[string]string{"clientId": clientID, "by": callerSub(ctx)})
+	return q.Audit(ctx, sqlc.AuditParams{Event: event, Detail: detail})
 }
 
 // errBuiltinApplication refuses to touch an Application the authentication
@@ -333,7 +346,7 @@ func (s *Service) deleteApplication(ctx context.Context, in *clientIDPath) (*str
 	if err := s.notBuiltin(ctx, in.ClientID); err != nil {
 		return nil, err
 	}
-	return nil, s.q.DeleteApplication(ctx, in.ClientID)
+	return nil, s.q.DeleteApplication(ctx, sqlc.DeleteApplicationParams{ClientID: in.ClientID, By: callerSub(ctx)})
 }
 
 // ApplicationRoles are the Roles an M2M Application holds on its default API;
@@ -450,7 +463,7 @@ type newSecretOutput struct {
 func (s *Service) newSecret(ctx context.Context, in *clientIDPath) (*newSecretOutput, error) {
 	out := &newSecretOutput{}
 	out.Body.Secret = rand.Text()
-	n, err := s.q.SetApplicationSecret(ctx, sqlc.SetApplicationSecretParams{ClientID: in.ClientID, SecretHash: oidcstore.SecretHash(out.Body.Secret)})
+	n, err := s.q.SetApplicationSecret(ctx, sqlc.SetApplicationSecretParams{ClientID: in.ClientID, SecretHash: oidcstore.SecretHash(out.Body.Secret), By: callerSub(ctx)})
 	if err != nil || n > 0 {
 		return out, err
 	}
@@ -499,7 +512,7 @@ func (s *Service) setAuthMethod(ctx context.Context, in *setAuthMethodInput) (*s
 		return nil, huma.Error409Conflict("public Application 不做客户端认证")
 	}
 	out := &setAuthMethodOutput{}
-	params := sqlc.SetTokenAuthMethodParams{ClientID: in.ClientID, Method: in.Body.Method}
+	params := sqlc.SetTokenAuthMethodParams{ClientID: in.ClientID, Method: in.Body.Method, By: callerSub(ctx)}
 	if in.Body.Method == clientSecretBasic {
 		out.Body.Secret = rand.Text()
 		params.SecretHash = oidcstore.SecretHash(out.Body.Secret)

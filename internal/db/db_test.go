@@ -205,3 +205,52 @@ func TestBuiltinIdentifiers(t *testing.T) {
 		t.Fatalf("applications=%d apis=%d roles=%d, want 2 2 3", apps, apis, roles)
 	}
 }
+
+// Management API writes were audited under their operation IDs; ADR 0025
+// renames the history to 名词.动词, leaving other events alone.
+func TestAuditEventsRenamed(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.Fresh(t)
+	if err := migrate(ctx, pool, migrationsBefore(t, 39)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO audit_log (event, detail) VALUES
+		('put-role', '{}'), ('test-channel', '{}'), ('create-provider', '{}'), ('settings.updated', '{}')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	if err := pool.QueryRow(ctx, "SELECT string_agg(event, ' ' ORDER BY id) FROM audit_log").Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if want := "role.saved channel.tested provider.created settings.updated"; got != want {
+		t.Errorf("events: %s, want %s", got, want)
+	}
+}
+
+// migrationsBefore is the embedded migrations numbered below n.
+func migrationsBefore(t *testing.T, n int64) fs.FS {
+	t.Helper()
+	sub, err := fs.Sub(migrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := fs.ReadDir(sub, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := fstest.MapFS{}
+	for _, e := range entries {
+		if v, err := strconv.ParseInt(strings.SplitN(e.Name(), "_", 2)[0], 10, 64); err != nil || v >= n {
+			continue
+		}
+		b, err := fs.ReadFile(sub, e.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[e.Name()] = &fstest.MapFile{Data: b}
+	}
+	return files
+}
