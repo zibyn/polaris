@@ -307,8 +307,8 @@ func TestDisablingAUserEndsTheirSessions(t *testing.T) {
 }
 
 // A Session keeps the IP and User-Agent it was last used from: signing in
-// writes them, a refresh overwrites them, and a User-Agent is cut to 512
-// bytes.
+// writes them, a refresh overwrites them (a retry in the grace window
+// too), and a User-Agent is cut to 512 bytes.
 func TestSessionRemembersItsDevice(t *testing.T) {
 	e := start(t)
 	e.bootstrap("owner", "password1")
@@ -336,6 +336,14 @@ func TestSessionRemembersItsDevice(t *testing.T) {
 	}
 	if _, ua := device(); ua != e.ua[:512] {
 		t.Errorf("after refresh: %d bytes %.40q", len(ua), ua)
+	}
+
+	e.ua = "App/1.1"
+	if _, errCode := e.refresh(tok.RefreshToken); errCode != "" {
+		t.Fatal(errCode)
+	}
+	if _, ua := device(); ua != e.ua {
+		t.Errorf("after grace refresh: %q", ua)
 	}
 }
 

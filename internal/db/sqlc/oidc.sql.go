@@ -234,7 +234,8 @@ WITH spent AS (
     FROM cur WHERE oidc_grants.id = cur.id
     RETURNING oidc_grants.id, oidc_grants.session_id, cur.refresh_token_hash AS old_hash
 ), touched AS (
-    UPDATE sessions SET last_seen_at = now() WHERE sessions.id = (SELECT g.session_id FROM g)
+    UPDATE sessions SET last_seen_at = now(), ip = $6, user_agent = $7
+    WHERE sessions.id = (SELECT g.session_id FROM g)
     RETURNING sessions.id, sessions.user_id
 ), audited AS (
     INSERT INTO audit_log (event, sub, detail)
@@ -249,11 +250,13 @@ type GraceRotateRefreshTokenParams struct {
 	NewHash   []byte
 	ExpiresAt pgtype.Timestamptz
 	Sealed    []byte
+	Ip        pgtype.Text
+	UserAgent pgtype.Text
 }
 
 // Rotates a grant whose old_hash is in its grace window from whatever token
-// is current now, like RotateRefreshToken, and audits the grace. No row: the
-// token is out of grace.
+// is current now, like RotateRefreshToken (from the refreshing device too),
+// and audits the grace. No row: the token is out of grace.
 func (q *Queries) GraceRotateRefreshToken(ctx context.Context, arg GraceRotateRefreshTokenParams) (int64, error) {
 	result, err := q.db.Exec(ctx, graceRotateRefreshToken,
 		arg.OldHash,
@@ -261,6 +264,8 @@ func (q *Queries) GraceRotateRefreshToken(ctx context.Context, arg GraceRotateRe
 		arg.NewHash,
 		arg.ExpiresAt,
 		arg.Sealed,
+		arg.Ip,
+		arg.UserAgent,
 	)
 	if err != nil {
 		return 0, err

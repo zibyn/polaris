@@ -211,6 +211,7 @@ func (s *Store) SaveGrant(ctx context.Context, g *goidc.Grant) error {
 			n, err = s.q.GraceRotateRefreshToken(ctx, sqlc.GraceRotateRefreshTokenParams{
 				OldHash: hash(g.PreviousRefreshToken), GraceSecs: int32(GraceWindow.Seconds()),
 				NewHash: hash(g.RefreshToken), ExpiresAt: s.grantExpiry(g), Sealed: sealed,
+				Ip: ip, UserAgent: ua,
 			})
 			if err != nil {
 				return err
