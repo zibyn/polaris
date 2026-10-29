@@ -50,3 +50,57 @@ func (q *Queries) DeleteOldAudit(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, deleteOldAudit)
 	return err
 }
+
+const userLoginFailures = `-- name: UserLoginFailures :one
+SELECT count(*) FROM audit_log WHERE sub = $1::text AND event = 'login.failed' AND at > now() - interval '30 days'
+`
+
+func (q *Queries) UserLoginFailures(ctx context.Context, sub string) (int64, error) {
+	row := q.db.QueryRow(ctx, userLoginFailures, sub)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const userLogins = `-- name: UserLogins :many
+SELECT l.at, l.event, l.detail, COALESCE(a.name, l.detail->>'client_id', '')::text AS application
+FROM audit_log l LEFT JOIN applications a ON a.client_id = l.detail->>'client_id'
+WHERE l.sub = $1::text AND l.event IN ('login.succeeded', 'login.failed', 'login.password_locked')
+  AND l.at > now() - interval '30 days'
+ORDER BY l.at DESC, l.id DESC
+LIMIT 50
+`
+
+type UserLoginsRow struct {
+	At          pgtype.Timestamptz
+	Event       string
+	Detail      []byte
+	Application string
+}
+
+// The account center's 最近登录: the last 30 days, newest first, at most 50.
+// A deleted Application falls back to the client_id.
+func (q *Queries) UserLogins(ctx context.Context, sub string) ([]UserLoginsRow, error) {
+	rows, err := q.db.Query(ctx, userLogins, sub)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UserLoginsRow
+	for rows.Next() {
+		var i UserLoginsRow
+		if err := rows.Scan(
+			&i.At,
+			&i.Event,
+			&i.Detail,
+			&i.Application,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
