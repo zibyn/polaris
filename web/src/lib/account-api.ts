@@ -57,3 +57,20 @@ export type Session = {
 	current: boolean;
 };
 export type Profile = { nickname?: string; picture?: string };
+// One row of 最近登录; the server normalizes method.
+export type Login = {
+	at: string;
+	result: "succeeded" | "failed" | "locked";
+	method?:
+		| "password"
+		| "code"
+		| "passkey"
+		| "provider"
+		| "totp"
+		| "recovery_code";
+	twoFactor?: boolean;
+	application: string;
+	ip?: string;
+	userAgent?: string;
+	lockedUntil?: string;
+};

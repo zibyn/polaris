@@ -59,7 +59,7 @@
 
 - **创建**见[创建应用与接入清单](#创建应用与接入清单)。
 - **应用详情**分三个标签;后端服务没有「登录」(它不登入任何 User),换成「角色」:
-  - **基本**:名称、类型(只读;「无后端应用 / 有后端应用 / 后端服务」,写明各适合什么、创建后不能改)、`client_id`、client secret、默认 API 资源(链到对应的 API 资源详情)、「要求用户有角色」开关(让 User 登录的应用;没选默认 API 资源时置灰并说明原因,见 [rbac.md](rbac.md#签发时检查-role));页面底部是红框删除区。后端服务的默认 API 资源只读:它换到的令牌只对这个 API 有效,创建后不能改。
+  - **基本**:名称、类型(只读;「无后端应用 / 有后端应用 / 后端服务」,写明各适合什么、创建后不能改)、`client_id`、默认 API 资源(链到对应的 API 资源详情)、「要求用户有角色」开关(让 User 登录的应用;没选默认 API 资源时置灰并说明原因,见 [rbac.md](rbac.md#签发时检查-role))、客户端认证方式(无后端应用没有;共享密钥 / 私钥签名单选,切换前确认;共享密钥下有 client secret 与重新生成,私钥签名下 secret 作废;Application 公钥以 JWKS 文本框登记,与认证方式分开保存,ADR 0023);页面底部是红框删除区。后端服务的默认 API 资源只读:它换到的令牌只对这个 API 有效,创建后不能改。
   - **登录**:回调地址;「高级」折叠区里放退出后跳转地址、「闲置多久需重新登录」、「允许 App 保持登录」。无后端应用多一组「原生 App 关联」:iOS 的 Team ID + Bundle ID、Android 的包名 + SHA-256 签名指纹,各按行登记在文本框里,可以增删;保存后认证服务据此生成 `/.well-known/` 关联文件(见 [authentication.md](authentication.md#密码管理器适配)),iOS 和 Android 就允许这些 App 使用这个域名的通行密钥和密码自动填充。有后端应用不显示这一组,改为一组「退出通知」:一个 Back-Channel Logout 通知地址(`backchannel_logout_uri`),留空即不发(见 [protocol.md](protocol.md#back-channel-logout))。后端服务不登录,没有这个标签。
   - **角色**(后端服务):勾选它在其默认 API 资源上持有的 Role,它换到的 access token 带上这些角色与权限(见 [rbac.md](rbac.md))。默认 API 资源是管理 API 时,需要 `admin-roles:assign`;该 API 资源还没有角色时,链到 API 资源详情去建。
   - **用户删除通知**:通知地址与 Webhook 密钥,有一句导语说明用途。
@@ -323,6 +323,7 @@ Management API 不改,后端没拦的写在备注列。
 | | passkey.added / removed / renamed | 添加 Passkey / 删除 Passkey / 重命名 Passkey(句中写明 Passkey 的名称) |
 | 应用 | create / update / delete-application | 创建应用 / 修改应用 / 删除应用 |
 | | new-application-secret | 重新生成 client secret |
+| | set-application-auth-method | 切换客户端认证方式 |
 | | application_roles.assigned | 设置角色(句中写明应用与 API) |
 | | webhook.failed | 用户删除通知发送失败 |
 | API 资源 | put-api / delete-api | 保存 API 资源 / 删除 API 资源 |
@@ -396,8 +397,9 @@ Management API 不改,后端没拦的写在备注列。
 2. **登录方式**:手机号、邮箱(更换、解绑)、外部身份(解除绑定;"绑定其他账号"只列出管理员启用的 Provider)。
 3. **安全**:密码(开关允许时显示)、Passkey(实例开关允许时显示)、两步验证(开关与恢复码)。
 4. **设备与会话**:每个 Session 的设备、IP、最近活动,可以下线;也可以一次下线其他设备(本设备保留);已结束的 Session 显示 30 天。
-5. **数据与隐私**:导出我的数据(JSON)。
-6. **危险操作**:注销账号(重新认证,并输入"注销"确认)。
+5. **最近登录**:本人 30 天内的登录成功、失败和密码锁定(取自审计日志的 `login.succeeded`、`login.failed`、`login.password_locked`),倒序混排,最多 50 条,不分页,查看不要求重新认证。每行显示时间、结果、方式、Application(取不到名称时退回 `client_id`)、设备和 IP;成功的方式是第一因素,经过两步验证的追加「+ 两步验证」,失败的方式是出错的那一步(如「密码错误」),锁定显示锁到什么时候。30 天内有失败时顶部写「过去 30 天有 N 次登录失败」,N 不受 50 条上限影响、不含锁定;底部提示修改密码并下线其他设备,不提供逐行操作。
+6. **数据与隐私**:导出我的数据(JSON)。
+7. **危险操作**:注销账号(重新认证,并输入"注销"确认)。
 
 安全分区的 Passkey:每把显示名称(默认按提供方命名,如"1Password";查不到叫"Passkey")、创建时间和最后使用时间,可重命名(不要求重新认证)和删除(要求)。添加和删除都要求近期重新认证,都写审计;浏览器不支持 WebAuthn 时分区仍在,只是没有「添加」按钮。实例的 Passkey 开关关闭时整个分区(含重新认证时选 Passkey 的路子)都不出现,已添加的 Passkey 保留,重新打开即回到列表。`/.well-known/passkey-endpoints` 把密码管理器指到这里的锚点(`#passkeys`)。
 

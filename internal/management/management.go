@@ -129,6 +129,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 	op(api, http.MethodPut, "update-application", "applications:write", "/applications/{clientId}", "Change an Application's settings", s.updateApplication, http.StatusConflict)
 	op(api, http.MethodDelete, "delete-application", "applications:write", "/applications/{clientId}", "Delete an Application", s.deleteApplication, http.StatusConflict)
 	op(api, http.MethodPost, "new-application-secret", "applications:write", "/applications/{clientId}/secret", "Replace a confidential Application's client secret", s.newSecret, http.StatusConflict)
+	op(api, http.MethodPost, "set-application-auth-method", "applications:write", "/applications/{clientId}/auth-method", "Switch how a non-public Application authenticates: client_secret_basic issues a new secret, private_key_jwt drops it and needs a registered key", s.setAuthMethod, http.StatusConflict)
 	op(api, http.MethodPut, "set-user-roles", "roles:assign", "/users/{sub}/roles", "Set a User's Roles on one API", s.setUserRoles, http.StatusConflict)
 
 	get(api, "list-application-roles", "applications:read", "/applications/{clientId}/roles", "The Roles an M2M Application holds on its API", s.listApplicationRoles)

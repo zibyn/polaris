@@ -95,9 +95,11 @@ func DeleteExpired(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 // Client resolves an Application. Confidential Applications authenticate with
-// their secret (basic or post); public ones with PKCE only. An M2M Application
-// authenticates with its secret too, but only for the client_credentials
-// grant: it has no login, so no authorization code (ADR 0015).
+// their secret (basic or post), or with an assertion signed by a registered
+// key once switched to private_key_jwt (ADR 0023); public ones with PKCE
+// only. An M2M Application authenticates the same ways, but only for the
+// client_credentials grant: it has no login, so no authorization code
+// (ADR 0015).
 func (s *Store) Client(ctx context.Context, id string) (*goidc.Client, error) {
 	app, err := s.q.Application(ctx, id)
 	if err != nil {
@@ -126,6 +128,13 @@ func (s *Store) Client(ctx context.Context, id string) (*goidc.Client, error) {
 	case "confidential":
 		c.TokenAuthnMethod = goidc.AuthnMethodSecretBasic
 		c.Secret = hex.EncodeToString(app.SecretHash)
+	}
+	if app.Type != "public" && app.TokenAuthMethod == string(goidc.AuthnMethodPrivateKeyJWT) {
+		c.TokenAuthnMethod, c.Secret = goidc.AuthnMethodPrivateKeyJWT, ""
+		c.JWKS = &goidc.JSONWebKeySet{}
+		if err := json.Unmarshal(app.Jwks, c.JWKS); err != nil {
+			return nil, err
+		}
 	}
 	return c, nil
 }

@@ -130,6 +130,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 	op(api, http.MethodPost, "reauth-with-provider", "/providers/{id}/reauth", "Where to send the browser to reauthenticate at the bound Provider; 422 with 两步验证 on", s.reauthWithProvider, http.StatusNotFound)
 	op(api, http.MethodDelete, "unbind-provider", "/providers/{id}", "Unbind the User's External Identity of the Provider", s.unbindProvider, http.StatusForbidden)
 	op(api, http.MethodPost, "regenerate-recovery-codes", "/2fa/recovery-codes", "Replace the recovery codes with a new set", s.regenerateRecoveryCodes, http.StatusForbidden)
+	op(api, http.MethodGet, "list-logins", "/logins", "The User's sign-ins, failed sign-ins and password lockouts of the last 30 days", s.listLogins)
 	op(api, http.MethodGet, "list-passkeys", "/passkeys", "The User's Passkeys", s.listPasskeys)
 	op(api, http.MethodPost, "begin-passkey", "/passkeys/options", "Begin adding a Passkey: creation options for the browser or native App", s.beginPasskey, http.StatusForbidden)
 	op(api, http.MethodPost, "add-passkey", "/passkeys", "Finish adding a Passkey with its registration response", s.addPasskey, http.StatusForbidden, http.StatusConflict)
