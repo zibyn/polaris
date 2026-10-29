@@ -40,7 +40,7 @@ SELECT 'session.ended', ended.user_id, jsonb_build_object('session', ended.id, '
 -- name: UserSessions :many
 SELECT s.id, (s.id_hash IS NULL)::boolean AS app, s.client_id, COALESCE(a.name, s.client_id, '')::text AS application_name,
        s.auth_time, s.amr, s.last_seen_at, s.ip, s.user_agent,
-       LEAST(s.last_seen_at + s.idle_timeout, s.auth_time + s.max_lifetime)::timestamptz AS expires_at, s.ended_at,
+       session_lapses_at(s)::timestamptz AS expires_at, s.ended_at,
        (s.id IN (SELECT l.id FROM live_sessions l))::boolean AS active
 FROM sessions s LEFT JOIN applications a USING (client_id) WHERE s.user_id = $1
 ORDER BY s.last_seen_at DESC;
@@ -48,6 +48,4 @@ ORDER BY s.last_seen_at DESC;
 -- name: DeleteOldSessions :exec
 -- Ended or lapsed for more than 30 days (docs/spec/security-compliance.md).
 DELETE FROM sessions
-WHERE ended_at < now() - interval '30 days'
-   OR last_seen_at + idle_timeout < now() - interval '30 days'
-   OR auth_time + max_lifetime < now() - interval '30 days';
+WHERE ended_at < now() - interval '30 days' OR session_lapses_at(sessions) < now() - interval '30 days';

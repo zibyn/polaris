@@ -102,3 +102,118 @@ func TestCreateSession(t *testing.T) {
 		})
 	}
 }
+
+// Whether a Session still lives is one rule (session_lapses_at): the
+// live_sessions view, the console's list, the logout tokens sent when it is
+// ended or deleted, and the cleanup must all agree on it.
+func TestSessionLivenessAgrees(t *testing.T) {
+	pool, keyring := setup(t)
+	s := New(pool, keyring)
+	q := sqlc.New(pool)
+	ctx := context.Background()
+	if err := q.CreateUser(ctx, "ALICE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := CreateApplication(ctx, pool, Application{ClientID: "rp", Name: "rp", Secret: "rp-secret",
+		RedirectURIs: []string{"https://rp/cb"}, BackchannelLogoutURI: "https://rp/logout"}); err != nil {
+		t.Fatal(err)
+	}
+	day := 24 * time.Hour
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := 0
+	// start makes a browser Session for rp in the given state and returns
+	// its id and cookie hash.
+	start := func(state string) (string, []byte) {
+		t.Helper()
+		n++
+		idHash := []byte{byte(n)}
+		sess, err := s.CreateSession(ctx, idHash, "rp", "ALICE", time.Now(), []string{"pwd"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		exec("INSERT INTO session_applications (session_id, client_id) VALUES ($1, 'rp')", sess.ID)
+		switch state {
+		case "idle":
+			exec("UPDATE sessions SET last_seen_at = now() - interval '31 days' WHERE id = $1", sess.ID)
+		case "capped":
+			exec("UPDATE sessions SET auth_time = now() - interval '91 days' WHERE id = $1", sess.ID)
+		case "ended":
+			exec("UPDATE sessions SET ended_at = now() WHERE id = $1", sess.ID)
+		}
+		exec("DELETE FROM webhook_deliveries")
+		return sess.ID, idHash
+	}
+	logouts := func(id string) bool {
+		t.Helper()
+		var n int
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM webhook_deliveries WHERE kind = 'logout' AND payload->>'sid' = $1", id).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n > 0
+	}
+	exists := func(sql, id string) bool {
+		t.Helper()
+		var ok bool
+		if err := pool.QueryRow(ctx, "SELECT EXISTS ("+sql+")", id).Scan(&ok); err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+
+	for _, c := range []struct {
+		state        string
+		live         bool
+		expiresIn    time.Duration // from now, to the day
+		deletedLater bool          // by the cleanup 31 days on
+	}{
+		{"live", true, 30 * day, false},
+		{"idle", false, -day, true},
+		{"capped", false, -day, true},
+		{"ended", false, 30 * day, true},
+	} {
+		t.Run(c.state, func(t *testing.T) {
+			id, _ := start(c.state)
+			if got := exists("SELECT 1 FROM live_sessions WHERE id = $1", id); got != c.live {
+				t.Errorf("in live_sessions = %v", got)
+			}
+			rows, err := q.UserSessions(ctx, "ALICE")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, r := range rows {
+				if r.ID == id && (r.Active != c.live || time.Until(r.ExpiresAt.Time).Round(day) != c.expiresIn) {
+					t.Errorf("UserSessions: active %v, expires in %v", r.Active, time.Until(r.ExpiresAt.Time))
+				}
+			}
+
+			id, idHash := start(c.state)
+			if err := q.EndBrowserSession(ctx, idHash); err != nil {
+				t.Fatal(err)
+			}
+			if got := logouts(id); got != c.live {
+				t.Errorf("ending sent a logout token: %v", got)
+			}
+
+			id, _ = start(c.state)
+			exec("DELETE FROM sessions WHERE id = $1", id)
+			if got := logouts(id); got != c.live {
+				t.Errorf("deleting sent a logout token: %v", got)
+			}
+
+			id, _ = start(c.state)
+			exec(`UPDATE sessions SET auth_time = auth_time - interval '31 days', last_seen_at = last_seen_at - interval '31 days',
+				ended_at = ended_at - interval '31 days' WHERE id = $1`, id)
+			if err := q.DeleteOldSessions(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if got := !exists("SELECT 1 FROM sessions WHERE id = $1", id); got != c.deletedLater {
+				t.Errorf("deleted by the cleanup 31 days on: %v", got)
+			}
+		})
+	}
+}
