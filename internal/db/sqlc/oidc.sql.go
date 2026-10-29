@@ -110,7 +110,7 @@ func (q *Queries) ConsumeJTI(ctx context.Context, arg ConsumeJTIParams) (int64, 
 	return result.RowsAffected(), nil
 }
 
-const createApplication =`-- name: CreateApplication :exec
+const createApplication = `-- name: CreateApplication :exec
 INSERT INTO applications (client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
