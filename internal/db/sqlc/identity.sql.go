@@ -136,6 +136,20 @@ func (q *Queries) LockSetup(ctx context.Context) (LockSetupRow, error) {
 	return i, err
 }
 
+const maySignUp = `-- name: MaySignUp :one
+SELECT (s.open_registration OR EXISTS (SELECT 1 FROM identifiers i WHERE i.value = $1::text))::boolean
+FROM settings s
+`
+
+// Whether value may be signed in with by code (ADR 0021): a User holds it,
+// or the instance is open to new ones.
+func (q *Queries) MaySignUp(ctx context.Context, value string) (bool, error) {
+	row := q.db.QueryRow(ctx, maySignUp, value)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const needsConsent = `-- name: NeedsConsent :one
 SELECT (s.terms_version <> '' AND NOT EXISTS (
     SELECT 1 FROM consents c WHERE c.user_id = $1 AND c.version = s.terms_version))::boolean
@@ -206,6 +220,17 @@ type RecordConsentParams struct {
 func (q *Queries) RecordConsent(ctx context.Context, arg RecordConsentParams) error {
 	_, err := q.db.Exec(ctx, recordConsent, arg.UserID, arg.Version, arg.ClientID)
 	return err
+}
+
+const registrationOpen = `-- name: RegistrationOpen :one
+SELECT open_registration FROM settings
+`
+
+func (q *Queries) RegistrationOpen(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, registrationOpen)
+	var open_registration bool
+	err := row.Scan(&open_registration)
+	return open_registration, err
 }
 
 const replaceIdentifier = `-- name: ReplaceIdentifier :execrows

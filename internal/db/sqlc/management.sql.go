@@ -197,7 +197,7 @@ func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) (int64, 
 
 const getSettings = `-- name: GetSettings :one
 SELECT password_login, require_phone, daily_send_limit, terms_url, privacy_url, terms_version, audit_retention_days,
-       admins_need_two_factor, passkey_login
+       admins_need_two_factor, passkey_login, open_registration
 FROM settings
 `
 
@@ -211,6 +211,7 @@ type GetSettingsRow struct {
 	AuditRetentionDays  int32
 	AdminsNeedTwoFactor bool
 	PasskeyLogin        bool
+	OpenRegistration    bool
 }
 
 func (q *Queries) GetSettings(ctx context.Context) (GetSettingsRow, error) {
@@ -226,6 +227,7 @@ func (q *Queries) GetSettings(ctx context.Context) (GetSettingsRow, error) {
 		&i.AuditRetentionDays,
 		&i.AdminsNeedTwoFactor,
 		&i.PasskeyLogin,
+		&i.OpenRegistration,
 	)
 	return i, err
 }
@@ -983,7 +985,8 @@ WITH u AS (
     UPDATE settings SET password_login = $2, require_phone = $3,
         daily_send_limit = $4, terms_url = $5, privacy_url = $6,
         terms_version = $7, audit_retention_days = $8,
-        admins_need_two_factor = $9, passkey_login = $10
+        admins_need_two_factor = $9, passkey_login = $10,
+        open_registration = $11
 )
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('settings.updated', NULL, jsonb_build_object('by', $1::text))
@@ -1000,6 +1003,7 @@ type UpdateSettingsParams struct {
 	AuditRetentionDays  int32
 	AdminsNeedTwoFactor bool
 	PasskeyLogin        bool
+	OpenRegistration    bool
 }
 
 // Changes the login policy; audited with who did it.
@@ -1015,6 +1019,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.AuditRetentionDays,
 		arg.AdminsNeedTwoFactor,
 		arg.PasskeyLogin,
+		arg.OpenRegistration,
 	)
 	return err
 }

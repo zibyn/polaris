@@ -32,6 +32,8 @@ const (
 	errInsufficientAuthorization = "insufficient_authorization"
 	// RFC 6749's: a Provider turned the client token down.
 	errInvalidGrant = "invalid_grant"
+	// Ours: 开放注册 is off and the sign-in would sign a stranger up (ADR 0021).
+	errRegistrationClosed = "registration_closed"
 )
 
 // Values of next (ADR 0010): only ever added to, never renamed or removed.
@@ -249,7 +251,11 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if !errors.As(err, &bad) {
 			return answer{}, err
 		}
-		return answer{}, &challengeError{status: http.StatusBadRequest, Code: string(goidc.ErrorCodeInvalidRequest), Description: bad.Error(), AuthSession: token}
+		code := string(goidc.ErrorCodeInvalidRequest)
+		if bad == identity.ErrRegistrationClosed {
+			code = errRegistrationClosed
+		}
+		return answer{}, &challengeError{status: http.StatusBadRequest, Code: code, Description: bad.Error(), AuthSession: token}
 	}
 
 	switch {
@@ -385,6 +391,9 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		}
 		if err == nil {
 			err = s.pow.Verify(ctx, r.PostFormValue("altcha"))
+		}
+		if err == nil && st.Pending == nil {
+			err = s.ids.MaySignUp(ctx, value)
 		}
 		if err == nil {
 			err = s.codes.Send(ctx, kind, value, clientIP(r))
