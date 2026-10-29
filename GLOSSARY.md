@@ -24,6 +24,10 @@ _Avoid_: 未激活, 待验证, 待确认
 管理员为某个 User 生成的一次性链接,让本人设置密码并激活账号;7 天内有效,只发往邮箱。
 _Avoid_: 邀请码, 激活邮件, 注册链接
 
+**开放注册**:
+实例是否允许池外的人通过登录自动成为 User;关闭后,新 User 只能由管理员创建或邀请。
+_Avoid_: 自助注册, 注册开关, 仅邀请
+
 **Application**:
 在 Polaris 注册的一个接入方:委托 Polaris 认证 User(App、小程序或 Web 端),或以自己的身份调用 API(M2M Application)。
 _Avoid_: Client, 租户, 项目
