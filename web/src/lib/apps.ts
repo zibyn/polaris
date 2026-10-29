@@ -77,6 +77,15 @@ export const httpURL = z
 		"请填写 http 或 https 开头的地址。",
 	);
 
+// backchannelSchema checks the 退出通知 section; a URI with # is refused
+// by the server too (OIDC Back-Channel Logout §2.2).
+export const backchannelSchema = z.object({
+	backchannelLogoutUri: httpURL.refine(
+		(v) => !v.includes("#"),
+		"地址不能带 #。",
+	),
+});
+
 // loginSchema checks the 登录 tab; 0 or an empty idleDays means the default.
 export const loginSchema = z.object({
 	redirectUris: uriLines,

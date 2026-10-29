@@ -54,6 +54,7 @@ import { Textarea } from "#/components/ui/textarea";
 import {
 	androidApps,
 	androidLines,
+	backchannelSchema,
 	basicSchema,
 	loginSchema,
 	m2mAPIs,
@@ -162,6 +163,7 @@ const currentSettings = (a: Application): ApplicationSettings => ({
 	sessionIdleTimeout: a.sessionIdleTimeout,
 	refreshTokens: a.refreshTokens,
 	webhookUrl: a.webhookUrl,
+	backchannelLogoutUri: a.backchannelLogoutUri,
 	appleAppIds: a.appleAppIds,
 	androidApps: a.androidApps,
 });
@@ -672,6 +674,9 @@ function LoginTab({ app, editable }: TabProps) {
 				</Collapsible>
 			</Section>
 			{app.type === "public" && <NativeApps app={app} editable={editable} />}
+			{app.type === "confidential" && (
+				<BackchannelLogout app={app} editable={editable} />
+			)}
 		</div>
 	);
 }
@@ -736,6 +741,51 @@ function NativeApps({ app, editable }: TabProps) {
 								{...control}
 								className="font-mono"
 								placeholder={`每行一个，先包名后指纹（可多个，空格分隔），如 com.example.app ${fingerprintHint}`}
+							/>
+						)}
+					</FormField>
+				)}
+			</form.Field>
+		</Section>
+	);
+}
+
+// BackchannelLogout is where a web Application's back end hears that a
+// login session it signed in through has ended (ADR 0022).
+function BackchannelLogout({ app, editable }: TabProps) {
+	const save = useSave(app);
+	const form = useForm({
+		defaultValues: { backchannelLogoutUri: app.backchannelLogoutUri ?? "" },
+		validationLogic: revalidateLogic(),
+		validators: { onDynamic: backchannelSchema },
+		onSubmit: ({ value }) =>
+			save.mutate(
+				{ backchannelLogoutUri: value.backchannelLogoutUri.trim() },
+				{ onSuccess: saved },
+			),
+	});
+	return (
+		<Section
+			title="退出通知"
+			intro="用户退出登录、被管理员下线、禁用或删除时，认证服务会向这个地址发送 OIDC Back-Channel Logout 通知，你的后端据此结束自己的登录状态。不需要的话留空即可。"
+			editable={editable}
+			form={form}
+			footer={editable && <SaveBar save={save} />}
+		>
+			<form.Field name="backchannelLogoutUri">
+				{(field) => (
+					<FormField
+						field={field}
+						label="通知地址"
+						en="backchannel_logout_uri"
+						help="需能从认证服务访问。"
+					>
+						{(control) => (
+							<Input
+								{...control}
+								type="url"
+								className="font-mono"
+								placeholder="https://shop.example.com/backchannel-logout"
 							/>
 						)}
 					</FormField>
