@@ -175,6 +175,10 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 			claims := s.userClaims(ctx, g)
 			claims[goidc.ClaimAuthTime] = g.Store[storeAuthTime]
 			claims[goidc.ClaimAMR] = g.Store[storeAMR]
+			// Back-Channel Logout names the Session by it.
+			if sid, ok := g.Store[oidcstore.SessionKey].(string); ok {
+				claims["sid"] = sid
+			}
 			return claims
 		}),
 		oidcop.WithUserInfoClaims(s.userClaims),
@@ -186,7 +190,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 			},
 		}, oidcop.WithLogoutPolicies(goidc.NewLogoutPolicy("session",
 			func(*http.Request, *goidc.LogoutSession) bool { return true },
-			s.logout))),
+			s.logout)), oidcop.WithBackChannelLogout()),
 		oidcop.WithErrorRenderer(renderError),
 		oidcop.WithErrorHandler(func(_ context.Context, err error) { slog.Info("oidc", "err", err) }),
 	)

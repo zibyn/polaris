@@ -154,6 +154,47 @@ func m2mSettings(defaultAPI string) map[string]any {
 	}
 }
 
+// A Web Application may name a back-channel logout URI; Apps and M2M
+// Applications have no back end to tell.
+func TestBackchannelLogoutURI(t *testing.T) {
+	e := start(t)
+	owner := e.token(e.owner, nil)
+	settings := map[string]any{"name": "Web", "redirectUris": []string{"https://web.example/cb"}, "postLogoutRedirectUris": []string{},
+		"refreshTokens": true, "backchannelLogoutUri": "https://web.example/logout", "appleAppIds": []string{}, "androidApps": []any{}}
+	var created struct {
+		Application struct{ ClientID, BackchannelLogoutURI string }
+	}
+	if code := e.call("POST", owner, "/applications", map[string]any{"type": "confidential", "settings": settings}, &created); code != 200 ||
+		created.Application.BackchannelLogoutURI != "https://web.example/logout" {
+		t.Fatalf("create: %d %+v", code, created)
+	}
+	path := "/applications/" + created.Application.ClientID
+	settings["backchannelLogoutUri"] = "https://web.example/logout#x"
+	if code := e.call("PUT", owner, path, settings, nil); code != 422 {
+		t.Errorf("URI with a fragment: %d", code)
+	}
+	settings["backchannelLogoutUri"] = ""
+	if code := e.call("PUT", owner, path, settings, nil); code != 204 {
+		t.Fatalf("clear: %d", code)
+	}
+	var got struct{ BackchannelLogoutURI string }
+	if e.get(owner, path, &got); got.BackchannelLogoutURI != "" {
+		t.Errorf("after clearing: %+v", got)
+	}
+
+	settings["backchannelLogoutUri"] = "https://web.example/logout"
+	settings["redirectUris"] = []string{"com.example.app:/cb"}
+	if code := e.call("POST", owner, "/applications", map[string]any{"type": "public", "settings": settings}, nil); code != 422 {
+		t.Errorf("public Application: %d", code)
+	}
+	e.call("PUT", owner, apiPath(track), map[string]any{"name": "Track"}, nil)
+	m2m := m2mSettings(track)
+	m2m["backchannelLogoutUri"] = "https://web.example/logout"
+	if code := e.call("POST", owner, "/applications", map[string]any{"type": "m2m", "settings": m2m}, nil); code != 422 {
+		t.Errorf("M2M Application: %d", code)
+	}
+}
+
 // TestManageM2MApplication covers the M2M Application type: a backend service
 // that calls one API as itself (ADR 0015). It has a secret and a default API,
 // no login, and its default API cannot be changed later.
