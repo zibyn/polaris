@@ -187,20 +187,40 @@ func TestEndingASessionSendsLogoutTokens(t *testing.T) {
 	}
 }
 
-// A Session that lapses was not ended by anyone: nothing is sent, even when
-// the cleanup deletes it.
+// A Session that lapses (idle, or past its lifespan cap) was not ended by
+// anyone: nothing is sent, even when the cleanup or deleting its User
+// deletes it.
 func TestExpiredSessionSendsNothing(t *testing.T) {
-	e, r, sub, sid := signedInEverywhere(t)
-	ctx := context.Background()
-	if _, err := e.pool.Exec(ctx, "UPDATE sessions SET last_seen_at = now() - interval '100 days' WHERE id = $1", sid); err != nil {
-		t.Fatal(err)
-	}
-	if err := sqlc.New(e.pool).DeleteOldSessions(ctx); err != nil {
-		t.Fatal(err)
-	}
-	r.deliver()
-	if got := r.received(sub, sid); len(got) != 0 {
-		t.Errorf("logout tokens went to %v", got)
+	for name, c := range map[string]struct{ lapse, by string }{
+		"idle, cleaned up":     {"last_seen_at = now() - interval '100 days'", "cleanup"},
+		"capped, cleaned up":   {"auth_time = now() - interval '200 days'", "cleanup"},
+		"capped, User deleted": {"auth_time = now() - interval '91 days'", "delete"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e, r, sub, sid := signedInEverywhere(t)
+			ctx := context.Background()
+			if _, err := e.pool.Exec(ctx, "UPDATE sessions SET "+c.lapse+" WHERE id = $1", sid); err != nil {
+				t.Fatal(err)
+			}
+			q := sqlc.New(e.pool)
+			var err error
+			if c.by == "cleanup" {
+				err = q.DeleteOldSessions(ctx)
+			} else {
+				_, err = q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: "ADMIN"})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var n int
+			if err := e.pool.QueryRow(ctx, "SELECT count(*) FROM sessions WHERE id = $1", sid).Scan(&n); err != nil || n != 0 {
+				t.Fatalf("Session not deleted: %d %v", n, err)
+			}
+			r.deliver()
+			if got := r.received(sub, sid); len(got) != 0 {
+				t.Errorf("logout tokens went to %v", got)
+			}
+		})
 	}
 }
 

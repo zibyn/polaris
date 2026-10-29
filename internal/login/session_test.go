@@ -219,3 +219,47 @@ func TestIPLockout(t *testing.T) {
 		t.Errorf("hosted login: %.300s", body)
 	}
 }
+
+// ageAuth moves the browser Session's last proof of identity back by d,
+// leaving its activity fresh.
+func (e *env) ageAuth(d string) {
+	e.t.Helper()
+	if _, err := e.pool.Exec(context.Background(), "UPDATE sessions SET auth_time = auth_time - $1::interval", d); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// A browser Session lives at most 90 days from the last sign-in, however
+// active it is: past that its cookie and refresh tokens stop working.
+func TestBrowserSessionHasALifespanCap(t *testing.T) {
+	e := start(t)
+	e.bootstrap("owner", "password1")
+	tok := e.signIn()
+	e.ageAuth("89 days")
+	tok, errCode := e.refresh(tok.RefreshToken)
+	if errCode != "" || !e.signedIn() {
+		t.Fatalf("Session at 89 days: refresh %q, signed in %v", errCode, e.signedIn())
+	}
+	e.ageAuth("2 days")
+	if _, errCode := e.refresh(tok.RefreshToken); errCode != "invalid_grant" {
+		t.Errorf("refresh past the cap: %q, want invalid_grant", errCode)
+	}
+	if e.signedIn() {
+		t.Error("cookie still works past the cap")
+	}
+}
+
+// Signing in again restarts the lifespan cap.
+func TestReloginRestartsTheLifespanCap(t *testing.T) {
+	e := start(t)
+	e.bootstrap("owner", "password1")
+	tok := e.signIn()
+	e.ageAuth("89 days")
+	_, page := e.authorize("&prompt=login")
+	resp, _ := e.submit(page, "owner", "password1")
+	e.code(resp)
+	e.ageAuth("2 days")
+	if _, errCode := e.refresh(tok.RefreshToken); errCode != "" || !e.signedIn() {
+		t.Errorf("after re-login: refresh %q, signed in %v", errCode, e.signedIn())
+	}
+}

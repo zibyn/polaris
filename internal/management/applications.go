@@ -1,6 +1,7 @@
 package management
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -27,6 +28,7 @@ type ApplicationSettings struct {
 	PostLogoutRedirectURIs []string     `json:"postLogoutRedirectUris" nullable:"false"`
 	DefaultAPI             string       `json:"defaultApi,omitempty" doc:"Identifier of the API its access tokens are for; empty for none"`
 	SessionIdleTimeout     int32        `json:"sessionIdleTimeout,omitempty" minimum:"0" maximum:"31536000" doc:"Seconds a Session may sit idle; 0 for the default (30 days browser, 90 days App)"`
+	SessionMaxLifetime     int32        `json:"sessionMaxLifetime,omitempty" minimum:"0" maximum:"31536000" doc:"Seconds a Session may last from the User's last sign-in or re-authentication, however active; 0 for the default (90 days browser, 180 days App). At least the idle timeout in effect"`
 	RefreshTokens          bool         `json:"refreshTokens"`
 	WebhookURL             string       `json:"webhookUrl,omitempty" doc:"Where user.deleted is sent; empty for none"`
 	WebhookSecret          string       `json:"webhookSecret,omitempty" writeOnly:"true" doc:"Key the webhook is signed with; empty keeps the stored one. Never read back."`
@@ -99,7 +101,7 @@ func (s *Service) applications(ctx context.Context, clientID string) ([]Applicat
 			ClientID: r.ClientID, Type: r.Type, Builtin: r.Builtin, CreatedAt: r.CreatedAt.Time,
 			ApplicationSettings: ApplicationSettings{
 				Name: r.Name, RedirectURIs: r.RedirectUris, PostLogoutRedirectURIs: r.PostLogoutRedirectUris,
-				DefaultAPI: r.DefaultApi, SessionIdleTimeout: r.SessionIdleTimeout, RefreshTokens: r.RefreshTokens,
+				DefaultAPI: r.DefaultApi, SessionIdleTimeout: r.SessionIdleTimeout, SessionMaxLifetime: r.SessionMaxLifetime, RefreshTokens: r.RefreshTokens,
 				WebhookURL: r.WebhookUrl, BackchannelLogoutURI: r.BackchannelLogoutUri, AppleAppIDs: r.AppleAppIds,
 			},
 		}
@@ -223,6 +225,10 @@ func (st *ApplicationSettings) validate(typ string) error {
 			return identity.Invalid("webhook URL 须为 http(s) 地址")
 		}
 	}
+	// With the default idle timeout, an App Session may sit idle 90 days.
+	if idle := cmp.Or(st.SessionIdleTimeout, 90*86400); st.SessionMaxLifetime != 0 && st.SessionMaxLifetime < idle {
+		return identity.Invalid("最长多久需重新登录不能短于闲置时长")
+	}
 	// Only a Web Application has a back end to tell (ADR 0022).
 	if st.BackchannelLogoutURI != "" {
 		if typ != "confidential" {
@@ -271,7 +277,7 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 		ClientID: clientID, Name: st.Name,
 		RedirectUris:           append([]string{}, st.RedirectURIs...),
 		PostLogoutRedirectUris: append([]string{}, st.PostLogoutRedirectURIs...),
-		DefaultApi:             st.DefaultAPI, IdleSecs: st.SessionIdleTimeout, RefreshTokens: st.RefreshTokens,
+		DefaultApi:             st.DefaultAPI, IdleSecs: st.SessionIdleTimeout, MaxSecs: st.SessionMaxLifetime, RefreshTokens: st.RefreshTokens,
 		WebhookUrl: st.WebhookURL, WebhookSecret: secret, BackchannelLogoutUri: st.BackchannelLogoutURI,
 		AppleAppIds: append([]string{}, st.AppleAppIDs...), AndroidApps: android,
 	})

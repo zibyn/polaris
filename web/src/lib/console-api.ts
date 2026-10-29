@@ -137,6 +137,7 @@ export type ApplicationSettings = {
 	postLogoutRedirectUris: string[];
 	defaultApi?: string;
 	sessionIdleTimeout?: number; // seconds; 0 or absent for the default
+	sessionMaxLifetime?: number; // seconds from the last sign-in; 0 or absent for the default
 	refreshTokens: boolean;
 	webhookUrl?: string;
 	webhookSecret?: string; // write-only; empty keeps the stored one

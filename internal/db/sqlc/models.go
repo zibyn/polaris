@@ -33,6 +33,7 @@ type Application struct {
 	AppleAppIds            []string
 	AndroidApps            []byte
 	BackchannelLogoutUri   pgtype.Text
+	SessionMaxLifetime     pgtype.Interval
 }
 
 type ApplicationRole struct {
@@ -249,6 +250,7 @@ type Session struct {
 	ClientID    pgtype.Text
 	IdleTimeout pgtype.Interval
 	EndedAt     pgtype.Timestamptz
+	MaxLifetime pgtype.Interval
 }
 
 type SessionApplication struct {

@@ -180,6 +180,7 @@ SELECT role FROM application_roles WHERE client_id = $1 AND api = $2 ORDER BY ro
 SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_redirect_uris,
        COALESCE(default_api, '')::text AS default_api,
        COALESCE(extract(epoch FROM session_idle_timeout), 0)::int AS session_idle_timeout,
+       COALESCE(extract(epoch FROM session_max_lifetime), 0)::int AS session_max_lifetime,
        refresh_tokens, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
        COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps
 FROM applications
@@ -191,13 +192,14 @@ INSERT INTO applications (client_id, name, type, secret_hash) VALUES ($1, '', $2
 
 -- name: UpdateApplication :execrows
 -- An empty webhook_url turns the webhook off; a NULL webhook_secret keeps
--- the stored one. idle_secs 0 means the default Session lifetime.
+-- the stored one. idle_secs / max_secs 0 mean the default.
 UPDATE applications SET
     name = @name,
     redirect_uris = @redirect_uris,
     post_logout_redirect_uris = @post_logout_redirect_uris,
     default_api = NULLIF(@default_api::text, ''),
     session_idle_timeout = NULLIF(@idle_secs::int, 0) * interval '1 second',
+    session_max_lifetime = NULLIF(@max_secs::int, 0) * interval '1 second',
     refresh_tokens = @refresh_tokens,
     webhook_url = NULLIF(@webhook_url::text, ''),
     webhook_secret = CASE WHEN @webhook_url = '' THEN NULL ELSE COALESCE(sqlc.narg(webhook_secret), webhook_secret) END,
