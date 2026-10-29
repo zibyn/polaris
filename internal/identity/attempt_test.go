@@ -27,7 +27,7 @@ func TestDeleteScrubsIPAndUAFromAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.Delete(ctx, sub); err != nil {
+	if err := s.Delete(ctx, sub, sub); err != nil {
 		t.Fatal(err)
 	}
 	var n, withIP int

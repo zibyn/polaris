@@ -711,11 +711,16 @@ func (s *Service) deleteAccount(ctx context.Context, _ *struct{}) (*struct{}, er
 	if err := fresh(ctx); err != nil {
 		return nil, err
 	}
-	err := s.providers.DeleteUser(ctx, callerOf(ctx).sub, s.ids.Delete)
+	err := s.providers.DeleteUser(ctx, callerOf(ctx).sub, s.deleteOwn)
 	if errors.Is(err, identity.ErrLastOwner) {
 		return nil, huma.Error409Conflict(err.Error())
 	}
 	return nil, err
+}
+
+// deleteOwn is 注销: the User deletes their own account.
+func (s *Service) deleteOwn(ctx context.Context, sub string) error {
+	return s.ids.Delete(ctx, sub, sub)
 }
 
 // directDelete is account deletion for Apps: the App's access token, issued
@@ -730,7 +735,7 @@ func (s *Service) directDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err == nil {
-		err = s.providers.DeleteUser(ctx, c.sub, s.ids.Delete)
+		err = s.providers.DeleteUser(ctx, c.sub, s.deleteOwn)
 	}
 	switch {
 	case err == nil:

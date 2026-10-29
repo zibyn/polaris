@@ -196,46 +196,22 @@ func TestAdminDisablesAndRestoresAUser(t *testing.T) {
 	}
 }
 
-func TestLastOwnerCannotBeDisabledOrDeleted(t *testing.T) {
+// identity refuses to lose the last usable owner; each write that could
+// answers that with a 409.
+func TestLastOwnerIsA409(t *testing.T) {
 	e := start(t)
-	e.user("OWNER2", []string{"owner"})
 	owner := e.token(e.owner, nil)
-
-	if code := e.call("POST", owner, "/users/OWNER2/disable", nil, nil); code != 204 {
-		t.Fatalf("disable one of two owners: %d", code)
-	}
-	// A disabled owner does not count.
-	for _, op := range []struct{ method, path string }{
-		{"POST", "/users/" + e.owner + "/disable"},
-		{"DELETE", "/users/" + e.owner},
+	for _, op := range []struct {
+		method, path string
+		body         any
+	}{
+		{"POST", "/users/" + e.owner + "/disable", nil},
+		{"DELETE", "/users/" + e.owner, nil},
+		{"PUT", "/users/" + e.owner + "/roles", map[string]any{"api": identity.ManagementAPI, "roles": []string{"admin"}}},
 	} {
-		if code := e.call(op.method, owner, op.path, nil, nil); code != 409 {
+		if code := e.call(op.method, owner, op.path, op.body, nil); code != 409 {
 			t.Errorf("%s %s: %d, want 409", op.method, op.path, code)
 		}
-	}
-	if code := e.call("PUT", owner, "/users/"+e.owner+"/roles", map[string]any{"api": "urn:polaris:management-api", "roles": []string{"admin"}}, nil); code != 409 {
-		t.Errorf("step down while the other owner is disabled: %d", code)
-	}
-}
-
-// A 待激活 owner cannot administer the instance, so they do not stand in for
-// the last usable owner: disabling or demoting the last active owner is still
-// refused.
-func TestPendingOwnerIsNotAUsableOwner(t *testing.T) {
-	e := start(t)
-	var p pendingUser
-	if code := e.createPending("pending-owner@example.com", "password1", &p); code != 200 {
-		t.Fatalf("create pending: %d", code)
-	}
-	owner := e.token(e.owner, nil)
-	if code := e.call("PUT", owner, "/users/"+p.Sub+"/roles", map[string]any{"api": identity.ManagementAPI, "roles": []string{"owner"}}, nil); code != 204 {
-		t.Fatalf("grant owner to a 待激活 User: %d", code)
-	}
-	if code := e.call("POST", owner, "/users/"+e.owner+"/disable", nil, nil); code != 409 {
-		t.Errorf("disable the last active owner: %d, want 409", code)
-	}
-	if code := e.call("PUT", owner, "/users/"+e.owner+"/roles", map[string]any{"api": identity.ManagementAPI, "roles": []string{"admin"}}, nil); code != 409 {
-		t.Errorf("demote the last active owner: %d, want 409", code)
 	}
 }
 

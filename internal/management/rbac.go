@@ -39,17 +39,11 @@ func (s *Service) setUserRoles(ctx context.Context, in *setUserRolesInput) (*str
 	if err := s.ensureUser(ctx, in.Sub); err != nil {
 		return nil, err
 	}
-	change := func(q *sqlc.Queries) error {
-		err := q.SetUserRoles(ctx, sqlc.SetUserRolesParams{UserID: in.Sub, Api: in.Body.API, Roles: in.Body.Roles, By: c.sub})
-		if isFKViolation(err) {
-			return huma.Error422UnprocessableEntity("没有这个 Role")
-		}
-		return err
+	err := s.ids.SetRoles(ctx, in.Sub, in.Body.API, in.Body.Roles, c.sub)
+	if errors.Is(err, identity.ErrNoSuchRole) {
+		return nil, huma.Error422UnprocessableEntity("没有这个 Role")
 	}
-	if admin {
-		return nil, s.guardOwners(ctx, change)
-	}
-	return nil, change(s.q)
+	return nil, ownerErr(err)
 }
 
 // API is an API as the console's 接入 group shows it.

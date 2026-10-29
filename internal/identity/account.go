@@ -143,11 +143,11 @@ func (s *Store) ReplaceIdentifier(ctx context.Context, sub, kind, value, by stri
 
 const ErrLastOwner Invalid = "你是最后一个所有者,不能注销"
 
-// GuardOwners runs change in a transaction that fails with ErrLastOwner if it
-// takes the instance from having a usable owner to having none. Only an
+// guardOwners runs change in a transaction that fails with ErrLastOwner if
+// it takes the instance from having a usable owner to having none. Only an
 // active owner counts: a 待激活 owner can sign in but gets no token, so they
 // cannot administer the instance.
-func (s *Store) GuardOwners(ctx context.Context, change func(*sqlc.Queries) error) error {
+func (s *Store) guardOwners(ctx context.Context, change func(*sqlc.Queries) error) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if err := q.LockOwners(ctx); err != nil {
@@ -171,16 +171,48 @@ func (s *Store) GuardOwners(ctx context.Context, change func(*sqlc.Queries) erro
 	})
 }
 
-// Delete deletes the User's account with all their data, at their own
-// request; never the last usable owner.
-func (s *Store) Delete(ctx context.Context, sub string) error {
-	return s.GuardOwners(ctx, func(q *sqlc.Queries) error {
+// SetDisabled disables or re-enables the User; never the last usable owner.
+// Audited as done by by.
+func (s *Store) SetDisabled(ctx context.Context, sub string, disabled bool, by string) error {
+	return s.guardOwners(ctx, func(q *sqlc.Queries) error {
+		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: sub, Disabled: disabled, By: by})
+		return err
+	})
+}
+
+// Delete deletes the User's account with all their data; never the last
+// usable owner. Audited as done by by: sub itself when they leave on their
+// own.
+func (s *Store) Delete(ctx context.Context, sub, by string) error {
+	return s.guardOwners(ctx, func(q *sqlc.Queries) error {
 		if err := profile.DeleteAvatar(ctx, q, sub); err != nil {
 			return err
 		}
-		_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: sub})
+		_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: by})
 		return err
 	})
+}
+
+// ErrNoSuchRole is a Role the API does not define.
+const ErrNoSuchRole Invalid = "没有这个 Role"
+
+// SetRoles makes roles the User's Roles on api, taking away the rest; on the
+// Management API never the last usable owner's. Audited as done by by.
+func (s *Store) SetRoles(ctx context.Context, sub, api string, roles []string, by string) error {
+	if roles == nil {
+		roles = []string{} // NULL would match no Role to take away
+	}
+	set := func(q *sqlc.Queries) error {
+		err := q.SetUserRoles(ctx, sqlc.SetUserRolesParams{UserID: sub, Api: api, Roles: roles, By: by})
+		if isFKViolation(err) {
+			return ErrNoSuchRole
+		}
+		return err
+	}
+	if api == ManagementAPI {
+		return s.guardOwners(ctx, set)
+	}
+	return set(s.q)
 }
 
 // ErrNotPending is a password write that only a 待激活 User may make, on an
