@@ -4,7 +4,7 @@ import android.content.Context
 import android.os.Build
 
 internal actual fun currentDevice(): Device {
-  // shortcut: Polaris takes no Context (PolarisConfig gets no new option), so the
+  // ponytail: Polaris takes no Context (PolarisConfig gets no new option), so the
   // Application comes from ActivityThread by reflection; if a future Android
   // hides it, the App shows as "App/unknown" — then take a Context instead.
   val app = runCatching {

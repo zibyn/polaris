@@ -54,7 +54,7 @@ func preflight(w http.ResponseWriter, r *http.Request) {
 
 // redirectOrigin reports whether origin is the Web origin of some
 // Application's redirect URI, read now so a change applies at once.
-// shortcut: reads every Application per request; cache it if it shows up.
+// ponytail: reads every Application per request; cache it if it shows up.
 func (s *Service) redirectOrigin(r *http.Request, origin string) bool {
 	apps, err := s.q.ListApplications(r.Context(), "")
 	if err != nil {
