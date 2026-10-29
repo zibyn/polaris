@@ -57,6 +57,7 @@ import {
 	type Session,
 	type UserDetail,
 } from "#/lib/console-api";
+import { deviceLabel } from "#/lib/device";
 import type { Passkey } from "#/lib/passkey";
 import {
 	identifierKinds,
@@ -846,12 +847,17 @@ function Sessions({ sub, writable }: { sub: string; writable: boolean }) {
 				{list.map((s) => (
 					<Row
 						key={s.id}
-						label={`${s.kind === "app" ? "App" : "浏览器"} · ${s.application}`}
+						label={`${deviceLabel(s.userAgent)} · ${s.application}`}
 					>
 						<span className="text-muted-foreground text-xs">
-							{s.active
-								? `活跃于 ${date(s.lastSeenAt)}`
-								: `已结束 ${date(s.endedAt ?? s.expiresAt)}`}
+							{[
+								s.ip,
+								s.active
+									? `活跃于 ${date(s.lastSeenAt)}`
+									: `已结束 ${date(s.endedAt ?? s.expiresAt)}`,
+							]
+								.filter(Boolean)
+								.join(" · ")}
 						</span>
 						{writable && s.active && (
 							<Button

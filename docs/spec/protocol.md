@@ -65,7 +65,7 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
 
 - **`amr`**:按 RFC 8176 取 `sms`、`otp`、`pwd`、`hwk` / `swk`;做过两步验证(TOTP 或恢复码)时为 `[第一因素, "otp", "mfa"]`(第一因素的值加上 `otp`、`mfa`,不重复:邮箱验证码登录为 `["otp", "mfa"]`,短信为 `["sms", "otp", "mfa"]`);Passkey 登录为 `["swk", "mfa"]`(凭证可跨设备同步)或 `["hwk", "mfa"]`(仅本机),Passkey 本身已验证持有与本人,不再加 `otp`;Application 以 `mfa` 判断是否做过两步验证;Provider 登录一律为自定义值 `fed`;接受注册邀请建立的那次会话为 `["otp"]`(链接证明邮箱控制权,与邮箱验证码同一种证据,见 [authentication.md](authentication.md#注册邀请))。
 - **业务后端校验**:用 JWKS 本地验签,检查签名、`aud`、`typ`,权限读 `entitlements`。
-- **签名**:只用 RS256;由管理员手动轮换,JWKS 新旧并存。
+- **签名**:只用 RS256;由管理员手动轮换。最新的 key 签发新 token;旧 key 在它的下一把 key 创建后继续留在 JWKS 里 1 小时(最长 token 寿命 10 分钟加上 RP 缓存 JWKS 的余量),期满即不再发布,随后由每小时的清理任务删除。只剩一把 key 时它一直有效。
 - **吊销**:最多滞后一个 access token 的寿命。
 
 ## Session
@@ -81,6 +81,14 @@ Session 是一个 User 在一台设备或一个浏览器上的一次登录。
 ## Webhook
 
 - **配置**:每个 Application 可以选配一个 URL 和签名共享密钥。
-- **事件**:只有一种,`user.deleted`(带 `sub`),在 User 注销或被管理员删除时发送。
+- **收件方**:每个配置了 Webhook 的 Application 都收到每一条事件,不看 User 用没用过它,也不能按类型订阅。
+- **事件**:都是薄事件(ADR 0022),只带 `sub`,不带新值;要新值就调 Management API。payload 统一为 `{"type", "timestamp", "data"}`,`timestamp` 是 UTC 的 RFC 3339 时间。
+  - `user.deleted`,`data: {sub}`:User 注销或被管理员删除。
+  - `user.disabled` / `user.enabled`,`data: {sub}`:User 被禁用或恢复;状态本来就是这样时不发。
+  - `user.updated`,`data: {sub, changed}`:`changed` 是非空数组,取 `phone`、`email`、`username`、`profile`、`roles` 的子集,列出这次变了哪几项。不论是管理员改、User 在账号中心自己改,还是登录时绑定了已验证的 Identifier,都会发。改某个 User 的 Role 分配算 `roles`;强制删除 Role 或 API 时,原来持有其 Role 的每个 User 各发一条。
+  - 不发事件的:只改 Role 里的 Permission;Credential 变更(密码、Passkey、两步验证、恢复码);从待激活转为 active;External Identity 绑定或解绑;Session 终止(走 Back-Channel Logout)。
+- **事务**:事件和触发它的变更在同一个事务里排进投递队列;变更回滚,事件也不产生。
+- **顺序**:不保证投递顺序。接收方应按 `timestamp` 丢弃过时事件,或调 Management API 取当前状态。
+- **兼容**:接收方必须忽略不认识的 `type`,以后可能加新事件。
 - **签名与重试**:用共享密钥签名;失败会重试。
 - **Session 终止**:不走 Webhook,走 [Back-Channel Logout](#back-channel-logout)。

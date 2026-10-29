@@ -21,6 +21,8 @@ type Session struct {
 	EndedAt     *time.Time `json:"endedAt,omitempty"`
 	Active      bool       `json:"active"`
 	Current     bool       `json:"current" doc:"The Session this request comes from"`
+	IP          string     `json:"ip" doc:"The client IP it was last used from; empty for a Session from before IPs were kept"`
+	UserAgent   string     `json:"userAgent" doc:"The User-Agent it was last used with, cut to 512 bytes; may be empty"`
 }
 
 type listSessionsOutput struct {
@@ -46,7 +48,7 @@ func (s *Service) sessions(ctx context.Context) ([]Session, error) {
 	for _, r := range rows {
 		sess := Session{
 			ID: r.ID, Kind: "browser", Application: r.ApplicationName, AuthTime: r.AuthTime.Time, AMR: r.Amr,
-			LastSeenAt: r.LastSeenAt.Time, Active: r.Active, Current: r.ID == c.session,
+			LastSeenAt: r.LastSeenAt.Time, IP: r.Ip.String, UserAgent: r.UserAgent.String, Active: r.Active, Current: r.ID == c.session,
 		}
 		if r.App {
 			sess.Kind = "app"

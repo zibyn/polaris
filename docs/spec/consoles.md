@@ -334,7 +334,8 @@ Management API 不改,后端没拦的写在备注列。
 | | create / update / enable / disable / delete-provider | 添加认证源 / 修改认证源 / 启用认证源 / 停用认证源 / 删除认证源 |
 | | provider.unlink_failed | 外部账号吊销授权失败 |
 | 设置 | keys.rotated | 轮换令牌签名密钥 |
-| 安全 | login.password_locked | 密码输错次数过多,暂时锁定 |
+| 安全 | login.succeeded / failed | 登录成功 / 登录失败(句中写明方式和 Application,如「用验证码登录了 <Application>」「登录 <Application> 失败:密码错误」;IP 和 UA 放在悬停里) |
+| | login.password_locked | 密码输错次数过多,暂时锁定(有 `until` 时写明锁定到几点) |
 | | login.ip_locked | 同一 IP 登录失败过多,暂时锁定 |
 | | refresh_token.reused | 疑似登录凭据被盗用,已下线会话 |
 | | passkey.counter_regressed | Passkey 计数器回退,拒绝登录 |
@@ -394,7 +395,7 @@ Management API 不改,后端没拦的写在备注列。
 1. **头部**:头像和主标识。
 2. **登录方式**:手机号、邮箱(更换、解绑)、外部身份(解除绑定;"绑定其他账号"只列出管理员启用的 Provider)。
 3. **安全**:密码(开关允许时显示)、Passkey(实例开关允许时显示)、两步验证(开关与恢复码)。
-4. **设备与会话**:每个 Session 的设备、地点、最近活动,可以下线;也可以一次下线其他设备(本设备保留);已结束的 Session 显示 30 天。
+4. **设备与会话**:每个 Session 的设备、IP、最近活动,可以下线;也可以一次下线其他设备(本设备保留);已结束的 Session 显示 30 天。
 5. **数据与隐私**:导出我的数据(JSON)。
 6. **危险操作**:注销账号(重新认证,并输入"注销"确认)。
 

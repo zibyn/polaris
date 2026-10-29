@@ -490,6 +490,18 @@ func TestExport(t *testing.T) {
 		len(got.Consents) != 1 || got.Consents[0].Version != "v1" || len(got.AuditEvents) != 1 || got.AuditEvents[0].Event != "identifier.replaced" {
 		t.Errorf("export: %+v", got)
 	}
+	// Each Session carries its device; one from before devices were kept, none.
+	if _, err := e.pool.Exec(context.Background(), "UPDATE sessions SET ip = '203.0.113.9', user_agent = 'App/1.0' WHERE id = (SELECT min(id) FROM sessions)"); err != nil {
+		t.Fatal(err)
+	}
+	e.call("GET", e.signIn("ALICE", 0), "/v1/account/export", nil, &got)
+	var devices []string
+	for _, s := range got.Sessions {
+		devices = append(devices, fmt.Sprint(s["ip"], "|", s["userAgent"]))
+	}
+	if !slices.Contains(devices, "203.0.113.9|App/1.0") || !slices.Contains(devices, "|") {
+		t.Errorf("exported devices: %q", devices)
+	}
 }
 
 // receiver is an Application's webhook endpoint, checking signatures the

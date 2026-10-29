@@ -66,6 +66,8 @@ const spec: Record<string, [string, string][]> = {
 	],
 	设置: [["keys.rotated", "轮换令牌签名密钥"]],
 	安全: [
+		["login.succeeded", "登录成功"],
+		["login.failed", "登录失败"],
 		["login.password_locked", "密码输错次数过多，暂时锁定"],
 		["login.ip_locked", "同一 IP 登录失败过多，暂时锁定"],
 		["refresh_token.reused", "疑似登录凭据被盗用，已下线会话"],
@@ -359,8 +361,87 @@ test("every event reads as a sentence", () => {
 			"没能让认证源 apple 吊销用户 a@x.com 的授权",
 		],
 		[
+			{
+				event: "login.succeeded",
+				...alice,
+				detail: {
+					client_id: "SHOP",
+					amr: ["sms", "otp", "mfa"],
+					ip: "203.0.113.7",
+				},
+			},
+			"用户 a@x.com 用验证码登录了 星选商城",
+		],
+		[
+			{
+				event: "login.succeeded",
+				...alice,
+				detail: { client_id: "SHOP", amr: ["pwd"] },
+			},
+			"用户 a@x.com 用密码登录了 星选商城",
+		],
+		[
+			{
+				event: "login.succeeded",
+				...alice,
+				detail: { client_id: "SHOP", amr: ["swk", "mfa"] },
+			},
+			"用户 a@x.com 用 Passkey 登录了 星选商城",
+		],
+		[
+			{
+				event: "login.succeeded",
+				...alice,
+				detail: { client_id: "SHOP", amr: ["fed"] },
+			},
+			"用户 a@x.com 用外部账号登录了 星选商城",
+		],
+		[
+			{
+				event: "login.failed",
+				...alice,
+				detail: { client_id: "SHOP", method: "password" },
+			},
+			"用户 a@x.com 登录 星选商城 失败：密码错误",
+		],
+		[
+			{
+				event: "login.failed",
+				...alice,
+				detail: { client_id: "SHOP", method: "code" },
+			},
+			"用户 a@x.com 登录 星选商城 失败：验证码错误",
+		],
+		[
+			{
+				event: "login.failed",
+				...alice,
+				detail: { client_id: "SHOP", method: "totp" },
+			},
+			"用户 a@x.com 登录 星选商城 失败：两步验证码错误",
+		],
+		[
+			{
+				event: "login.failed",
+				...alice,
+				detail: { client_id: "SHOP", method: "recovery_code" },
+			},
+			"用户 a@x.com 登录 星选商城 失败：恢复码错误",
+		],
+		[
 			{ event: "login.password_locked", ...alice },
 			"用户 a@x.com 密码输错次数过多，暂时锁定",
+		],
+		[
+			{
+				event: "login.password_locked",
+				...alice,
+				detail: {
+					until: new Date(2026, 9, 7, 14, 30).toISOString(),
+					client_id: "SHOP",
+				},
+			},
+			"用户 a@x.com 密码输错次数过多，已锁定到 14:30",
 		],
 		[
 			{ event: "login.ip_locked", detail: { ip: "203.0.113.7" } },
@@ -392,6 +473,23 @@ test("Users and Applications link to their pages", () => {
 			{ text: "星选商城", app: "SHOP" },
 		],
 	);
+});
+
+test("a login's IP and User-Agent go only in the hover", () => {
+	const s = describe(
+		ev({
+			event: "login.failed",
+			...alice,
+			detail: {
+				client_id: "SHOP",
+				method: "code",
+				ip: "203.0.113.7",
+				ua: "Safari",
+			},
+		}),
+		names,
+	);
+	assert.equal(s.title, "IP：203.0.113.7\nUA：Safari");
 });
 
 test("a delivery ID goes only in the hover", () => {

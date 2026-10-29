@@ -69,6 +69,27 @@ func (q *Queries) AssignRole(ctx context.Context, arg AssignRoleParams) error {
 	return err
 }
 
+const bindIdentifier = `-- name: BindIdentifier :exec
+WITH put AS (
+    INSERT INTO identifiers (user_id, kind, value) VALUES ($1, $2, $3)
+)
+INSERT INTO webhook_deliveries (client_id, payload)
+SELECT e.client_id, e.payload FROM user_event('user.updated', $1, ARRAY[$2::text]) e
+`
+
+type BindIdentifierParams struct {
+	UserID string
+	Kind   string
+	Value  string
+}
+
+// Adds an Identifier to an existing User (logging in binds a verified one),
+// queuing user.updated.
+func (q *Queries) BindIdentifier(ctx context.Context, arg BindIdentifierParams) error {
+	_, err := q.db.Exec(ctx, bindIdentifier, arg.UserID, arg.Kind, arg.Value)
+	return err
+}
+
 const closeSetup = `-- name: CloseSetup :exec
 UPDATE settings SET setup_token = NULL, setup_done = true
 `
@@ -214,6 +235,9 @@ WITH put AS (
     SELECT users.id, $1, $3 FROM users WHERE users.id = $4
     ON CONFLICT (user_id, kind) DO UPDATE SET value = EXCLUDED.value
     RETURNING identifiers.user_id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM put, user_event('user.updated', put.user_id, ARRAY[$1::text]) e
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', $1::text, 'by', $2::text) FROM put
@@ -227,7 +251,7 @@ type ReplaceIdentifierParams struct {
 }
 
 // Sets a User's Identifier of a kind, replacing the one they had. Audited
-// with who did it, without the values.
+// with who did it, without the values, and queues user.updated.
 func (q *Queries) ReplaceIdentifier(ctx context.Context, arg ReplaceIdentifierParams) (int64, error) {
 	result, err := q.db.Exec(ctx, replaceIdentifier,
 		arg.Kind,

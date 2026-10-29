@@ -94,9 +94,17 @@ func (q *Queries) Caller(ctx context.Context, arg CallerParams) (CallerRow, erro
 }
 
 const deleteAPI = `-- name: DeleteAPI :execrows
-DELETE FROM apis
-WHERE apis.identifier = $1 AND NOT apis.builtin
-  AND ($2::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = apis.identifier))
+WITH gone AS (
+    DELETE FROM apis
+    WHERE apis.identifier = $1 AND NOT apis.builtin
+      AND ($2::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = apis.identifier))
+    RETURNING apis.identifier
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM (SELECT DISTINCT ur.user_id FROM user_roles ur JOIN gone ON ur.api = gone.identifier) h,
+                    user_event('user.updated', h.user_id, '{roles}') e
+)
+SELECT 1 FROM gone
 `
 
 type DeleteAPIParams struct {
@@ -105,7 +113,8 @@ type DeleteAPIParams struct {
 }
 
 // Its Permissions, Roles and their assignments go with it, but only when
-// force confirms that; no row while someone holds one of its Roles.
+// force confirms that; no row while someone holds one of its Roles. Each
+// User who held one gets user.updated.
 func (q *Queries) DeleteAPI(ctx context.Context, arg DeleteAPIParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteAPI, arg.Identifier, arg.Force)
 	if err != nil {
@@ -142,10 +151,18 @@ func (q *Queries) DeletePermission(ctx context.Context, arg DeletePermissionPara
 }
 
 const deleteRole = `-- name: DeleteRole :execrows
-DELETE FROM roles
-WHERE roles.api = $1 AND roles.key = $2 AND NOT roles.builtin
-  AND ($3::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = roles.api AND ur.role = roles.key)
-                             AND NOT EXISTS (SELECT 1 FROM application_roles ar WHERE ar.api = roles.api AND ar.role = roles.key))
+WITH gone AS (
+    DELETE FROM roles
+    WHERE roles.api = $1 AND roles.key = $2 AND NOT roles.builtin
+      AND ($3::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = roles.api AND ur.role = roles.key)
+                                 AND NOT EXISTS (SELECT 1 FROM application_roles ar WHERE ar.api = roles.api AND ar.role = roles.key))
+    RETURNING roles.api, roles.key
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM user_roles ur JOIN gone ON ur.api = gone.api AND ur.role = gone.key,
+                    user_event('user.updated', ur.user_id, '{roles}') e
+)
+SELECT 1 FROM gone
 `
 
 type DeleteRoleParams struct {
@@ -155,7 +172,8 @@ type DeleteRoleParams struct {
 }
 
 // Its assignments go with it (user_roles and application_roles cascade), but
-// only when force confirms that; no row while anyone holds it.
+// only when force confirms that; no row while anyone holds it. Each User
+// who held it gets user.updated.
 func (q *Queries) DeleteRole(ctx context.Context, arg DeleteRoleParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteRole, arg.Api, arg.Key, arg.Force)
 	if err != nil {
@@ -167,13 +185,12 @@ func (q *Queries) DeleteRole(ctx context.Context, arg DeleteRoleParams) (int64, 
 const deleteUser = `-- name: DeleteUser :execrows
 WITH gone AS (
     DELETE FROM users WHERE users.id = $2 RETURNING users.id
+), scrubbed AS (
+    UPDATE audit_log SET detail = detail - 'ip' - 'ua'
+    WHERE audit_log.sub IN (SELECT gone.id FROM gone)
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT a.client_id, jsonb_build_object(
-        'type', 'user.deleted',
-        'timestamp', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-        'data', jsonb_build_object('sub', gone.id))
-    FROM gone, applications a WHERE a.webhook_url IS NOT NULL
+    SELECT e.client_id, e.payload FROM gone, user_event('user.deleted', gone.id) e
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'user.deleted', gone.id, jsonb_build_object('by', $1::text) FROM gone
@@ -185,8 +202,9 @@ type DeleteUserParams struct {
 }
 
 // Deletes a User with everything of theirs (foreign keys cascade); their
-// audit events keep only the sub. Audited with who did it, and queues
-// user.deleted for every Application with a webhook.
+// audit events keep only the sub, with no IP or UA in any detail. Audited
+// with who did it, and queues user.deleted for every Application with a
+// webhook.
 func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteUser, arg.By, arg.UserID)
 	if err != nil {
@@ -538,35 +556,6 @@ func (q *Queries) ListRoles(ctx context.Context) ([]ListRolesRow, error) {
 	return items, nil
 }
 
-const listSigningKeys = `-- name: ListSigningKeys :many
-SELECT kid, created_at FROM signing_keys ORDER BY created_at DESC, kid
-`
-
-type ListSigningKeysRow struct {
-	Kid       string
-	CreatedAt pgtype.Timestamptz
-}
-
-func (q *Queries) ListSigningKeys(ctx context.Context) ([]ListSigningKeysRow, error) {
-	rows, err := q.db.Query(ctx, listSigningKeys)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListSigningKeysRow
-	for rows.Next() {
-		var i ListSigningKeysRow
-		if err := rows.Scan(&i.Kid, &i.CreatedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listUsers = `-- name: ListUsers :many
 SELECT u.id, u.created_at, u.disabled_at, u.pending,
        COALESCE((SELECT json_agg(json_build_object('kind', i.kind, 'value', i.value) ORDER BY i.kind)
@@ -870,6 +859,9 @@ WITH changed AS (
     UPDATE users SET disabled_at = CASE WHEN $1::boolean THEN now() END
     WHERE users.id = $3 AND (users.disabled_at IS NOT NULL) <> $1::boolean
     RETURNING users.id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM changed, user_event(CASE WHEN $1::boolean THEN 'user.disabled' ELSE 'user.enabled' END, changed.id) e
 ), ended AS (
     UPDATE sessions SET ended_at = now()
     WHERE sessions.user_id IN (SELECT changed.id FROM changed) AND $1::boolean AND sessions.ended_at IS NULL
@@ -899,10 +891,16 @@ const setUserRoles = `-- name: SetUserRoles :exec
 WITH gone AS (
     DELETE FROM user_roles
     WHERE user_roles.user_id = $1 AND user_roles.api = $2 AND NOT (user_roles.role = ANY ($3::text[]))
+    RETURNING user_roles.user_id
 ), added AS (
     INSERT INTO user_roles (user_id, api, role)
     SELECT $1, $2, r FROM unnest($3::text[]) AS r
     ON CONFLICT DO NOTHING
+    RETURNING user_roles.user_id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM user_event('user.updated', $1, '{roles}') e
+    WHERE EXISTS (SELECT 1 FROM gone) OR EXISTS (SELECT 1 FROM added)
 )
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('roles.assigned', $1::text, jsonb_build_object('api', $2::text, 'roles', $3::text[], 'by', $4::text))
@@ -915,7 +913,8 @@ type SetUserRolesParams struct {
 	By     string
 }
 
-// Makes roles a User's Roles on an API; audited with who did it.
+// Makes roles a User's Roles on an API; audited with who did it, and queues
+// user.updated when that changed anything.
 func (q *Queries) SetUserRoles(ctx context.Context, arg SetUserRolesParams) error {
 	_, err := q.db.Exec(ctx, setUserRoles,
 		arg.UserID,

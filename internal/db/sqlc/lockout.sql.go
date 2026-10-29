@@ -7,6 +7,8 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const clearLoginFailures = `-- name: ClearLoginFailures :exec
@@ -28,10 +30,11 @@ func (q *Queries) DeleteOldLoginFailures(ctx context.Context) error {
 	return err
 }
 
-const lockOut = `-- name: LockOut :exec
+const lockOut = `-- name: LockOut :one
 WITH cleared AS (DELETE FROM login_failures WHERE login_failures.key = $1)
 INSERT INTO lockouts (key, until) VALUES ($1, now() + make_interval(secs => $2::float8))
 ON CONFLICT (key) DO UPDATE SET until = EXCLUDED.until
+RETURNING until
 `
 
 type LockOutParams struct {
@@ -39,10 +42,12 @@ type LockOutParams struct {
 	LockSecs float64
 }
 
-// Locks key out for a while; its count starts over.
-func (q *Queries) LockOut(ctx context.Context, arg LockOutParams) error {
-	_, err := q.db.Exec(ctx, lockOut, arg.Key, arg.LockSecs)
-	return err
+// Locks key out for a while, until the time it returns; its count starts over.
+func (q *Queries) LockOut(ctx context.Context, arg LockOutParams) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, lockOut, arg.Key, arg.LockSecs)
+	var until pgtype.Timestamptz
+	err := row.Scan(&until)
+	return until, err
 }
 
 const lockedOut = `-- name: LockedOut :one

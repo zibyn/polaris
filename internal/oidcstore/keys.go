@@ -11,6 +11,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zibyn/polaris/internal/crypt"
@@ -18,9 +19,15 @@ import (
 	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
 
+// KeyRetention is how long an old key stays published after the next one
+// arrives: the longest token lifetime (10 min) plus room for RP JWKS caches.
+const KeyRetention = time.Hour
+
+var keyRetention = pgtype.Interval{Microseconds: KeyRetention.Microseconds(), Valid: true}
+
 // Keys holds the RS256 signing keys, sealed with the master key. The newest
-// key signs; the previous one stays published so tokens it signed verify
-// until they expire.
+// key signs; older ones stay published for KeyRetention after their successor
+// arrives so tokens they signed verify until they expire.
 type Keys struct {
 	pool    *pgxpool.Pool
 	q       *sqlc.Queries
@@ -43,7 +50,7 @@ func (k *Keys) Ensure(ctx context.Context) error {
 	if err := q.LockSigningKeys(ctx); err != nil {
 		return err
 	}
-	keys, err := q.SigningKeys(ctx)
+	keys, err := q.SigningKeys(ctx, keyRetention)
 	if err != nil || len(keys) > 0 {
 		return err
 	}
@@ -53,21 +60,22 @@ func (k *Keys) Ensure(ctx context.Context) error {
 	return tx.Commit(ctx)
 }
 
-// Rotate makes a new key current and retires all but the previous one.
-// ponytail: rotating twice within an access token lifetime (10 min) cuts off
-// tokens from the retired key; guard in the console if that bites.
+// Rotate makes a new key current. The old ones retire by age (see
+// KeyRetention); the hourly cleanup deletes them.
 func (k *Keys) Rotate(ctx context.Context) error {
-	if err := add(ctx, k.q, k.keyring); err != nil {
-		return err
-	}
-	return k.q.DeleteRetiredSigningKeys(ctx)
+	return add(ctx, k.q, k.keyring)
+}
+
+// Published lists the keys in the JWKS, newest (current) first.
+func (k *Keys) Published(ctx context.Context) ([]sqlc.SigningKey, error) {
+	return k.q.SigningKeys(ctx, keyRetention)
 }
 
 // JWKS returns the published keys with their private halves, newest first:
 // go-oidc signs with the first RS256 key and strips private parts when serving.
 // ponytail: reads PG on every call; cache for a few seconds if it shows up in profiles.
 func (k *Keys) JWKS(ctx context.Context) (goidc.JSONWebKeySet, error) {
-	rows, err := k.q.SigningKeys(ctx)
+	rows, err := k.Published(ctx)
 	if err != nil {
 		return goidc.JSONWebKeySet{}, err
 	}

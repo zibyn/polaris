@@ -1,6 +1,7 @@
 package com.zibyn.polaris
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.UserAgent
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.delete
 import io.ktor.client.request.forms.submitForm
@@ -129,7 +130,7 @@ public class PolarisException(public val error: String, public val description: 
 public class Polaris(
   private val config: PolarisConfig,
   private val store: TokenStore,
-  private val http: HttpClient = HttpClient(),
+  http: HttpClient = HttpClient(),
   // The system's Passkey sheet; without it Passkey sign-in and adding both
   // refuse, and passkeysAvailable() is false.
   private val passkeys: PasskeyPrompt? = null,
@@ -138,6 +139,9 @@ public class Polaris(
   // with every parameter, so the plain two-argument form is spelled out here.
   public constructor(config: PolarisConfig, store: TokenStore) : this(config, store, HttpClient())
 
+  // The App's client with the SDK's User-Agent on top: the account center
+  // shows the Session by it.
+  private val http = http.config { install(UserAgent) { agent = userAgent(currentDevice()) } }
   private val issuer = config.issuer.trimEnd('/')
   private val json = Json { ignoreUnknownKeys = true }
   // Guards the tokens: one refresh at a time, and sign-in, sign-out and

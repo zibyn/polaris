@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/zibyn/polaris/internal/identity"
 )
 
 // Login CSRF past the first factor: an attacker stops at a later step and
@@ -23,7 +25,7 @@ func TestPendingLoginGoesOnOnlyInTheBrowserThatStartedIt(t *testing.T) {
 		"password": {
 			user: func(e *env) string {
 				e.bootstrap("owner", "password1")
-				sub, _ := e.ids.CheckPassword(context.Background(), "owner", "password1")
+				sub, _ := e.ids.CheckPassword(context.Background(), identity.Attempt{}, "owner", "password1")
 				return sub
 			},
 			login: func(e *env, page string) (*http.Response, string) { return e.submit(page, "owner", "password1") },

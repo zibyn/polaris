@@ -62,7 +62,7 @@ func TestInviteMintsAcceptsAndReplaces(t *testing.T) {
 	if pending, err := s.Pending(ctx, sub); err != nil || pending {
 		t.Errorf("still 待激活 after accepting: %v %v", pending, err)
 	}
-	if who, err := s.CheckPassword(ctx, "alice@example.com", "her-own-password"); err != nil || who != sub {
+	if who, err := s.CheckPassword(ctx, Attempt{}, "alice@example.com", "her-own-password"); err != nil || who != sub {
 		t.Errorf("the password she set does not work: %q %v", who, err)
 	}
 	// 审计里「接受」的操作人是本人, 不是发邀请的管理员。
@@ -75,7 +75,7 @@ func TestInviteMintsAcceptsAndReplaces(t *testing.T) {
 		t.Errorf("a spent link: %v, want ErrInviteSpent", err)
 	}
 	// 而且没把密码改成第二次给的那个。
-	if who, err := s.CheckPassword(ctx, "alice@example.com", "her-own-password"); err != nil || who != sub {
+	if who, err := s.CheckPassword(ctx, Attempt{}, "alice@example.com", "her-own-password"); err != nil || who != sub {
 		t.Errorf("the second accept wrote a password: %q %v", who, err)
 	}
 }
@@ -99,7 +99,7 @@ func TestInviteAcceptsForAnActiveUser(t *testing.T) {
 	if _, err := s.AcceptInvite(ctx, token, "forgotten-and-new"); err != nil {
 		t.Fatal(err)
 	}
-	if who, err := s.CheckPassword(ctx, "bob@example.com", "forgotten-and-new"); err != nil || who != sub {
+	if who, err := s.CheckPassword(ctx, Attempt{}, "bob@example.com", "forgotten-and-new"); err != nil || who != sub {
 		t.Errorf("the new password does not work: %q %v", who, err)
 	}
 }

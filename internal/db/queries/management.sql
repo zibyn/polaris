@@ -75,14 +75,21 @@ FROM roles r JOIN apis a ON a.identifier = r.api
 ORDER BY a.builtin DESC, r.api, r.builtin DESC, r.key;
 
 -- name: SetUserRoles :exec
--- Makes roles a User's Roles on an API; audited with who did it.
+-- Makes roles a User's Roles on an API; audited with who did it, and queues
+-- user.updated when that changed anything.
 WITH gone AS (
     DELETE FROM user_roles
     WHERE user_roles.user_id = @user_id AND user_roles.api = @api AND NOT (user_roles.role = ANY (@roles::text[]))
+    RETURNING user_roles.user_id
 ), added AS (
     INSERT INTO user_roles (user_id, api, role)
     SELECT @user_id, @api, r FROM unnest(@roles::text[]) AS r
     ON CONFLICT DO NOTHING
+    RETURNING user_roles.user_id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM user_event('user.updated', @user_id, '{roles}') e
+    WHERE EXISTS (SELECT 1 FROM gone) OR EXISTS (SELECT 1 FROM added)
 )
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('roles.assigned', @user_id::text, jsonb_build_object('api', @api::text, 'roles', @roles::text[], 'by', @by::text));
@@ -113,10 +120,19 @@ ON CONFLICT (identifier) DO UPDATE SET name = EXCLUDED.name WHERE NOT apis.built
 
 -- name: DeleteAPI :execrows
 -- Its Permissions, Roles and their assignments go with it, but only when
--- force confirms that; no row while someone holds one of its Roles.
-DELETE FROM apis
-WHERE apis.identifier = @identifier AND NOT apis.builtin
-  AND (@force::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = apis.identifier));
+-- force confirms that; no row while someone holds one of its Roles. Each
+-- User who held one gets user.updated.
+WITH gone AS (
+    DELETE FROM apis
+    WHERE apis.identifier = @identifier AND NOT apis.builtin
+      AND (@force::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = apis.identifier))
+    RETURNING apis.identifier
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM (SELECT DISTINCT ur.user_id FROM user_roles ur JOIN gone ON ur.api = gone.identifier) h,
+                    user_event('user.updated', h.user_id, '{roles}') e
+)
+SELECT 1 FROM gone;
 
 -- name: PutPermission :exec
 INSERT INTO permissions (api, key, name) VALUES ($1, $2, $3)
@@ -151,11 +167,20 @@ FROM roles r WHERE r.api = $1 AND r.key = $2;
 
 -- name: DeleteRole :execrows
 -- Its assignments go with it (user_roles and application_roles cascade), but
--- only when force confirms that; no row while anyone holds it.
-DELETE FROM roles
-WHERE roles.api = @api AND roles.key = @key AND NOT roles.builtin
-  AND (@force::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = roles.api AND ur.role = roles.key)
-                             AND NOT EXISTS (SELECT 1 FROM application_roles ar WHERE ar.api = roles.api AND ar.role = roles.key));
+-- only when force confirms that; no row while anyone holds it. Each User
+-- who held it gets user.updated.
+WITH gone AS (
+    DELETE FROM roles
+    WHERE roles.api = @api AND roles.key = @key AND NOT roles.builtin
+      AND (@force::boolean OR NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.api = roles.api AND ur.role = roles.key)
+                                 AND NOT EXISTS (SELECT 1 FROM application_roles ar WHERE ar.api = roles.api AND ar.role = roles.key))
+    RETURNING roles.api, roles.key
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM user_roles ur JOIN gone ON ur.api = gone.api AND ur.role = gone.key,
+                    user_event('user.updated', ur.user_id, '{roles}') e
+)
+SELECT 1 FROM gone;
 
 -- name: SetApplicationRoles :exec
 -- Makes roles an M2M Application's Roles on its default API, audited with
@@ -232,9 +257,6 @@ WITH u AS (
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('settings.updated', NULL, jsonb_build_object('by', @by::text));
 
--- name: ListSigningKeys :many
-SELECT kid, created_at FROM signing_keys ORDER BY created_at DESC, kid;
-
 -- name: SetUserDisabled :execrows
 -- Disables or restores a User; disabling ends all their Sessions. Audited
 -- with who did it; no row when nothing changed.
@@ -242,6 +264,9 @@ WITH changed AS (
     UPDATE users SET disabled_at = CASE WHEN @disabled::boolean THEN now() END
     WHERE users.id = @user_id AND (users.disabled_at IS NOT NULL) <> @disabled::boolean
     RETURNING users.id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM changed, user_event(CASE WHEN @disabled::boolean THEN 'user.disabled' ELSE 'user.enabled' END, changed.id) e
 ), ended AS (
     UPDATE sessions SET ended_at = now()
     WHERE sessions.user_id IN (SELECT changed.id FROM changed) AND @disabled::boolean AND sessions.ended_at IS NULL
@@ -252,17 +277,17 @@ FROM changed;
 
 -- name: DeleteUser :execrows
 -- Deletes a User with everything of theirs (foreign keys cascade); their
--- audit events keep only the sub. Audited with who did it, and queues
--- user.deleted for every Application with a webhook.
+-- audit events keep only the sub, with no IP or UA in any detail. Audited
+-- with who did it, and queues user.deleted for every Application with a
+-- webhook.
 WITH gone AS (
     DELETE FROM users WHERE users.id = @user_id RETURNING users.id
+), scrubbed AS (
+    UPDATE audit_log SET detail = detail - 'ip' - 'ua'
+    WHERE audit_log.sub IN (SELECT gone.id FROM gone)
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT a.client_id, jsonb_build_object(
-        'type', 'user.deleted',
-        'timestamp', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-        'data', jsonb_build_object('sub', gone.id))
-    FROM gone, applications a WHERE a.webhook_url IS NOT NULL
+    SELECT e.client_id, e.payload FROM gone, user_event('user.deleted', gone.id) e
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'user.deleted', gone.id, jsonb_build_object('by', @by::text) FROM gone;
