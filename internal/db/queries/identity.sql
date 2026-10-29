@@ -21,14 +21,26 @@ SELECT u.id, r.api, r.key FROM new_user u JOIN roles r ON r.default_role;
 -- name: AddIdentifier :exec
 INSERT INTO identifiers (user_id, kind, value) VALUES ($1, $2, $3);
 
+-- name: BindIdentifier :exec
+-- Adds an Identifier to an existing User (logging in binds a verified one),
+-- queuing user.updated.
+WITH put AS (
+    INSERT INTO identifiers (user_id, kind, value) VALUES (@user_id, @kind, @value)
+)
+INSERT INTO webhook_deliveries (client_id, payload)
+SELECT e.client_id, e.payload FROM user_event('user.updated', @user_id, ARRAY[@kind::text]) e;
+
 -- name: ReplaceIdentifier :execrows
 -- Sets a User's Identifier of a kind, replacing the one they had. Audited
--- with who did it, without the values.
+-- with who did it, without the values, and queues user.updated.
 WITH put AS (
     INSERT INTO identifiers (user_id, kind, value)
     SELECT users.id, @kind, @value FROM users WHERE users.id = @user_id
     ON CONFLICT (user_id, kind) DO UPDATE SET value = EXCLUDED.value
     RETURNING identifiers.user_id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM put, user_event('user.updated', put.user_id, ARRAY[@kind::text]) e
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', @kind::text, 'by', @by::text) FROM put;

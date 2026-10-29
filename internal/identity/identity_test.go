@@ -457,3 +457,47 @@ func countUsers(t *testing.T, s *Store) int {
 	}
 	return n
 }
+
+// Logging in binds a verified Identifier to an existing User and queues
+// user.updated for each Application with a webhook; signing up queues
+// nothing, and a refused binding rolls its delivery back.
+func TestBindingAnIdentifierAtLoginQueuesUserUpdated(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO applications (client_id, name, type, webhook_url, webhook_secret) VALUES
+		    ('hooked', 'hooked', 'public', 'https://rp.example/hook', '\x00'), ('plain', 'plain', 'public', NULL, NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	queued := func() []string {
+		t.Helper()
+		var got []string
+		if err := s.pool.QueryRow(ctx, `
+			WITH d AS (DELETE FROM webhook_deliveries WHERE kind = 'webhook' RETURNING client_id, payload)
+			SELECT COALESCE(array_agg(d.client_id || ' ' || (d.payload->>'type') || ' ' || (d.payload->'data')::text), '{}') FROM d`).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	sub, err := s.SignIn(ctx, "email", "alice@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := queued(); len(got) != 0 {
+		t.Errorf("sign-up queued %v", got)
+	}
+	if err := s.AddIdentifier(ctx, sub, "phone", "+8613800138000"); err != nil {
+		t.Fatal(err)
+	}
+	if got := queued(); !slices.Equal(got, []string{`hooked user.updated {"sub": "` + sub + `", "changed": ["phone"]}`}) {
+		t.Errorf("binding queued %v", got)
+	}
+	other, _ := s.SignIn(ctx, "email", "bob@example.com")
+	if err := s.AddIdentifier(ctx, other, "phone", "+8613800138000"); !errors.Is(err, ErrIdentifierTaken) {
+		t.Fatalf("taken: %v", err)
+	}
+	if got := queued(); len(got) != 0 {
+		t.Errorf("refused binding queued %v", got)
+	}
+}

@@ -58,9 +58,12 @@ SELECT COALESCE(array_agg(kind ORDER BY kind) FILTER (WHERE kind IS NOT NULL), '
 FROM identifiers WHERE user_id = $1;
 
 -- name: RemoveIdentifier :execrows
--- Audited as done by the User.
+-- Audited as done by the User; queues user.updated.
 WITH gone AS (
     DELETE FROM identifiers WHERE user_id = @user_id AND kind = @kind RETURNING user_id
+), hooks AS (
+    INSERT INTO webhook_deliveries (client_id, payload)
+    SELECT e.client_id, e.payload FROM gone, user_event('user.updated', gone.user_id, ARRAY[@kind::text]) e
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'identifier.removed', gone.user_id, jsonb_build_object('kind', @kind::text, 'by', gone.user_id) FROM gone;
