@@ -19,6 +19,7 @@ type settings struct {
 	AuditRetentionDays  int    `json:"auditRetentionDays"`
 	AdminsNeedTwoFactor bool   `json:"adminsNeedTwoFactor"`
 	PasskeyLogin        bool   `json:"passkeyLogin"`
+	OpenRegistration    bool   `json:"openRegistration"`
 }
 
 // problem calls GET path and returns the status and the error's code.
@@ -113,13 +114,13 @@ func TestAdminChangesLoginPolicy(t *testing.T) {
 	owner, ro := e.token(e.owner, nil), e.token("RO", nil)
 
 	var got settings
-	if code := e.get(ro, "/settings", &got); code != 200 || got != (settings{PasswordLogin: "on", DailySendLimit: 1000, AuditRetentionDays: 180, PasskeyLogin: true}) {
+	if code := e.get(ro, "/settings", &got); code != 200 || got != (settings{PasswordLogin: "on", DailySendLimit: 1000, AuditRetentionDays: 180, PasskeyLogin: true, OpenRegistration: true}) {
 		t.Fatalf("defaults: %d %+v", code, got)
 	}
 	want := settings{
 		PasswordLogin: "on", RequirePhone: true, DailySendLimit: 50,
 		TermsURL: "https://example.com/terms", PrivacyURL: "https://example.com/privacy", TermsVersion: "2026-10",
-		AuditRetentionDays: 30, PasskeyLogin: true,
+		AuditRetentionDays: 30, PasskeyLogin: true, OpenRegistration: false,
 	}
 	if code := e.call("PUT", ro, "/settings", want, nil); code != 403 {
 		t.Errorf("readonly PUT: %d, want 403", code)

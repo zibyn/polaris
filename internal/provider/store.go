@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -342,6 +343,11 @@ func (s *Store) signIn(ctx context.Context, id string, ident Identity) (string, 
 		return u.UserID, s.q.SetExternalIdentityToken(ctx, sqlc.SetExternalIdentityTokenParams{Provider: id, Subject: ident.Subject, Token: token})
 	case !errors.Is(err, pgx.ErrNoRows):
 		return u.UserID, err
+	}
+	// An External Identity bound to nobody signs a User up only while 开放注册
+	// is on (ADR 0021).
+	if open, err := s.q.RegistrationOpen(ctx); err != nil || !open {
+		return "", cmp.Or(err, error(identity.ErrRegistrationClosed))
 	}
 	sub := rand.Text()
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {

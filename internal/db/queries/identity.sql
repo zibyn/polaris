@@ -120,3 +120,12 @@ WITH activated AS (
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'password.changed', put.user_id, jsonb_build_object('by', put.user_id) FROM put;
+
+-- name: MaySignUp :one
+-- Whether value may be signed in with by code (ADR 0021): a User holds it,
+-- or the instance is open to new ones.
+SELECT (s.open_registration OR EXISTS (SELECT 1 FROM identifiers i WHERE i.value = @value::text))::boolean
+FROM settings s;
+
+-- name: RegistrationOpen :one
+SELECT open_registration FROM settings;
