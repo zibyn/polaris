@@ -553,6 +553,10 @@ func TestClientCredentials(t *testing.T) {
 		return e.claims(tok.AccessToken)
 	}
 
+	var before int64 // setting up the Channels is audited
+	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM audit_log").Scan(&before); err != nil {
+		t.Fatal(err)
+	}
 	resp, body := token("batch", "m2m-secret", url.Values{"grant_type": {"client_credentials"}})
 	if resp.StatusCode != 200 {
 		t.Fatalf("client_credentials: %d %s", resp.StatusCode, body)
@@ -571,8 +575,8 @@ func TestClientCredentials(t *testing.T) {
 	// 换令牌不写审计 (docs/spec/security-compliance.md): done every 10
 	// minutes, it would drown the log.
 	var audited int64
-	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM audit_log").Scan(&audited); err != nil || audited != 0 {
-		t.Errorf("client_credentials wrote %d audit events, want none: %v", audited, err)
+	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM audit_log").Scan(&audited); err != nil || audited != before {
+		t.Errorf("client_credentials wrote %d audit events, want none: %v", audited-before, err)
 	}
 	if at := e.claims(tok.AccessToken); at["aud"] != trackAPI || at["sub"] != "batch" || at["client_id"] != "batch" {
 		t.Errorf("claims: %v", at)
