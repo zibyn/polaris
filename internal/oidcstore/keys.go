@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -63,10 +64,18 @@ func (k *Keys) Ensure(ctx context.Context) error {
 	return tx.Commit(ctx)
 }
 
-// Rotate makes a new key current. The old ones retire by age (see
-// KeyRetention); the hourly cleanup deletes them.
-func (k *Keys) Rotate(ctx context.Context) error {
-	return add(ctx, k.q, k.keyring)
+// Rotate makes a new key current and audits it as done by by. The old ones
+// retire by age (see KeyRetention); the hourly cleanup deletes them.
+func (k *Keys) Rotate(ctx context.Context, by string) error {
+	tx, err := k.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
+	if err := k.rotate(ctx, k.q.WithTx(tx), by); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // RotateDue makes a new key current once the newest is KeyLifetime old, and
@@ -85,13 +94,18 @@ func (k *Keys) RotateDue(ctx context.Context) error {
 	if err != nil || len(keys) == 0 || time.Since(keys[0].CreatedAt.Time) < KeyLifetime {
 		return err
 	}
-	if err := add(ctx, q, k.keyring); err != nil {
-		return err
-	}
-	if err := q.Audit(ctx, sqlc.AuditParams{Event: "keys.rotated", Detail: []byte(`{"by":"system"}`)}); err != nil {
+	if err := k.rotate(ctx, q, "system"); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (k *Keys) rotate(ctx context.Context, q *sqlc.Queries, by string) error {
+	if err := add(ctx, q, k.keyring); err != nil {
+		return err
+	}
+	detail, _ := json.Marshal(map[string]string{"by": by})
+	return q.Audit(ctx, sqlc.AuditParams{Event: "keys.rotated", Detail: detail})
 }
 
 // Published lists the keys in the JWKS, newest (current) first.

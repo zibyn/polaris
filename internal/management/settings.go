@@ -2,7 +2,6 @@ package management
 
 import (
 	"context"
-	"encoding/json"
 	"net/url"
 	"time"
 
@@ -106,12 +105,7 @@ func (s *Service) listKeys(ctx context.Context, _ *struct{}) (*listKeysOutput, e
 }
 
 func (s *Service) rotateKeys(ctx context.Context, _ *struct{}) (*struct{}, error) {
-	if err := s.keys.Rotate(ctx); err != nil {
-		return nil, err
-	}
-	c := ctx.Value(callerKey{}).(caller)
-	detail, _ := json.Marshal(map[string]string{"by": c.sub})
-	return nil, s.q.Audit(ctx, sqlc.AuditParams{Event: "keys.rotated", Detail: detail})
+	return nil, s.keys.Rotate(ctx, ctx.Value(callerKey{}).(caller).sub)
 }
 
 // DeleteOldAudit removes audit events past the retention period; run by

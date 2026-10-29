@@ -115,7 +115,7 @@ func TestRotationKeepsOldKeysForAnHour(t *testing.T) {
 	}
 	oldToken := sign(t, before.Keys[0])
 
-	if err := keys.Rotate(ctx); err != nil {
+	if err := keys.Rotate(ctx, "test"); err != nil {
 		t.Fatal(err)
 	}
 	after, err := keys.JWKS(ctx)
@@ -134,7 +134,7 @@ func TestRotationKeepsOldKeysForAnHour(t *testing.T) {
 
 	// A second rotation within the hour keeps all three.
 	midToken := sign(t, after.Keys[0])
-	if err := keys.Rotate(ctx); err != nil {
+	if err := keys.Rotate(ctx, "test"); err != nil {
 		t.Fatal(err)
 	}
 	last, err := keys.JWKS(ctx)
@@ -502,7 +502,7 @@ func TestManualRotationRestartsRotateDueClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	age(t, pool, "100 days")
-	if err := keys.Rotate(ctx); err != nil {
+	if err := keys.Rotate(ctx, "test"); err != nil {
 		t.Fatal(err)
 	}
 	age(t, pool, "89 days") // the manual key is 89 days old, its predecessor 189
