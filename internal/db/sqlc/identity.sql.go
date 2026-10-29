@@ -263,6 +263,7 @@ WITH put AS (
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
     SELECT e.client_id, e.payload FROM put, user_event('user.updated', put.user_id, ARRAY[$1::text]) e
+    WHERE NOT EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = put.user_id AND i.kind = $1 AND i.value = $3)
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', $1::text, 'by', $2::text) FROM put
@@ -276,7 +277,8 @@ type ReplaceIdentifierParams struct {
 }
 
 // Sets a User's Identifier of a kind, replacing the one they had. Audited
-// with who did it, without the values, and queues user.updated.
+// with who did it, without the values, and queues user.updated when the
+// value changes; the hooks CTE reads the row as it was before.
 func (q *Queries) ReplaceIdentifier(ctx context.Context, arg ReplaceIdentifierParams) (int64, error) {
 	result, err := q.db.Exec(ctx, replaceIdentifier,
 		arg.Kind,

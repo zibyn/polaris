@@ -121,6 +121,8 @@ func TestWebhookAdminChangesIdentifiers(t *testing.T) {
 	e.queued("add phone", event("user.updated", "ALICE", "phone"))
 	put("username", "alice")
 	e.queued("add username", event("user.updated", "ALICE", "username"))
+	put("email", "alice@new.example")
+	e.queued("same email")
 	e.call("PUT", owner, "/users/ALICE/identifiers/email", map[string]string{"value": "nope"}, nil)
 	e.queued("invalid email")
 }

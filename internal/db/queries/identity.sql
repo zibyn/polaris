@@ -32,7 +32,8 @@ SELECT e.client_id, e.payload FROM user_event('user.updated', @user_id, ARRAY[@k
 
 -- name: ReplaceIdentifier :execrows
 -- Sets a User's Identifier of a kind, replacing the one they had. Audited
--- with who did it, without the values, and queues user.updated.
+-- with who did it, without the values, and queues user.updated when the
+-- value changes; the hooks CTE reads the row as it was before.
 WITH put AS (
     INSERT INTO identifiers (user_id, kind, value)
     SELECT users.id, @kind, @value FROM users WHERE users.id = @user_id
@@ -41,6 +42,7 @@ WITH put AS (
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
     SELECT e.client_id, e.payload FROM put, user_event('user.updated', put.user_id, ARRAY[@kind::text]) e
+    WHERE NOT EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = put.user_id AND i.kind = @kind AND i.value = @value)
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', @kind::text, 'by', @by::text) FROM put;
