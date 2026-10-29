@@ -294,6 +294,23 @@ func TestOwnerRotatesSigningKeys(t *testing.T) {
 	if code := e.get(owner, "/me", nil); code != 200 {
 		t.Errorf("old token: %d", code)
 	}
+
+	// A second rotation keeps all three, until the first one's successor is an hour old.
+	if code := e.call("POST", owner, "/signing-keys/rotate", nil, nil); code != 204 {
+		t.Fatalf("rotate again: %d", code)
+	}
+	var three, aged struct{ Keys []key }
+	if code := e.get(admin, "/signing-keys", &three); code != 200 || len(three.Keys) != 3 {
+		t.Fatalf("after second rotate: %d %+v", code, three)
+	}
+	if _, err := e.pool.Exec(context.Background(), `UPDATE signing_keys SET created_at = created_at - interval '2 hours' WHERE kid <> $1`, three.Keys[0].Kid); err != nil {
+		t.Fatal(err)
+	}
+	// admin's token came from the retired key, so it needs a new one.
+	if code := e.get(e.token("ADMIN", nil), "/signing-keys", &aged); code != 200 || len(aged.Keys) != 2 ||
+		aged.Keys[0] != three.Keys[0] || aged.Keys[1] != three.Keys[1] {
+		t.Errorf("after the hour: %d %+v, want the first two of %+v", code, aged, three)
+	}
 }
 
 func TestCleanupKeepsAuditForTheRetentionPeriod(t *testing.T) {

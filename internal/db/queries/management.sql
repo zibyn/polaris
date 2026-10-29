@@ -231,9 +231,6 @@ WITH u AS (
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('settings.updated', NULL, jsonb_build_object('by', @by::text));
 
--- name: ListSigningKeys :many
-SELECT kid, created_at FROM signing_keys ORDER BY created_at DESC, kid;
-
 -- name: SetUserDisabled :execrows
 -- Disables or restores a User; disabling ends all their Sessions. Audited
 -- with who did it; no row when nothing changed.
