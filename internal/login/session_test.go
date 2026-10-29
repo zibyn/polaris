@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zibyn/polaris/internal/db/sqlc"
 )
@@ -54,6 +55,7 @@ func TestRefreshTokenReuseEndsTheSession(t *testing.T) {
 	if errCode != "" || second.RefreshToken == "" || second.RefreshToken == first.RefreshToken || second.AccessToken == "" {
 		t.Fatalf("refresh did not rotate: %q %+v", errCode, second)
 	}
+	e.ageSpentTokens(61 * time.Second)
 
 	if _, errCode := e.refresh(first.RefreshToken); errCode != "invalid_grant" {
 		t.Errorf("reused refresh token: %q, want invalid_grant", errCode)
@@ -68,6 +70,106 @@ func TestRefreshTokenReuseEndsTheSession(t *testing.T) {
 	var n int
 	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM audit_log WHERE event = 'refresh_token.reused'").Scan(&n); err != nil || n != 1 {
 		t.Errorf("audited %d reuses: %v", n, err)
+	}
+}
+
+// ageSpentTokens pretends the rotations so far happened d ago.
+func (e *env) ageSpentTokens(d time.Duration) {
+	e.t.Helper()
+	if _, err := e.pool.Exec(context.Background(),
+		"UPDATE oidc_spent_refresh_tokens SET spent_at = spent_at - make_interval(secs => $1)", d.Seconds()); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// A client that lost the response to a rotation retries with the old token:
+// within the grace window it gets a fresh set and keeps its Session (ADR 0019).
+func TestRefreshTokenGraceWindow(t *testing.T) {
+	e := start(t)
+	e.bootstrap("owner", "password1")
+	first := e.signIn()
+	second, errCode := e.refresh(first.RefreshToken)
+	if errCode != "" {
+		t.Fatal(errCode)
+	}
+
+	retry, errCode := e.refresh(first.RefreshToken)
+	if errCode != "" || retry.RefreshToken == "" || retry.AccessToken == "" ||
+		retry.RefreshToken == first.RefreshToken || retry.RefreshToken == second.RefreshToken {
+		t.Fatalf("retry within the grace window: %q %+v", errCode, retry)
+	}
+	if n := e.audits("refresh_token.grace"); n != 1 {
+		t.Errorf("audited %d grace refreshes", n)
+	}
+	next, errCode := e.refresh(retry.RefreshToken)
+	if errCode != "" || next.RefreshToken == "" {
+		t.Fatalf("refresh after grace: %q", errCode)
+	}
+	if !e.signedIn() || e.audits("refresh_token.reused") != 0 {
+		t.Error("grace refresh ended the Session")
+	}
+}
+
+// Only the token rotated away last gets grace; an older one has leaked.
+func TestOlderSpentRefreshTokenEndsTheSession(t *testing.T) {
+	e := start(t)
+	e.bootstrap("owner", "password1")
+	first := e.signIn()
+	second, _ := e.refresh(first.RefreshToken)
+	if _, errCode := e.refresh(second.RefreshToken); errCode != "" {
+		t.Fatal(errCode)
+	}
+
+	if _, errCode := e.refresh(first.RefreshToken); errCode != "invalid_grant" {
+		t.Errorf("older spent token: %q, want invalid_grant", errCode)
+	}
+	if e.signedIn() || e.audits("refresh_token.reused") != 1 {
+		t.Error("older spent token did not end the Session")
+	}
+}
+
+// Two requests racing to rotate one token both succeed.
+func TestConcurrentRefreshKeepsTheSession(t *testing.T) {
+	e := start(t)
+	e.bootstrap("owner", "password1")
+	first := e.signIn()
+	errs := make(chan string, 2)
+	for range 2 {
+		go func() {
+			resp, body := e.do("POST", "/token", url.Values{
+				"grant_type": {"refresh_token"}, "refresh_token": {first.RefreshToken}, "client_id": {clientID},
+			})
+			if resp.StatusCode != 200 {
+				errs <- body
+				return
+			}
+			errs <- ""
+		}()
+	}
+	for range 2 {
+		if err := <-errs; err != "" {
+			t.Errorf("concurrent refresh: %s", err)
+		}
+	}
+	if !e.signedIn() || e.audits("refresh_token.reused") != 0 {
+		t.Error("concurrent refresh ended the Session")
+	}
+}
+
+// Revoking a spent token still ends the Session, grace window or not.
+func TestRevokingSpentRefreshTokenEndsTheSession(t *testing.T) {
+	e := start(t)
+	e.bootstrap("owner", "password1")
+	first := e.signIn()
+	second, _ := e.refresh(first.RefreshToken)
+	if resp, body := e.do("POST", "/revoke", url.Values{"token": {first.RefreshToken}, "client_id": {clientID}}); resp.StatusCode != 200 {
+		t.Fatalf("revoke: %d %s", resp.StatusCode, body)
+	}
+	if _, errCode := e.refresh(second.RefreshToken); errCode != "invalid_grant" {
+		t.Errorf("refresh after revoking a spent token: %q, want invalid_grant", errCode)
+	}
+	if e.signedIn() || e.audits("refresh_token.reused") != 1 {
+		t.Error("revoking a spent token did not end the Session")
 	}
 }
 

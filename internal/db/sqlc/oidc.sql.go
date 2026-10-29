@@ -94,6 +94,23 @@ func (q *Queries) ChallengeSession(ctx context.Context, hash []byte) (ChallengeS
 	return i, err
 }
 
+const consumeJTI = `-- name: ConsumeJTI :execrows
+INSERT INTO oidc_jtis (jti, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING
+`
+
+type ConsumeJTIParams struct {
+	Jti       string
+	ExpiresAt pgtype.Timestamptz
+}
+
+func (q *Queries) ConsumeJTI(ctx context.Context, arg ConsumeJTIParams) (int64, error) {
+	result, err := q.db.Exec(ctx, consumeJTI, arg.Jti, arg.ExpiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createApplication = `-- name: CreateApplication :exec
 INSERT INTO applications (client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, backchannel_logout_uri)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -137,7 +154,8 @@ const deleteExpiredOIDC = `-- name: DeleteExpiredOIDC :exec
 WITH g AS (DELETE FROM oidc_grants WHERE oidc_grants.expires_at < now()),
      a AS (DELETE FROM oidc_authn_sessions WHERE oidc_authn_sessions.expires_at < now()),
      c AS (DELETE FROM oidc_challenge_sessions WHERE oidc_challenge_sessions.expires_at < now()),
-     p AS (DELETE FROM provider_logins WHERE provider_logins.expires_at < now())
+     p AS (DELETE FROM provider_logins WHERE provider_logins.expires_at < now()),
+     j AS (DELETE FROM oidc_jtis WHERE oidc_jtis.expires_at < now())
 DELETE FROM oidc_logout_sessions WHERE oidc_logout_sessions.expires_at < now()
 `
 
@@ -178,6 +196,72 @@ SELECT 'refresh_token.reused', ended.user_id, jsonb_build_object('session', ende
 func (q *Queries) EndReusedRefreshToken(ctx context.Context, hash []byte) error {
 	_, err := q.db.Exec(ctx, endReusedRefreshToken, hash)
 	return err
+}
+
+const graceRefreshToken = `-- name: GraceRefreshToken :one
+SELECT s.grant_id FROM oidc_spent_refresh_tokens s
+WHERE s.hash = $1 AND s.spent_at > now() - make_interval(secs => $2::int)
+  AND s.spent_at = (SELECT max(t.spent_at) FROM oidc_spent_refresh_tokens t WHERE t.grant_id = s.grant_id)
+`
+
+type GraceRefreshTokenParams struct {
+	Hash      []byte
+	GraceSecs int32
+}
+
+// The grant of a spent refresh token still in its grace window: the token
+// spent last on that grant, no more than grace_secs ago (ADR 0019).
+func (q *Queries) GraceRefreshToken(ctx context.Context, arg GraceRefreshTokenParams) (string, error) {
+	row := q.db.QueryRow(ctx, graceRefreshToken, arg.Hash, arg.GraceSecs)
+	var grant_id string
+	err := row.Scan(&grant_id)
+	return grant_id, err
+}
+
+const graceRotateRefreshToken = `-- name: GraceRotateRefreshToken :execrows
+WITH spent AS (
+    SELECT s.grant_id FROM oidc_spent_refresh_tokens s
+    WHERE s.hash = $1 AND s.spent_at > now() - make_interval(secs => $2::int)
+      AND s.spent_at = (SELECT max(t.spent_at) FROM oidc_spent_refresh_tokens t WHERE t.grant_id = s.grant_id)
+), cur AS (
+    SELECT g.id, g.refresh_token_hash FROM oidc_grants g WHERE g.id = (SELECT spent.grant_id FROM spent) FOR UPDATE
+), g AS (
+    UPDATE oidc_grants SET refresh_token_hash = $3, expires_at = $4, sealed = $5
+    FROM cur WHERE oidc_grants.id = cur.id
+    RETURNING oidc_grants.id, oidc_grants.session_id, cur.refresh_token_hash AS old_hash
+), touched AS (
+    UPDATE sessions SET last_seen_at = now() WHERE sessions.id = (SELECT g.session_id FROM g)
+    RETURNING sessions.id, sessions.user_id
+), audited AS (
+    INSERT INTO audit_log (event, sub, detail)
+    SELECT 'refresh_token.grace', touched.user_id, jsonb_build_object('session', touched.id) FROM touched
+)
+INSERT INTO oidc_spent_refresh_tokens (hash, grant_id) SELECT g.old_hash, g.id FROM g
+`
+
+type GraceRotateRefreshTokenParams struct {
+	OldHash   []byte
+	GraceSecs int32
+	NewHash   []byte
+	ExpiresAt pgtype.Timestamptz
+	Sealed    []byte
+}
+
+// Rotates a grant whose old_hash is in its grace window from whatever token
+// is current now, like RotateRefreshToken, and audits the grace. No row: the
+// token is out of grace.
+func (q *Queries) GraceRotateRefreshToken(ctx context.Context, arg GraceRotateRefreshTokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, graceRotateRefreshToken,
+		arg.OldHash,
+		arg.GraceSecs,
+		arg.NewHash,
+		arg.ExpiresAt,
+		arg.Sealed,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const grant = `-- name: Grant :one
