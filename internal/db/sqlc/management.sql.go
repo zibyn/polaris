@@ -378,7 +378,8 @@ SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_re
        COALESCE(extract(epoch FROM session_idle_timeout), 0)::int AS session_idle_timeout,
        COALESCE(extract(epoch FROM session_max_lifetime), 0)::int AS session_max_lifetime,
        refresh_tokens, require_role, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
-       COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps
+       COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps,
+       token_auth_method, jwks
 FROM applications
 WHERE $1::text = '' OR client_id = $1
 ORDER BY builtin DESC, created_at, client_id
@@ -402,6 +403,8 @@ type ListApplicationsRow struct {
 	BackchannelLogoutUri   string
 	AppleAppIds            []string
 	AndroidApps            []byte
+	TokenAuthMethod        string
+	Jwks                   []byte
 }
 
 // One Application, or all of them for an empty client_id.
@@ -432,6 +435,8 @@ func (q *Queries) ListApplications(ctx context.Context, clientID string) ([]List
 			&i.BackchannelLogoutUri,
 			&i.AppleAppIds,
 			&i.AndroidApps,
+			&i.TokenAuthMethod,
+			&i.Jwks,
 		); err != nil {
 			return nil, err
 		}
@@ -819,7 +824,8 @@ func (q *Queries) SetApplicationRoles(ctx context.Context, arg SetApplicationRol
 }
 
 const setApplicationSecret = `-- name: SetApplicationSecret :execrows
-UPDATE applications SET secret_hash = $2 WHERE client_id = $1 AND type <> 'public' AND NOT builtin
+UPDATE applications SET secret_hash = $2
+WHERE client_id = $1 AND type <> 'public' AND token_auth_method = 'client_secret_basic' AND NOT builtin
 `
 
 type SetApplicationSecretParams struct {
@@ -854,6 +860,28 @@ type SetRolePermissionsParams struct {
 func (q *Queries) SetRolePermissions(ctx context.Context, arg SetRolePermissionsParams) error {
 	_, err := q.db.Exec(ctx, setRolePermissions, arg.Api, arg.Role, arg.Permissions)
 	return err
+}
+
+const setTokenAuthMethod = `-- name: SetTokenAuthMethod :execrows
+UPDATE applications SET token_auth_method = $1, secret_hash = $2
+WHERE client_id = $3 AND type <> 'public' AND NOT builtin
+  AND ($1 <> 'private_key_jwt' OR jsonb_array_length(jwks -> 'keys') > 0)
+`
+
+type SetTokenAuthMethodParams struct {
+	Method     string
+	SecretHash []byte
+	ClientID   string
+}
+
+// Switches how the Application authenticates (ADR 0023): a secret_hash for
+// client_secret_basic, NULL for private_key_jwt, which needs a registered key.
+func (q *Queries) SetTokenAuthMethod(ctx context.Context, arg SetTokenAuthMethodParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setTokenAuthMethod, arg.Method, arg.SecretHash, arg.ClientID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setUserDisabled = `-- name: SetUserDisabled :execrows
@@ -944,8 +972,9 @@ UPDATE applications SET
                                      ELSE webhook_secret_updated_at END,
     backchannel_logout_uri = NULLIF($11::text, ''),
     apple_app_ids = $12,
-    android_apps = $13
-WHERE client_id = $14 AND NOT builtin
+    android_apps = $13,
+    jwks = COALESCE($14, jwks)
+WHERE client_id = $15 AND NOT builtin
 `
 
 type UpdateApplicationParams struct {
@@ -962,11 +991,13 @@ type UpdateApplicationParams struct {
 	BackchannelLogoutUri   string
 	AppleAppIds            []string
 	AndroidApps            []byte
+	Jwks                   []byte
 	ClientID               string
 }
 
 // An empty webhook_url turns the webhook off; a NULL webhook_secret keeps
-// the stored one. idle_secs / max_secs 0 mean the default.
+// the stored one, as does a NULL jwks. idle_secs / max_secs 0 mean the
+// default.
 func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateApplication,
 		arg.Name,
@@ -982,6 +1013,7 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 		arg.BackchannelLogoutUri,
 		arg.AppleAppIds,
 		arg.AndroidApps,
+		arg.Jwks,
 		arg.ClientID,
 	)
 	if err != nil {

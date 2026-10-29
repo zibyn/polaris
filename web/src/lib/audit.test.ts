@@ -40,6 +40,7 @@ const spec: Record<string, [string, string][]> = {
 		["update-application", "修改应用"],
 		["delete-application", "删除应用"],
 		["new-application-secret", "重新生成 client secret"],
+		["set-application-auth-method", "切换客户端认证方式"],
 		["application_roles.assigned", "设置角色"],
 		["webhook.failed", "用户删除通知发送失败"],
 	],
@@ -225,6 +226,10 @@ test("every event reads as a sentence", () => {
 		[
 			{ event: "new-application-secret", detail: { clientId: "SHOP" } },
 			"重新生成了应用 星选商城 的 client secret",
+		],
+		[
+			{ event: "set-application-auth-method", detail: { clientId: "SHOP" } },
+			"切换了应用 星选商城 的客户端认证方式",
 		],
 		[
 			{

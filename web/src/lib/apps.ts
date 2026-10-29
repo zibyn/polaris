@@ -114,6 +114,22 @@ export const webhookSchema = (secretSet: boolean) =>
 			message: "请设置 Webhook 密钥。填写通知地址后，必须同时设置密钥。",
 		});
 
+// jwksText is the registered Application 公钥 in the JWKS textarea.
+export const jwksText = (jwks: { keys: unknown[] } | undefined): string =>
+	JSON.stringify(jwks ?? { keys: [] }, null, 2);
+
+// jwksSchema checks the textarea is a JWKS at all; the server checks the
+// keys themselves (types, sizes, kid) and says what is wrong with a 422.
+export const jwksSchema = z.object({
+	jwks: z.string().refine((v) => {
+		try {
+			return Array.isArray(JSON.parse(v)?.keys);
+		} catch {
+			return false;
+		}
+	}, '请填写 JWKS，形如 {"keys": [...]}。'),
+});
+
 // The 原生 App 关联 formats, as the server's validate() checks them too.
 const appleAppId = /^[A-Z0-9]{10}\.[A-Za-z0-9.-]+$/;
 const packageName = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/;

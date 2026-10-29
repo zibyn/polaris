@@ -6,6 +6,8 @@ import {
 	androidLines,
 	backchannelSchema,
 	createSchema,
+	jwksSchema,
+	jwksText,
 	loginSchema,
 	m2mAPIs,
 	nativeSchema,
@@ -226,4 +228,21 @@ test("native App association lines are Team ID.Bundle ID, package + fingerprints
 				"」须为包名加签名指纹，指纹形如 AB:CD:…（十六进制，32 字节），可多个、空格分隔。",
 		});
 	}
+});
+
+test("the JWKS textarea takes a JSON object with a keys array", () => {
+	assert.equal(jwksSchema.safeParse({ jwks: '{"keys": []}' }).success, true);
+	for (const jwks of ["", "{", "[]", '{"keys": {}}', "{}"]) {
+		assert.deepEqual(fieldErrors(jwksSchema.safeParse({ jwks })), {
+			jwks: '请填写 JWKS，形如 {"keys": [...]}。',
+		});
+	}
+});
+
+test("the JWKS textarea shows the registered keys indented", () => {
+	assert.equal(jwksText(undefined), '{\n  "keys": []\n}');
+	assert.equal(
+		jwksText({ keys: [{ kid: "k1" }] }),
+		'{\n  "keys": [\n    {\n      "kid": "k1"\n    }\n  ]\n}',
+	);
 });

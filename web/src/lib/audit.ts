@@ -55,6 +55,7 @@ export const eventGroups: [string, [string, string][]][] = [
 			["update-application", "修改应用"],
 			["delete-application", "删除应用"],
 			["new-application-secret", "重新生成 client secret"],
+			["set-application-auth-method", "切换客户端认证方式"],
 			["application_roles.assigned", "设置角色"],
 			["webhook.failed", "用户删除通知发送失败"],
 		],
@@ -248,6 +249,14 @@ export function describe(
 					"重新生成了应用 ",
 					app(names, str("clientId")),
 					" 的 client secret",
+				],
+			};
+		case "set-application-auth-method":
+			return {
+				parts: [
+					"切换了应用 ",
+					app(names, str("clientId")),
+					" 的客户端认证方式",
 				],
 			};
 		case "application_roles.assigned": {

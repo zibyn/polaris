@@ -12,7 +12,7 @@ import (
 )
 
 const application = `-- name: Application :one
-SELECT client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, session_idle_timeout, builtin, created_at, refresh_tokens, webhook_url, webhook_secret, webhook_secret_updated_at, apple_app_ids, android_apps, backchannel_logout_uri, require_role, session_max_lifetime FROM applications WHERE client_id = $1
+SELECT client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, session_idle_timeout, builtin, created_at, refresh_tokens, webhook_url, webhook_secret, webhook_secret_updated_at, apple_app_ids, android_apps, backchannel_logout_uri, require_role, token_auth_method, jwks, session_max_lifetime FROM applications WHERE client_id = $1
 `
 
 func (q *Queries) Application(ctx context.Context, clientID string) (Application, error) {
@@ -37,6 +37,8 @@ func (q *Queries) Application(ctx context.Context, clientID string) (Application
 		&i.AndroidApps,
 		&i.BackchannelLogoutUri,
 		&i.RequireRole,
+		&i.TokenAuthMethod,
+		&i.Jwks,
 		&i.SessionMaxLifetime,
 	)
 	return i, err

@@ -34,6 +34,8 @@ type Application struct {
 	AndroidApps            []byte
 	BackchannelLogoutUri   pgtype.Text
 	RequireRole            bool
+	TokenAuthMethod        string
+	Jwks                   []byte
 	SessionMaxLifetime     pgtype.Interval
 }
 
