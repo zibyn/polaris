@@ -25,6 +25,12 @@ import (
 // ManagementAPI is the built-in API whose Roles make a User an admin.
 const ManagementAPI = "urn:polaris:management-api"
 
+// ConsoleClientID is the built-in Application the admin console signs in as.
+const ConsoleClientID = "polaris-console"
+
+// AccountClientID is the built-in Application the account center signs in as.
+const AccountClientID = "polaris-account"
+
 // AccountAPI is the built-in API the account center calls, where a User
 // manages their own account.
 const AccountAPI = "urn:polaris:account-api"

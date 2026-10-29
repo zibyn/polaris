@@ -353,10 +353,10 @@ func TestConsoleAccessTokenIsForManagementAPI(t *testing.T) {
 	e := start(t)
 	e.bootstrap("owner", "password1")
 	redirect := e.issuer + "/console/callback"
-	_, page := e.authorizeAs(login.ConsoleClientID, redirect, "")
+	_, page := e.authorizeAs(identity.ConsoleClientID, redirect, "")
 	resp, _ := e.submit(page, "owner", "password1")
-	claims := e.claims(e.exchange(login.ConsoleClientID, redirect, e.code(resp)).AccessToken)
-	if claims["aud"] != identity.ManagementAPI || claims["client_id"] != login.ConsoleClientID {
+	claims := e.claims(e.exchange(identity.ConsoleClientID, redirect, e.code(resp)).AccessToken)
+	if claims["aud"] != identity.ManagementAPI || claims["client_id"] != identity.ConsoleClientID {
 		t.Errorf("access token claims: %v", claims)
 	}
 }
@@ -367,9 +367,9 @@ func TestAccountAccessTokenNamesItsSession(t *testing.T) {
 	e := start(t)
 	e.bootstrap("owner", "password1")
 	redirect := e.issuer + "/account/callback"
-	_, page := e.authorizeAs(login.AccountClientID, redirect, "")
+	_, page := e.authorizeAs(identity.AccountClientID, redirect, "")
 	resp, _ := e.submit(page, "owner", "password1")
-	claims := e.claims(e.exchange(login.AccountClientID, redirect, e.code(resp)).AccessToken)
+	claims := e.claims(e.exchange(identity.AccountClientID, redirect, e.code(resp)).AccessToken)
 	var sid string
 	if err := e.pool.QueryRow(context.Background(), "SELECT id FROM sessions").Scan(&sid); err != nil {
 		t.Fatal(err)

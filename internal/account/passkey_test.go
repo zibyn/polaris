@@ -467,6 +467,9 @@ func TestPasskeyReauthentication(t *testing.T) {
 		!slices.Equal(amr, []string{"hwk", "mfa"}) || time.Since(authTime) > time.Minute {
 		t.Fatalf("after reauth: amr %v, auth_time %v: %v", amr, authTime, err)
 	}
+	if got := e.logins("login.succeeded"); !slices.Equal(got, []string{`["hwk", "mfa"]`}) {
+		t.Errorf("login.succeeded: %v", got)
+	}
 	if code := e.call("GET", tok, "/v1/account/export", nil, nil); code != 200 {
 		t.Fatalf("export after reauthentication: %d", code)
 	}

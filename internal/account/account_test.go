@@ -161,7 +161,7 @@ func (e *env) token(sub string, extra map[string]any) string {
 		e.t.Fatal(err)
 	}
 	claims := map[string]any{
-		"iss": e.issuer, "sub": sub, "aud": identity.AccountAPI, "client_id": login.AccountClientID,
+		"iss": e.issuer, "sub": sub, "aud": identity.AccountAPI, "client_id": identity.AccountClientID,
 		"iat": time.Now().Unix(), "exp": time.Now().Add(10 * time.Minute).Unix(),
 	}
 	for k, v := range extra {
@@ -283,14 +283,36 @@ func TestReauthentication(t *testing.T) {
 	if c := e.call("POST", tok, "/v1/account/reauth", map[string]string{"password": "password1"}, nil); c != 204 {
 		t.Errorf("reauth by password: %d", c)
 	}
-	// Wrong passwords lock it as at login, audited at the account center.
-	for range 5 {
-		e.call("POST", tok, "/v1/account/reauth", map[string]string{"password": "wrong-one"}, nil)
+	// Each is a login at the account center, as 最近登录 shows it.
+	if got := e.logins("login.failed"); !slices.Equal(got, []string{"code", "password"}) {
+		t.Errorf("login.failed: %v", got)
 	}
-	var client string
-	if err := e.pool.QueryRow(context.Background(), "SELECT detail->>'client_id' FROM audit_log WHERE event = 'login.password_locked' AND sub = 'ALICE'").Scan(&client); err != nil || client != login.AccountClientID {
-		t.Errorf("password lockout audited from %q: %v", client, err)
+	if got := e.logins("login.succeeded"); !slices.Equal(got, []string{`["sms"]`, `["pwd"]`}) {
+		t.Errorf("login.succeeded: %v", got)
 	}
+}
+
+// logins lists ALICE's login events of a kind at the account center: each
+// one's method, or amr when it has none.
+func (e *env) logins(event string) []string {
+	e.t.Helper()
+	rows, err := e.pool.Query(context.Background(), `SELECT coalesce(detail->>'method', detail->>'amr'), detail->>'client_id' FROM audit_log
+		WHERE sub = 'ALICE' AND event = $1 ORDER BY id`, event)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	var out []string
+	for rows.Next() {
+		var what, client string
+		if err := rows.Scan(&what, &client); err != nil {
+			e.t.Fatal(err)
+		}
+		if client != identity.AccountClientID {
+			e.t.Errorf("%s %s from %q", event, what, client)
+		}
+		out = append(out, what)
+	}
+	return out
 }
 
 // password sets sub's password.
@@ -962,14 +984,16 @@ func TestReauthenticationWithTwoFactor(t *testing.T) {
 	if got := e.twoFactorOf(tok); got.RecoveryCodesLeft != 9 {
 		t.Errorf("after using one: %+v", got)
 	}
-	var used, failures int
+	var used int
 	if err := e.pool.QueryRow(context.Background(),
 		"SELECT count(*) FROM audit_log WHERE sub = 'ALICE' AND event = 'recovery_code.used'").Scan(&used); err != nil || used != 1 {
 		t.Errorf("%d recovery_code.used events: %v", used, err)
 	}
-	// Wrong TOTP and recovery codes count toward the IP lockout.
-	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM login_failures WHERE key LIKE 'ip:%'").Scan(&failures); err != nil || failures != 3 {
-		t.Errorf("%d IP failures: %v", failures, err)
+	if got := e.logins("login.failed"); !slices.Equal(got, []string{"totp", "totp", "recovery_code"}) {
+		t.Errorf("login.failed: %v", got)
+	}
+	if got := e.logins("login.succeeded"); !slices.Equal(got, []string{`["otp", "mfa"]`, `["otp", "mfa"]`}) {
+		t.Errorf("login.succeeded: %v", got)
 	}
 }
 

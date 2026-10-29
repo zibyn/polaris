@@ -23,7 +23,6 @@ import (
 	"github.com/zibyn/polaris/internal/db/dbtest"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
-	"github.com/zibyn/polaris/internal/login"
 	"github.com/zibyn/polaris/internal/management"
 	"github.com/zibyn/polaris/internal/oidcstore"
 	"github.com/zibyn/polaris/internal/server"
@@ -122,7 +121,7 @@ func (e *env) token(sub string, edit func(claims map[string]any, typ *string)) s
 		e.t.Fatal(err)
 	}
 	claims := map[string]any{
-		"iss": e.issuer, "sub": sub, "aud": identity.ManagementAPI, "client_id": login.ConsoleClientID,
+		"iss": e.issuer, "sub": sub, "aud": identity.ManagementAPI, "client_id": identity.ConsoleClientID,
 		"iat": time.Now().Unix(), "exp": time.Now().Add(10 * time.Minute).Unix(),
 	}
 	typ := "at+jwt"

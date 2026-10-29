@@ -199,30 +199,36 @@ func TestFiveWrongPasswordsLockPasswordLogin(t *testing.T) {
 func TestFiftyFailuresLockAnIPOut(t *testing.T) {
 	s := setup(t)
 	ctx := context.Background()
-	owner(t, s)
-	wrong := func(ip string) error {
-		return s.FromIP(ctx, ip, func() error { return ErrWrongCode })
-	}
+	sub := owner(t, s)
+	a := Attempt{ClientID: "rp", IP: "192.0.2.1"}
 	for i := range 49 {
-		user := []string{"owner", "nobody"}[i%2] // known or not, all count
-		if err := s.FromIP(ctx, "192.0.2.1", func() error {
-			_, err := s.CheckPassword(ctx, Attempt{}, user, "wrong")
-			return err
-		}); !errors.Is(err, ErrBadCredentials) && !errors.Is(err, ErrPasswordLocked) {
+		var err error
+		switch i % 3 { // known or not, password or code, all count
+		case 0:
+			_, err = s.Password(ctx, a, "owner", "wrong")
+		case 1:
+			_, err = s.Password(ctx, a, "nobody", "wrong")
+		case 2:
+			err = s.Code(ctx, a, "+8613900139000", "", func() error { return ErrWrongCode })
+		}
+		if !errors.Is(err, ErrBadCredentials) && !errors.Is(err, ErrPasswordLocked) && !errors.Is(err, ErrWrongCode) {
 			t.Fatal(i, err)
 		}
 	}
-	if err := wrong("192.0.2.1"); !errors.Is(err, ErrWrongCode) {
+	if err := s.SecondFactor(ctx, a, sub, false, func() error { return ErrWrongTOTP }); !errors.Is(err, ErrWrongTOTP) {
 		t.Fatalf("50th failure: %v", err)
 	}
 	if n := audited(t, s, "login.ip_locked"); n != 1 {
 		t.Errorf("audited %d IP lockouts", n)
 	}
 	ran := false
-	if err := s.FromIP(ctx, "192.0.2.1", func() error { ran = true; return nil }); !errors.Is(err, ErrIPLocked) || ran {
+	if err := s.SecondFactor(ctx, a, sub, false, func() error { ran = true; return nil }); !errors.Is(err, ErrIPLocked) || ran {
 		t.Fatalf("while locked out: %v, check ran %v", err, ran)
 	}
-	if err := s.FromIP(ctx, "192.0.2.2", func() error { return nil }); err != nil {
+	if _, err := s.Password(ctx, a, "nobody", "wrong"); !errors.Is(err, ErrIPLocked) {
+		t.Fatalf("a password while locked out: %v", err)
+	}
+	if err := s.Code(ctx, Attempt{ClientID: "rp", IP: "192.0.2.2"}, "+8613900139000", "", func() error { return nil }); err != nil {
 		t.Fatalf("another IP: %v", err)
 	}
 }

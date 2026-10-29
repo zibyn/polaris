@@ -250,7 +250,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		} else if err != nil {
 			return answer{}, err
 		}
-		if err := s.ids.LoginSucceeded(ctx, attempt(r, c.ID), sub, amr); err != nil {
+		if err := s.ids.LoginSucceeded(ctx, identity.AttemptFrom(r, c.ID), sub, amr); err != nil {
 			return answer{}, err
 		}
 		code, err := s.op.IssueAuthCode(ctx, c, sub, st.Params, map[string]any{
@@ -314,8 +314,9 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if totp == "" && recoveryCode == "" {
 			return mistake(identity.Invalid("两步验证 is on: send totp or recovery_code"))
 		}
-		err := s.twoFactor.Check(ctx, clientIP(r), p.Sub, totp, recoveryCode)
-		err = s.ids.LoginFailed(ctx, attempt(r, c.ID), p.Sub, secondFactor(recoveryCode), err)
+		err := s.ids.SecondFactor(ctx, identity.AttemptFrom(r, c.ID), p.Sub, recoveryCode != "", func() error {
+			return s.twoFactor.Check(ctx, p.Sub, totp, recoveryCode)
+		})
 		switch {
 		case err == nil:
 			return signedIn(p.Sub, time.Unix(p.AuthTime, 0), withMFA(p.AMR))
@@ -341,7 +342,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		// No PoW: begin sends no code and checks no credential, so a PoW
 		// would protect nothing; the per-IP budget bounds it instead
 		// (ADR 0014).
-		if err := s.ids.Start(ctx, clientIP(r)); err != nil {
+		if err := s.ids.Start(ctx, identity.ClientIP(r)); err != nil {
 			return mistake(err)
 		}
 		options, challenge, err := s.passkeys.LoginOptions(ctx)
@@ -383,12 +384,12 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if st.Identifier == "" {
 			return answer{}, invalid("no code was sent in this auth_session")
 		}
-		if err := s.ids.FromIP(ctx, clientIP(r), func() error { return s.codes.Check(ctx, st.Identifier, r.PostFormValue("code")) }); err != nil {
-			var pending string
-			if st.Pending != nil {
-				pending = st.Pending.Sub
-			}
-			return mistake(s.codeFailed(ctx, attempt(r, c.ID), pending, st.Identifier, err))
+		var pending string
+		if st.Pending != nil {
+			pending = st.Pending.Sub
+		}
+		if err := s.ids.Code(ctx, identity.AttemptFrom(r, c.ID), st.Identifier, pending, func() error { return s.codes.Check(ctx, st.Identifier, r.PostFormValue("code")) }); err != nil {
+			return mistake(err)
 		}
 		kind, value, _ := identity.ParseIdentifier(st.Identifier)
 		if p := st.Pending; p != nil {
@@ -415,7 +416,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			err = s.ids.MaySignUp(ctx, value)
 		}
 		if err == nil {
-			err = s.codes.Send(ctx, kind, value, clientIP(r))
+			err = s.codes.Send(ctx, kind, value, identity.ClientIP(r))
 		}
 		if err != nil {
 			return mistake(err)
@@ -446,13 +447,9 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if err := s.pow.Verify(ctx, r.PostFormValue("altcha")); err != nil {
 			return mistake(err)
 		}
-		var sub string
-		a := attempt(r, c.ID)
-		if err := s.ids.FromIP(ctx, clientIP(r), func() (err error) {
-			sub, err = s.ids.CheckPassword(ctx, a, r.PostFormValue("username"), r.PostFormValue("password"))
-			return err
-		}); err != nil {
-			return mistake(s.ids.LoginFailed(ctx, a, sub, "password", err))
+		sub, err := s.ids.Password(ctx, identity.AttemptFrom(r, c.ID), r.PostFormValue("username"), r.PostFormValue("password"))
+		if err != nil {
+			return mistake(err)
 		}
 		return signedIn(sub, time.Now(), []string{string(goidc.AMRPassword)})
 	}

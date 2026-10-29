@@ -14,7 +14,6 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	"net/netip"
 	"regexp"
 	"slices"
 	"strings"
@@ -100,16 +99,10 @@ type Service struct {
 	origin    *http.CrossOriginProtection
 }
 
-// ConsoleClientID is the built-in Application the admin console signs in as.
-const ConsoleClientID = "polaris-console"
-
-// AccountClientID is the built-in Application the account center signs in as.
-const AccountClientID = "polaris-account"
-
 // New builds the provider and points the redirect URIs of the console and
 // the account center at issuer, which only the running instance knows.
 func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer string) (*Service, error) {
-	for client, path := range map[string]string{ConsoleClientID: "/console", AccountClientID: "/account"} {
+	for client, path := range map[string]string{identity.ConsoleClientID: "/console", identity.AccountClientID: "/account"} {
 		if err := sqlc.New(pool).SetRedirectURIs(ctx, sqlc.SetRedirectURIsParams{
 			ClientID:               client,
 			RedirectUris:           []string{issuer + path + "/callback"},
@@ -458,8 +451,9 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		}
 		form.Recovery = r.PostFormValue("recovery_code") != ""
 		amr := storedAMR(as.Store[storeAMR])
-		err := s.twoFactor.Check(ctx, clientIP(r), pending, r.PostFormValue("totp"), r.PostFormValue("recovery_code"))
-		err = s.ids.LoginFailed(ctx, attempt(r, c.ID), pending, secondFactor(r.PostFormValue("recovery_code")), err)
+		err := s.ids.SecondFactor(ctx, identity.AttemptFrom(r, c.ID), pending, form.Recovery, func() error {
+			return s.twoFactor.Check(ctx, pending, r.PostFormValue("totp"), r.PostFormValue("recovery_code"))
+		})
 		switch {
 		case err == nil:
 			amr = withMFA(amr)
@@ -502,7 +496,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			err = s.ids.MaySignUp(ctx, value)
 		}
 		if err == nil {
-			err = s.codes.Send(ctx, kind, value, clientIP(r))
+			err = s.codes.Send(ctx, kind, value, identity.ClientIP(r))
 		}
 		if err != nil {
 			return fail(err)
@@ -531,7 +525,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 				return fail(err)
 			}
 		}
-		if err := s.codes.Send(ctx, kind, value, clientIP(r)); err != nil {
+		if err := s.codes.Send(ctx, kind, value, identity.ClientIP(r)); err != nil {
 			return fail(err)
 		}
 		return s.render(w, r, as, c, form)
@@ -545,8 +539,8 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		if pending == "" && !agreed {
 			return fail(errAgree)
 		}
-		if err := s.ids.FromIP(ctx, clientIP(r), func() error { return s.codes.Check(ctx, value, r.PostFormValue("code")) }); err != nil {
-			return fail(s.codeFailed(ctx, attempt(r, c.ID), pending, value, err))
+		if err := s.ids.Code(ctx, identity.AttemptFrom(r, c.ID), value, pending, func() error { return s.codes.Check(ctx, value, r.PostFormValue("code")) }); err != nil {
+			return fail(err)
 		}
 		if pending != "" {
 			if kind != "phone" {
@@ -571,13 +565,9 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			form.PasswordForm = true // back to the form with the box to tick
 			return fail(errAgree)
 		}
-		var sub string
-		a := attempt(r, c.ID)
-		if err := s.ids.FromIP(ctx, clientIP(r), func() (err error) {
-			sub, err = s.ids.CheckPassword(ctx, a, form.Username, r.PostFormValue("password"))
-			return err
-		}); err != nil {
-			return fail(s.ids.LoginFailed(ctx, a, sub, "password", err))
+		sub, err := s.ids.Password(ctx, identity.AttemptFrom(r, c.ID), form.Username, r.PostFormValue("password"))
+		if err != nil {
+			return fail(err)
 		}
 		return s.login(w, r, as, c, sub, []string{string(goidc.AMRPassword)}, terms.TermsVersion)
 
@@ -648,29 +638,6 @@ func (s *Service) needsTOTP(ctx context.Context, sub string, amr []string) (bool
 		return false, nil
 	}
 	return s.twoFactor.On(ctx, sub)
-}
-
-// secondFactor is the login.failed method of a TOTP check: a 恢复码 when
-// one was given, as twofactor.Check takes it.
-func secondFactor(recoveryCode string) string {
-	if recoveryCode != "" {
-		return "recovery_code"
-	}
-	return "totp"
-}
-
-// codeFailed audits err, from checking a code sent to value, on the User the
-// code would sign in: pending, else whoever holds value, if anyone.
-func (s *Service) codeFailed(ctx context.Context, a identity.Attempt, pending, value string, err error) error {
-	sub := pending
-	if sub == "" {
-		u, dbErr := s.q.UserByIdentifier(ctx, value)
-		if dbErr != nil && !errors.Is(dbErr, pgx.ErrNoRows) {
-			return dbErr
-		}
-		sub = u.UserID
-	}
-	return s.ids.LoginFailed(ctx, a, sub, "code", err)
 }
 
 // wrongSecondFactor reports whether err is a wrong TOTP code or 恢复码: one
@@ -874,19 +841,7 @@ func withDevice(next http.Handler) http.Handler {
 }
 
 func deviceContext(r *http.Request) context.Context {
-	return oidcstore.WithDevice(r.Context(), clientIP(r), r.UserAgent())
-}
-
-// attempt is where r, a sign-in to clientID, comes from.
-func attempt(r *http.Request, clientID string) identity.Attempt {
-	return identity.Attempt{ClientID: clientID, IP: clientIP(r), UA: r.UserAgent()}
-}
-
-func clientIP(r *http.Request) string {
-	if ap, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {
-		return ap.Addr().Unmap().String()
-	}
-	return r.RemoteAddr
+	return oidcstore.WithDevice(r.Context(), identity.ClientIP(r), r.UserAgent())
 }
 
 // userClaims are the phone, email and profile claims the grant's scopes
@@ -962,7 +917,7 @@ func (s *Service) newSession(w http.ResponseWriter, r *http.Request, clientID, s
 		})
 		if err == nil {
 			setSessionCookie(w, token, int(sess.IdleSecs))
-			return sess.ID, s.ids.LoginSucceeded(r.Context(), attempt(r, clientID), sub, amr)
+			return sess.ID, s.ids.LoginSucceeded(r.Context(), identity.AttemptFrom(r, clientID), sub, amr)
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return "", err
 		}
@@ -986,7 +941,7 @@ func (s *Service) newSession(w http.ResponseWriter, r *http.Request, clientID, s
 		return "", err
 	}
 	setSessionCookie(w, token, int(sess.IdleSecs))
-	return sess.ID, s.ids.LoginSucceeded(r.Context(), attempt(r, clientID), sub, amr)
+	return sess.ID, s.ids.LoginSucceeded(r.Context(), identity.AttemptFrom(r, clientID), sub, amr)
 }
 
 // setSessionCookie keeps the cookie as long as the Session's idle timeout;

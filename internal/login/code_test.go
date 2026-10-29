@@ -17,7 +17,6 @@ import (
 
 	_ "github.com/zibyn/polaris/internal/channel/webhook"
 	"github.com/zibyn/polaris/internal/identity"
-	"github.com/zibyn/polaris/internal/login"
 	"github.com/zibyn/polaris/internal/otp"
 	"github.com/zibyn/polaris/internal/pow"
 )
@@ -208,7 +207,7 @@ func TestNoSessionWhileBindingPhone(t *testing.T) {
 		}
 	}
 	redirect := e.issuer + "/console/callback"
-	resp, _ = e.authorizeAs(login.ConsoleClientID, redirect, "&prompt=none")
+	resp, _ = e.authorizeAs(identity.ConsoleClientID, redirect, "&prompt=none")
 	if loc, _ := url.Parse(resp.Header.Get("Location")); loc.Query().Get("error") != "login_required" {
 		t.Errorf("silent login into another Application: %d %q", resp.StatusCode, loc)
 	}
@@ -222,7 +221,7 @@ func TestNoSessionWhileBindingPhone(t *testing.T) {
 		t.Errorf("id token after binding: %v (first factor in [%d, %d])", claims, before, firstFactor)
 	}
 	// Now there is a Session: another Application signs in silently.
-	resp, _ = e.authorizeAs(login.ConsoleClientID, redirect, "&prompt=none")
+	resp, _ = e.authorizeAs(identity.ConsoleClientID, redirect, "&prompt=none")
 	e.code(resp)
 }
 

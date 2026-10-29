@@ -2,6 +2,7 @@ package account_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -54,10 +55,10 @@ func TestRecentLogins(t *testing.T) {
 	if _, err := e.pool.Exec(ctx, `UPDATE audit_log SET at = now() - interval '31 days' WHERE sub = 'ALICE' AND detail->'amr' = '["pwd"]'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := ids.LoginFailed(ctx, from, "ALICE", "password", identity.ErrBadCredentials); err != identity.ErrBadCredentials { //nolint:errorlint // returned as is
+	if _, err := ids.Password(ctx, from, "+8613800138000", "wrong"); !errors.Is(err, identity.ErrBadCredentials) {
 		t.Fatal(err)
 	}
-	for range 5 {
+	for range 4 {
 		if _, err := ids.CheckPassword(ctx, from, "+8613800138000", "wrong"); err == nil {
 			t.Fatal("wrong password accepted")
 		}

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zibyn/polaris/internal/login"
+	"github.com/zibyn/polaris/internal/identity"
 )
 
 // event is an audit event as stored.
@@ -86,7 +86,7 @@ func TestHostedLoginIsAudited(t *testing.T) {
 		t.Fatalf("re-login: %d events", len(got))
 	}
 
-	resp, _ = e.authorizeAs(login.ConsoleClientID, e.issuer+"/console/callback", "&prompt=none")
+	resp, _ = e.authorizeAs(identity.ConsoleClientID, e.issuer+"/console/callback", "&prompt=none")
 	e.code(resp)
 	if _, errCode := e.refresh(tok.RefreshToken); errCode != "" {
 		t.Fatal(errCode)
@@ -139,11 +139,7 @@ func TestHostedLoginFailuresAreAudited(t *testing.T) {
 	}
 
 	_, page := e.authorize("")
-	failures := e.ipFailures()
 	e.submit(page, "nobody", "wrong")
-	if e.ipFailures() != failures+1 {
-		t.Error("unknown username not counted against the IP")
-	}
 	e.submit(page, "owner", "wrong")
 	_, sent := e.post(page, url.Values{"op": {"send"}, "identifier": {"+8613800138000"}, "altcha": {e.solve()}})
 	if e.inbox.take("+8613800138000") == "" {

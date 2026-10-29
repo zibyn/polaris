@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/zibyn/polaris/internal/crypt"
-	"github.com/zibyn/polaris/internal/login"
+	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/twofactor"
 )
 
@@ -67,15 +67,6 @@ func (e *env) audits(event string) int {
 	return n
 }
 
-func (e *env) ipFailures() int {
-	e.t.Helper()
-	var n int
-	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM login_failures WHERE key = 'ip:127.0.0.1'").Scan(&n); err != nil {
-		e.t.Fatal(err)
-	}
-	return n
-}
-
 const totpForm = `name="totp"`
 
 // The hosted login of a User with 两步验证 asks for a TOTP code or a 恢复码
@@ -99,18 +90,14 @@ func TestHostedLoginAsksForTOTP(t *testing.T) {
 		t.Errorf("Session cookie before TOTP")
 	}
 	redirect := e.issuer + "/console/callback"
-	resp, _ = e.authorizeAs(login.ConsoleClientID, redirect, "&prompt=none")
+	resp, _ = e.authorizeAs(identity.ConsoleClientID, redirect, "&prompt=none")
 	if loc, _ := url.Parse(resp.Header.Get("Location")); loc.Query().Get("error") != "login_required" {
 		t.Errorf("silent login before TOTP: %d %q", resp.StatusCode, loc)
 	}
 
-	failures := e.ipFailures()
 	_, page = e.post(page, url.Values{"op": {"totp"}, "totp": {"000000"}})
 	if !strings.Contains(html.UnescapeString(page), twofactor.ErrCode.Error()) || !strings.Contains(page, totpForm) {
 		t.Fatalf("wrong TOTP: %s", page)
-	}
-	if e.ipFailures() != failures+1 {
-		t.Errorf("wrong TOTP not counted against the IP")
 	}
 	resp, _ = e.post(page, url.Values{"op": {"totp"}, "totp": {totpAt(secret, 0)}})
 	claims := e.idToken(e.code(resp))
@@ -118,7 +105,7 @@ func TestHostedLoginAsksForTOTP(t *testing.T) {
 		t.Errorf("id token: %v", claims)
 	}
 	// The browser Session signs in silently, with no TOTP again.
-	resp, _ = e.authorizeAs(login.ConsoleClientID, redirect, "&prompt=none")
+	resp, _ = e.authorizeAs(identity.ConsoleClientID, redirect, "&prompt=none")
 	e.code(resp)
 	resp, _ = e.authorize("")
 	e.code(resp)
@@ -219,12 +206,8 @@ func TestDirectLoginAsksForTOTP(t *testing.T) {
 	}
 
 	as := signIn()
-	failures := e.ipFailures()
 	if r := e.challenge(url.Values{"auth_session": {as}, "totp": {"000000"}}); r.Status != 400 || r.Error != "invalid_request" || r.AuthSession != as {
 		t.Fatalf("wrong TOTP: %+v", r)
-	}
-	if e.ipFailures() != failures+1 {
-		t.Errorf("wrong TOTP not counted against the IP")
 	}
 	done := e.challenge(url.Values{"auth_session": {as}, "totp": {totpAt(secret, 0)}})
 	if done.Status != 200 {

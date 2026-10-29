@@ -10,7 +10,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -24,7 +23,6 @@ import (
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
-	hosted "github.com/zibyn/polaris/internal/login"
 	"github.com/zibyn/polaris/internal/oidcstore"
 	"github.com/zibyn/polaris/internal/otp"
 	"github.com/zibyn/polaris/internal/passkey"
@@ -75,8 +73,10 @@ type callerKey struct{}
 // caller is the User a request comes from, the Session it comes from and
 // when they last authenticated in it.
 type caller struct {
-	sub, session, ip, ua string
-	authTime             time.Time
+	sub, session string
+	// from is where the request comes from, as a sign-in to the account center.
+	from     identity.Attempt
+	authTime time.Time
 	// 待激活, read with the Session; see AccountSession.
 	pending bool
 }
@@ -190,7 +190,7 @@ func (s *Service) authorize(api huma.API) func(huma.Context, func(huma.Context))
 			return
 		}
 		r, _ := humago.Unwrap(ctx)
-		c.ip, c.ua = clientIP(r), r.UserAgent()
+		c.from = identity.AttemptFrom(r, identity.AccountClientID)
 		next(huma.WithValue(ctx, callerKey{}, c))
 	}
 }
@@ -389,7 +389,7 @@ func (s *Service) sendReauthCode(ctx context.Context, in *kindBody) (*struct{}, 
 	}
 	value, err := s.identifier(ctx, in.Body.Kind)
 	if err == nil {
-		err = s.codes.Send(ctx, in.Body.Kind, value, callerOf(ctx).ip)
+		err = s.codes.Send(ctx, in.Body.Kind, value, callerOf(ctx).from.IP)
 	}
 	return nil, fail(err)
 }
@@ -442,34 +442,42 @@ func (s *Service) reauth(ctx context.Context, in *reauthInput) (*struct{}, error
 	if on {
 		return nil, fail(s.reauthTwoFactor(ctx, in))
 	}
-	var amr string
-	err = s.ids.FromIP(ctx, c.ip, func() error {
-		if in.Body.Password != "" {
-			amr = "pwd"
-			ids, err := s.q.UserIdentifiers(ctx, c.sub)
-			if err != nil || len(ids) == 0 {
-				return cmp.Or(err, error(identity.ErrBadCredentials))
-			}
-			sub, err := s.ids.CheckPassword(ctx, identity.Attempt{ClientID: hosted.AccountClientID, IP: c.ip, UA: c.ua}, ids[0].Value, in.Body.Password)
-			if err == nil && sub != c.sub {
-				err = identity.ErrBadCredentials
-			}
-			return err
+	if in.Body.Password != "" {
+		ids, err := s.q.UserIdentifiers(ctx, c.sub)
+		if err != nil || len(ids) == 0 {
+			return nil, fail(cmp.Or(err, error(identity.ErrBadCredentials)))
 		}
-		amr = "sms"
-		if in.Body.Kind == "email" {
-			amr = "otp"
+		sub, err := s.ids.Password(ctx, c.from, ids[0].Value, in.Body.Password)
+		if err == nil && sub != c.sub {
+			err = identity.ErrBadCredentials
 		}
-		value, err := s.identifier(ctx, in.Body.Kind)
 		if err != nil {
-			return err
+			return nil, fail(err)
 		}
-		return s.codes.Check(ctx, value, in.Body.Code)
-	})
+		return nil, s.reauthenticated(ctx, []string{"pwd"})
+	}
+	amr := "sms"
+	if in.Body.Kind == "email" {
+		amr = "otp"
+	}
+	value, err := s.identifier(ctx, in.Body.Kind)
+	if err == nil {
+		err = s.ids.Code(ctx, c.from, value, c.sub, func() error { return s.codes.Check(ctx, value, in.Body.Code) })
+	}
 	if err != nil {
 		return nil, fail(err)
 	}
-	return nil, s.q.Reauthenticate(ctx, sqlc.ReauthenticateParams{ID: c.session, UserID: c.sub, Amr: []string{amr}})
+	return nil, s.reauthenticated(ctx, []string{amr})
+}
+
+// reauthenticated records a fresh authentication of this Session, proved as
+// amr: a login at the account center.
+func (s *Service) reauthenticated(ctx context.Context, amr []string) error {
+	c := callerOf(ctx)
+	if err := s.q.Reauthenticate(ctx, sqlc.ReauthenticateParams{ID: c.session, UserID: c.sub, Amr: amr}); err != nil {
+		return err
+	}
+	return s.ids.LoginSucceeded(ctx, c.from, c.sub, amr)
 }
 
 // reauthTwoFactor reauthenticates with a TOTP or recovery code; a wrong one
@@ -479,10 +487,12 @@ func (s *Service) reauthTwoFactor(ctx context.Context, in *reauthInput) error {
 	if in.Body.TOTP == "" && in.Body.RecoveryCode == "" {
 		return errTwoFactorOnly
 	}
-	if err := s.twoFactor.Check(ctx, c.ip, c.sub, in.Body.TOTP, in.Body.RecoveryCode); err != nil {
+	if err := s.ids.SecondFactor(ctx, c.from, c.sub, in.Body.RecoveryCode != "", func() error {
+		return s.twoFactor.Check(ctx, c.sub, in.Body.TOTP, in.Body.RecoveryCode)
+	}); err != nil {
 		return err
 	}
-	return s.q.Reauthenticate(ctx, sqlc.ReauthenticateParams{ID: c.session, UserID: c.sub, Amr: []string{"otp", "mfa"}})
+	return s.reauthenticated(ctx, []string{"otp", "mfa"})
 }
 
 // reauthPasskey reauthenticates with one of the User's Passkeys, writing the
@@ -493,7 +503,7 @@ func (s *Service) reauthPasskey(ctx context.Context, response string) error {
 	if err != nil {
 		return err
 	}
-	return s.q.Reauthenticate(ctx, sqlc.ReauthenticateParams{ID: c.session, UserID: c.sub, Amr: passkey.AMR(in.BackupEligible)})
+	return s.reauthenticated(ctx, passkey.AMR(in.BackupEligible))
 }
 
 type kindPath struct {
@@ -538,7 +548,7 @@ func (s *Service) sendIdentifierCode(ctx context.Context, in *identifierInput) (
 	} else if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
-	return nil, fail(s.codes.Send(ctx, in.Kind, value, callerOf(ctx).ip))
+	return nil, fail(s.codes.Send(ctx, in.Kind, value, callerOf(ctx).from.IP))
 }
 
 func (s *Service) putIdentifier(ctx context.Context, in *identifierInput) (*struct{}, error) {
@@ -548,7 +558,7 @@ func (s *Service) putIdentifier(ctx context.Context, in *identifierInput) (*stru
 	c := callerOf(ctx)
 	value, err := in.parse()
 	if err == nil {
-		err = s.ids.FromIP(ctx, c.ip, func() error { return s.codes.Check(ctx, value, in.Body.Code) })
+		err = s.ids.FromIP(ctx, c.from.IP, func() error { return s.codes.Check(ctx, value, in.Body.Code) })
 	}
 	if err == nil {
 		err = s.ids.ReplaceIdentifier(ctx, c.sub, in.Kind, value, c.sub)
@@ -736,13 +746,6 @@ func (s *Service) directDelete(w http.ResponseWriter, r *http.Request) {
 		slog.Error("delete account", "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 	}
-}
-
-func clientIP(r *http.Request) string {
-	if ap, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {
-		return ap.Addr().Unmap().String()
-	}
-	return strings.TrimSpace(r.RemoteAddr)
 }
 
 // passkeyErr is fail plus 404 for a Passkey that is not the User's.

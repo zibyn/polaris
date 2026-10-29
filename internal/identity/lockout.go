@@ -44,7 +44,10 @@ const (
 
 // FromIP runs check, a password or code check made from ip: refused while
 // ip is locked out, and a wrong password, code, TOTP code or 恢复码, or a
-// password tried on a locked User, counts toward locking it out.
+// password tried on a locked User, counts toward locking it out. A check
+// that proves who the User is goes through Password, Code or SecondFactor
+// instead, which audit it too; this is for one that does not, as a code
+// proving a new Identifier is the User's.
 func (s *Store) FromIP(ctx context.Context, ip string, check func() error) error {
 	key := "ip:" + ip
 	if locked, err := s.lockedOut(ctx, key); err != nil {

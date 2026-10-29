@@ -37,8 +37,8 @@
   - Management API 的全部写操作,含 M2M Application 以自身身份做的(ADR 0015):操作人带类型,记为该 Application 的 client_id,而不是被误当成某个 User;
   - User 安全事件:绑定或解绑、开关两步验证、重新生成恢复码、用掉恢复码(`recovery_code.used`)、增删改 Passkey(`passkey.added` / `passkey.removed` / `passkey.renamed`)、Passkey 计数器回退被拒(`passkey.counter_regressed`)、改密码、下线 Session、注销;
   - User 生命周期:管理员创建(`user.created`)、发出与撤销注册邀请(`invite.sent` / `invite.revoked`,操作人是管理员)、本人接受邀请(`invite.accepted`,操作人是本人)、待激活的本人改密激活;
-  - 登录成功(`login.succeeded`):User 每完成一次身份证明记一条,含同一浏览器里的重新登录;开了两步验证的,第二步通过后才记。带 `client_id`、`amr`、IP、UA。Session 会被删除,也只留最近一次的 IP 和 UA,替代不了这条记录;
-  - 登录失败(`login.failed`):只记能对应到某个 User 的,即密码错误(含对已锁定的 User 试密码)、验证码错误、TOTP 错误、恢复码错误。带方式、`client_id`、IP、UA。对应不到 User 的失败由单个 IP 的锁定兜住,不逐条记;
+  - 登录成功(`login.succeeded`):User 每完成一次身份证明记一条,含同一浏览器里的重新登录;开了两步验证的,第二步通过后才记。带 `client_id`、`amr`、IP、UA。账号中心的重新认证也是一次身份证明,同样记,`client_id` 为 `polaris-account`。Session 会被删除,也只留最近一次的 IP 和 UA,替代不了这条记录;
+  - 登录失败(`login.failed`):只记能对应到某个 User 的,即密码错误(含对已锁定的 User 试密码)、验证码错误、TOTP 错误、恢复码错误。账号中心重新认证输错同样记。带方式、`client_id`、IP、UA。对应不到 User 的失败由单个 IP 的锁定兜住,不逐条记;
   - 登录锁定;
   - 触发每日发送上限。
 - **不记录**:refresh token 换新令牌、浏览器已有 Session 时静默进入另一个 Application;`client_credentials` 换令牌(每 10 分钟一次,会淹没其他事件)。

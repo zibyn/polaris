@@ -44,11 +44,10 @@ type Store struct {
 	pool    *pgxpool.Pool
 	q       *sqlc.Queries
 	keyring *crypt.Keyring
-	ids     *identity.Store
 }
 
 func New(pool *pgxpool.Pool, keyring *crypt.Keyring) *Store {
-	return &Store{pool: pool, q: sqlc.New(pool), keyring: keyring, ids: identity.New(pool, keyring)}
+	return &Store{pool: pool, q: sqlc.New(pool), keyring: keyring}
 }
 
 // On reports whether sub has 两步验证 on: a confirmed TOTP.
@@ -142,15 +141,13 @@ func (s *Store) RegenerateRecoveryCodes(ctx context.Context, sub string) ([]stri
 	return codes, err
 }
 
-// Check takes sub's 恢复码 when one is given, else the TOTP code; a wrong
-// one counts toward the lockout of ip.
-func (s *Store) Check(ctx context.Context, ip, sub, totp, recoveryCode string) error {
-	return s.ids.FromIP(ctx, ip, func() error {
-		if recoveryCode != "" {
-			return s.UseRecoveryCode(ctx, sub, recoveryCode)
-		}
-		return s.CheckTOTP(ctx, sub, totp)
-	})
+// Check takes sub's 恢复码 when one is given, else the TOTP code. Run it in
+// identity's SecondFactor, which locks out and audits.
+func (s *Store) Check(ctx context.Context, sub, totp, recoveryCode string) error {
+	if recoveryCode != "" {
+		return s.UseRecoveryCode(ctx, sub, recoveryCode)
+	}
+	return s.CheckTOTP(ctx, sub, totp)
 }
 
 // CheckTOTP accepts a code from the User's TOTP, while 两步验证 is on; each
