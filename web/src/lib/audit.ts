@@ -90,6 +90,8 @@ export const eventGroups: [string, [string, string][]][] = [
 	[
 		"安全",
 		[
+			["login.succeeded", "登录成功"],
+			["login.failed", "登录失败"],
 			["login.password_locked", "密码输错次数过多，暂时锁定"],
 			["login.ip_locked", "同一 IP 登录失败过多，暂时锁定"],
 			["refresh_token.reused", "疑似登录凭据被盗用，已下线会话"],
@@ -141,6 +143,24 @@ export function actor(ev: AuditEvent, names: Names): Part[] {
 	return ev.byUser ? [{ text: ev.byUser, user: by }] : someone(by);
 }
 
+// amrName is how a login proved the User, by its first amr value.
+const amrName: Record<string, string> = {
+	pwd: "密码",
+	sms: "验证码",
+	otp: "验证码",
+	hwk: " Passkey ",
+	swk: " Passkey ",
+	fed: "外部账号",
+};
+
+// failedName is what a login.failed got wrong, by its method.
+const failedName: Record<string, string> = {
+	password: "密码错误",
+	code: "验证码错误",
+	totp: "两步验证码错误",
+	recovery_code: "恢复码错误",
+};
+
 // describe is the event as one sentence, with the doer left out (they
 // have their own column). title holds what only belongs in a hover.
 export function describe(
@@ -178,6 +198,11 @@ export function describe(
 		what === "roles" ? " 的角色 " : " 的权限 ",
 		named(apiDef?.[what], str("key")),
 	];
+	// whereFrom is a login's IP and User-Agent, for the hover.
+	const whereFrom = () =>
+		[str("ip") && `IP：${str("ip")}`, str("ua") && `UA：${str("ua")}`]
+			.filter(Boolean)
+			.join("\n") || undefined;
 	switch (ev.event) {
 		case "user.disabled":
 			return { parts: ["禁用了", ...user] };
@@ -316,8 +341,41 @@ export function describe(
 			};
 		case "keys.rotated":
 			return { parts: ["轮换了令牌签名密钥"] };
-		case "login.password_locked":
-			return { parts: [...user, " 密码输错次数过多，暂时锁定"] };
+		case "login.succeeded": {
+			const amr = Array.isArray(d.amr) ? (d.amr as string[]) : [];
+			const how = amrName[amr[0]] ?? "";
+			return {
+				parts: [...user, ` 用${how}登录了 `, app(names, str("client_id"))],
+				title: whereFrom(),
+			};
+		}
+		case "login.failed":
+			return {
+				parts: [
+					...user,
+					" 登录 ",
+					app(names, str("client_id")),
+					` 失败：${failedName[str("method")] ?? str("method")}`,
+				],
+				title: whereFrom(),
+			};
+		case "login.password_locked": {
+			const until = str("until")
+				? new Date(str("until")).toLocaleTimeString("zh-CN", {
+						hour: "2-digit",
+						minute: "2-digit",
+					})
+				: "";
+			return {
+				parts: [
+					...user,
+					until
+						? ` 密码输错次数过多，已锁定到 ${until}`
+						: " 密码输错次数过多，暂时锁定",
+				],
+				title: whereFrom(),
+			};
+		}
 		case "login.ip_locked":
 			return { parts: [`IP ${str("ip")} 登录失败过多，暂时锁定`] };
 		case "refresh_token.reused":

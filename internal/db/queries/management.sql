@@ -248,10 +248,14 @@ FROM changed;
 
 -- name: DeleteUser :execrows
 -- Deletes a User with everything of theirs (foreign keys cascade); their
--- audit events keep only the sub. Audited with who did it, and queues
--- user.deleted for every Application with a webhook.
+-- audit events keep only the sub, with no IP or UA in any detail. Audited
+-- with who did it, and queues user.deleted for every Application with a
+-- webhook.
 WITH gone AS (
     DELETE FROM users WHERE users.id = @user_id RETURNING users.id
+), scrubbed AS (
+    UPDATE audit_log SET detail = detail - 'ip' - 'ua'
+    WHERE audit_log.sub IN (SELECT gone.id FROM gone)
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
     SELECT a.client_id, jsonb_build_object(
