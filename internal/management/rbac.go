@@ -147,7 +147,7 @@ func (s *Service) putAPI(ctx context.Context, in *struct {
 	APIPath
 	Body nameBody
 }) (*struct{}, error) {
-	if n, err := s.q.PutAPI(ctx, sqlc.PutAPIParams{Identifier: in.API, Name: in.Body.Name}); err != nil {
+	if n, err := s.q.PutAPI(ctx, sqlc.PutAPIParams{Identifier: in.API, Name: in.Body.Name, By: callerSub(ctx)}); err != nil {
 		return nil, err
 	} else if n == 0 {
 		return nil, errBuiltin
@@ -162,7 +162,7 @@ func (s *Service) deleteAPI(ctx context.Context, in *struct {
 	if err := s.editable(ctx, in.API, false); err != nil {
 		return nil, err
 	}
-	n, err := s.q.DeleteAPI(ctx, sqlc.DeleteAPIParams{Identifier: in.API, Force: in.Force})
+	n, err := s.q.DeleteAPI(ctx, sqlc.DeleteAPIParams{Identifier: in.API, Force: in.Force, By: callerSub(ctx)})
 	switch {
 	case isFKViolation(err):
 		return nil, huma.Error409Conflict("还有 Application 以它为默认 API")
@@ -181,14 +181,14 @@ func (s *Service) putPermission(ctx context.Context, in *struct {
 	if err := s.editable(ctx, in.API, false); err != nil {
 		return nil, err
 	}
-	return nil, s.q.PutPermission(ctx, sqlc.PutPermissionParams{Api: in.API, Key: in.Key, Name: in.Body.Name})
+	return nil, s.q.PutPermission(ctx, sqlc.PutPermissionParams{Api: in.API, Key: in.Key, Name: in.Body.Name, By: callerSub(ctx)})
 }
 
 func (s *Service) deletePermission(ctx context.Context, in *KeyPath) (*struct{}, error) {
 	if err := s.editable(ctx, in.API, false); err != nil {
 		return nil, err
 	}
-	if n, err := s.q.DeletePermission(ctx, sqlc.DeletePermissionParams{Api: in.API, Key: in.Key}); err != nil {
+	if n, err := s.q.DeletePermission(ctx, sqlc.DeletePermissionParams{Api: in.API, Key: in.Key, By: callerSub(ctx)}); err != nil {
 		return nil, err
 	} else if n == 0 {
 		return nil, huma.Error404NotFound("no such Permission")
@@ -228,8 +228,11 @@ func (s *Service) putRole(ctx context.Context, in *putRoleInput) (*struct{}, err
 		err := q.SetRolePermissions(ctx, sqlc.SetRolePermissionsParams{Api: in.API, Role: in.Key, Permissions: in.Body.Permissions})
 		if isFKViolation(err) {
 			return huma.Error422UnprocessableEntity("没有这个 Permission")
+		} else if err != nil {
+			return err
 		}
-		return err
+		detail, _ := json.Marshal(map[string]string{"api": in.API, "key": in.Key, "by": callerSub(ctx)})
+		return q.Audit(ctx, sqlc.AuditParams{Event: "role.saved", Detail: detail})
 	})
 }
 
@@ -249,7 +252,7 @@ func (s *Service) deleteRole(ctx context.Context, in *struct {
 	if r.Builtin {
 		return nil, errBuiltin
 	}
-	if n, err := s.q.DeleteRole(ctx, sqlc.DeleteRoleParams{Api: in.API, Key: in.Key, Force: in.Force}); err != nil {
+	if n, err := s.q.DeleteRole(ctx, sqlc.DeleteRoleParams{Api: in.API, Key: in.Key, Force: in.Force, By: callerSub(ctx)}); err != nil {
 		return nil, err
 	} else if n == 0 {
 		return nil, huma.Error409Conflict(heldBy(r.Users, r.Applications) + ";确认后连同分配一起删除")

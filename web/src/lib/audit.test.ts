@@ -36,33 +36,33 @@ const spec: Record<string, [string, string][]> = {
 		["passkey.renamed", "重命名 Passkey"],
 	],
 	应用: [
-		["create-application", "创建应用"],
-		["update-application", "修改应用"],
-		["delete-application", "删除应用"],
-		["new-application-secret", "重新生成 client secret"],
-		["set-application-auth-method", "切换客户端认证方式"],
+		["application.created", "创建应用"],
+		["application.updated", "修改应用"],
+		["application.deleted", "删除应用"],
+		["application.secret_regenerated", "重新生成 client secret"],
+		["application.auth_method_changed", "切换客户端认证方式"],
 		["application_roles.assigned", "设置角色"],
 		["webhook.failed", "用户删除通知发送失败"],
 	],
 	"API 资源": [
-		["put-api", "保存 API 资源"],
-		["delete-api", "删除 API 资源"],
-		["put-permission", "保存权限"],
-		["delete-permission", "删除权限"],
-		["put-role", "保存角色"],
-		["delete-role", "删除角色"],
+		["api.saved", "保存 API 资源"],
+		["api.deleted", "删除 API 资源"],
+		["permission.saved", "保存权限"],
+		["permission.deleted", "删除权限"],
+		["role.saved", "保存角色"],
+		["role.deleted", "删除角色"],
 	],
 	登录与通道: [
 		["settings.updated", "修改登录设置"],
-		["put-channel", "配置验证码通道"],
-		["delete-channel", "停用验证码通道"],
-		["test-channel", "发送测试验证码"],
+		["channel.saved", "配置验证码通道"],
+		["channel.deleted", "停用验证码通道"],
+		["channel.tested", "发送测试验证码"],
 		["send.daily_cap_reached", "验证码达到每日发送上限"],
-		["create-provider", "添加认证源"],
-		["update-provider", "修改认证源"],
-		["enable-provider", "启用认证源"],
-		["disable-provider", "停用认证源"],
-		["delete-provider", "删除认证源"],
+		["provider.created", "添加认证源"],
+		["provider.updated", "修改认证源"],
+		["provider.enabled", "启用认证源"],
+		["provider.disabled", "停用认证源"],
+		["provider.deleted", "删除认证源"],
 		["provider.unlink_failed", "外部账号吊销授权失败"],
 	],
 	设置: [["keys.rotated", "轮换令牌签名密钥"]],
@@ -214,21 +214,24 @@ test("every event reads as a sentence", () => {
 			{ event: "roles.assigned", ...alice, detail: { api, roles: [] } },
 			"清空了用户 a@x.com 在 订单 API 上的角色",
 		],
-		[{ event: "create-application" }, "创建了一个应用"],
+		[{ event: "application.created" }, "创建了一个应用"],
 		[
-			{ event: "update-application", detail: { clientId: "SHOP" } },
+			{ event: "application.updated", detail: { clientId: "SHOP" } },
 			"修改了应用 星选商城",
 		],
 		[
-			{ event: "delete-application", detail: { clientId: "SHOP" } },
+			{ event: "application.deleted", detail: { clientId: "SHOP" } },
 			"删除了应用 星选商城",
 		],
 		[
-			{ event: "new-application-secret", detail: { clientId: "SHOP" } },
+			{ event: "application.secret_regenerated", detail: { clientId: "SHOP" } },
 			"重新生成了应用 星选商城 的 client secret",
 		],
 		[
-			{ event: "set-application-auth-method", detail: { clientId: "SHOP" } },
+			{
+				event: "application.auth_method_changed",
+				detail: { clientId: "SHOP" },
+			},
 			"切换了应用 星选商城 的客户端认证方式",
 		],
 		[
@@ -253,35 +256,35 @@ test("every event reads as a sentence", () => {
 			},
 			"没能把已删除的用户 ALICE123 的删除通知发给应用 星选商城",
 		],
-		[{ event: "put-api", detail: { api } }, "保存了 API 资源 订单 API"],
-		[{ event: "delete-api", detail: { api } }, "删除了 API 资源 订单 API"],
+		[{ event: "api.saved", detail: { api } }, "保存了 API 资源 订单 API"],
+		[{ event: "api.deleted", detail: { api } }, "删除了 API 资源 订单 API"],
 		[
-			{ event: "put-permission", detail: { api, key: "orders:read" } },
+			{ event: "permission.saved", detail: { api, key: "orders:read" } },
 			"保存了 订单 API 的权限 读订单",
 		],
 		[
-			{ event: "delete-permission", detail: { api, key: "orders:read" } },
+			{ event: "permission.deleted", detail: { api, key: "orders:read" } },
 			"删除了 订单 API 的权限 读订单",
 		],
 		[
-			{ event: "put-role", detail: { api, key: "editor" } },
+			{ event: "role.saved", detail: { api, key: "editor" } },
 			"保存了 订单 API 的角色 编辑",
 		],
 		[
-			{ event: "delete-role", detail: { api, key: "editor" } },
+			{ event: "role.deleted", detail: { api, key: "editor" } },
 			"删除了 订单 API 的角色 编辑",
 		],
 		[{ event: "settings.updated" }, "修改了登录设置"],
 		[
-			{ event: "put-channel", detail: { kind: "phone" } },
+			{ event: "channel.saved", detail: { kind: "phone" } },
 			"配置了手机号验证码通道",
 		],
 		[
-			{ event: "delete-channel", detail: { kind: "email" } },
+			{ event: "channel.deleted", detail: { kind: "email" } },
 			"停用了邮箱验证码通道",
 		],
 		[
-			{ event: "test-channel", detail: { kind: "phone" } },
+			{ event: "channel.tested", detail: { kind: "phone" } },
 			"发送了一条手机号测试验证码",
 		],
 		[
@@ -338,23 +341,23 @@ test("every event reads as a sentence", () => {
 			"拒绝了用户 a@x.com 的 Passkey 工作电脑 登录：计数器回退，疑似被克隆",
 		],
 		[
-			{ event: "create-provider", detail: { id: "google" } },
+			{ event: "provider.created", detail: { id: "google" } },
 			"添加了认证源 google",
 		],
 		[
-			{ event: "update-provider", detail: { id: "google" } },
+			{ event: "provider.updated", detail: { id: "google" } },
 			"修改了认证源 google",
 		],
 		[
-			{ event: "enable-provider", detail: { id: "google" } },
+			{ event: "provider.enabled", detail: { id: "google" } },
 			"启用了认证源 google",
 		],
 		[
-			{ event: "disable-provider", detail: { id: "google" } },
+			{ event: "provider.disabled", detail: { id: "google" } },
 			"停用了认证源 google",
 		],
 		[
-			{ event: "delete-provider", detail: { id: "google" } },
+			{ event: "provider.deleted", detail: { id: "google" } },
 			"删除了认证源 google",
 		],
 		[
@@ -527,27 +530,27 @@ test("without a name, IDs show as they are, in monospace", () => {
 		describe(ev(over), n).parts.filter((p) => typeof p !== "string");
 	// a deleted Application
 	assert.deepEqual(
-		mono({ event: "delete-application", detail: { clientId: "GONE" } }),
+		mono({ event: "application.deleted", detail: { clientId: "GONE" } }),
 		[{ text: "GONE", mono: true }],
 	);
 	// no applications:read
 	assert.deepEqual(
 		mono(
-			{ event: "update-application", detail: { clientId: "SHOP" } },
+			{ event: "application.updated", detail: { clientId: "SHOP" } },
 			{ ...names, apps: undefined },
 		),
 		[{ text: "SHOP", mono: true }],
 	);
 	// a deleted API resource, Role and Permission
 	assert.deepEqual(
-		mono({ event: "put-role", detail: { api: "https://old", key: "x" } }),
+		mono({ event: "role.saved", detail: { api: "https://old", key: "x" } }),
 		[
 			{ text: "https://old", mono: true },
 			{ text: "x", mono: true },
 		],
 	);
 	assert.deepEqual(
-		mono({ event: "delete-permission", detail: { api, key: "orders:write" } }),
+		mono({ event: "permission.deleted", detail: { api, key: "orders:write" } }),
 		[{ text: "orders:write", mono: true }],
 	);
 	assert.deepEqual(
@@ -590,7 +593,7 @@ test("an exact Identifier picks its User among partial matches", () => {
 
 test("without API resources to read, their IDs show as they are", () => {
 	const { parts } = describe(
-		ev({ event: "put-permission", detail: { api, key: "orders:read" } }),
+		ev({ event: "permission.saved", detail: { api, key: "orders:read" } }),
 		{ apps: undefined, apis: undefined },
 	);
 	assert.deepEqual(

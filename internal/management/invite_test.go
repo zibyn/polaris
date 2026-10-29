@@ -50,7 +50,7 @@ func (e *env) mailer() *outbox {
 	ts := httptest.NewServer(o)
 	e.t.Cleanup(ts.Close)
 	if err := channel.NewStore(e.pool, e.keyring).Put(context.Background(), "email", "webhook",
-		map[string]string{"url": ts.URL, "secret": "s"}); err != nil {
+		map[string]string{"url": ts.URL, "secret": "s"}, ""); err != nil {
 		e.t.Fatal(err)
 	}
 	return o

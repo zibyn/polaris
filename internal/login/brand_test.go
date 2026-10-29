@@ -18,7 +18,7 @@ func TestNamedProviderButtons(t *testing.T) {
 	ctx := context.Background()
 	create := func(typ, name string, config map[string]string) {
 		t.Helper()
-		if err := e.providers().Create(ctx, typ, typ, name, config); err != nil {
+		if err := e.providers().Create(ctx, typ, typ, name, config, ""); err != nil {
 			t.Fatal(err)
 		}
 	}

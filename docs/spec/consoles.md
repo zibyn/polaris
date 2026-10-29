@@ -321,18 +321,18 @@ Management API 不改,后端没拦的写在备注列。
 | | roles.assigned | 设置角色 |
 | | external_identity.added / removed | 绑定外部账号 / 解绑外部账号 |
 | | passkey.added / removed / renamed | 添加 Passkey / 删除 Passkey / 重命名 Passkey(句中写明 Passkey 的名称) |
-| 应用 | create / update / delete-application | 创建应用 / 修改应用 / 删除应用 |
-| | new-application-secret | 重新生成 client secret |
-| | set-application-auth-method | 切换客户端认证方式 |
+| 应用 | application.created / updated / deleted | 创建应用 / 修改应用 / 删除应用 |
+| | application.secret_regenerated | 重新生成 client secret |
+| | application.auth_method_changed | 切换客户端认证方式 |
 | | application_roles.assigned | 设置角色(句中写明应用与 API) |
 | | webhook.failed | 用户删除通知发送失败 |
-| API 资源 | put-api / delete-api | 保存 API 资源 / 删除 API 资源 |
-| | put-permission / delete-permission | 保存权限 / 删除权限 |
-| | put-role / delete-role | 保存角色 / 删除角色 |
+| API 资源 | api.saved / deleted | 保存 API 资源 / 删除 API 资源 |
+| | permission.saved / deleted | 保存权限 / 删除权限 |
+| | role.saved / deleted | 保存角色 / 删除角色 |
 | 登录与通道 | settings.updated | 修改登录设置 |
-| | put-channel / delete-channel / test-channel | 配置验证码通道 / 停用验证码通道 / 发送测试验证码 |
+| | channel.saved / deleted / tested | 配置验证码通道 / 停用验证码通道 / 发送测试验证码 |
 | | send.daily_cap_reached | 达到每日发送上限 |
-| | create / update / enable / disable / delete-provider | 添加认证源 / 修改认证源 / 启用认证源 / 停用认证源 / 删除认证源 |
+| | provider.created / updated / enabled / disabled / deleted | 添加认证源 / 修改认证源 / 启用认证源 / 停用认证源 / 删除认证源 |
 | | provider.unlink_failed | 外部账号吊销授权失败 |
 | 设置 | keys.rotated | 轮换令牌签名密钥 |
 | 安全 | login.succeeded / failed | 登录成功 / 登录失败(句中写明方式和 Application,如「用验证码登录了 <Application>」「登录 <Application> 失败:密码错误」;IP 和 UA 放在悬停里) |

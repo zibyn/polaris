@@ -486,7 +486,7 @@ func TestRequireRole(t *testing.T) {
 	if e.get(owner, path, &got); got.RequireRole {
 		t.Errorf("after turning off: %+v", got)
 	}
-	if ev := e.audited("update-application"); ev.ByUser != "owner" {
+	if ev := e.audited("application.updated"); ev.ByUser != "owner" {
 		t.Errorf("audit: %+v", ev)
 	}
 

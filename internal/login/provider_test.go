@@ -76,7 +76,7 @@ func (e *env) addGoogle() *upstream {
 	e.t.Helper()
 	up := startUpstream(e.t, provider.CallbackURL(e.issuer, "google"))
 	if err := e.providers().Create(context.Background(), "google", "oidc", "Google",
-		map[string]string{"issuer": up.issuer, "client_id": "upstream", "client_secret": "shh"}); err != nil {
+		map[string]string{"issuer": up.issuer, "client_id": "upstream", "client_secret": "shh"}, ""); err != nil {
 		e.t.Fatal(err)
 	}
 	return up
@@ -191,7 +191,7 @@ func TestDisabledProviderSignsNobodyIn(t *testing.T) {
 		t.Fatalf("button: %d", resp.StatusCode)
 	}
 	resp, _ = e.do("GET", resp.Header.Get("Location"), nil) // the upstream signs in
-	if err := e.providers().SetEnabled(ctx, "google", false); err != nil {
+	if err := e.providers().SetEnabled(ctx, "google", false, ""); err != nil {
 		t.Fatal(err)
 	}
 	if resp, body := e.do("GET", resp.Header.Get("Location"), nil); resp.StatusCode != 400 {

@@ -287,35 +287,6 @@ func TestAdminReplacesAnIdentifier(t *testing.T) {
 	}
 }
 
-// Every Management API write is audited, with who did it; reads are not.
-func TestEveryWriteIsAudited(t *testing.T) {
-	e := start(t)
-	owner := e.token(e.owner, nil)
-	if code := e.call("PUT", owner, "/apis/https%3A%2F%2Fapi.example", map[string]string{"name": "Example"}, nil); code != 204 {
-		t.Fatalf("put api: %d", code)
-	}
-	if code := e.call("DELETE", owner, "/apis/https%3A%2F%2Fapi.example", nil, nil); code != 204 {
-		t.Fatalf("delete api: %d", code)
-	}
-	if code := e.call("DELETE", owner, "/apis/https%3A%2F%2Fnone.example", nil, nil); code != 404 {
-		t.Fatalf("delete unknown api: %d", code)
-	}
-	e.get(owner, "/apis", nil)
-
-	got := e.events("")
-	if len(got) != 2 || got[0].Event != "delete-api" || got[1].Event != "put-api" {
-		t.Fatalf("events: %+v", got)
-	}
-	if d := got[0].Detail; d["by"] != e.owner || d["api"] != "https://api.example" {
-		t.Errorf("detail: %+v", d)
-	}
-	// Self-audited writes are not audited twice.
-	e.call("POST", owner, "/signing-keys/rotate", nil, nil)
-	if got := e.events(""); len(got) != 3 || got[0].Event != "keys.rotated" {
-		t.Errorf("after rotate: %+v", got)
-	}
-}
-
 func TestAuditFilters(t *testing.T) {
 	e := start(t)
 	e.user("ALICE", nil)

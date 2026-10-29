@@ -115,13 +115,19 @@ ORDER BY a.builtin DESC, a.identifier;
 SELECT builtin FROM apis WHERE identifier = $1;
 
 -- name: PutAPI :execrows
-INSERT INTO apis (identifier, name) VALUES ($1, $2)
-ON CONFLICT (identifier) DO UPDATE SET name = EXCLUDED.name WHERE NOT apis.builtin;
+-- Audited with who did it; no row for a built-in API.
+WITH put AS (
+    INSERT INTO apis (identifier, name) VALUES (@identifier, @name)
+    ON CONFLICT (identifier) DO UPDATE SET name = EXCLUDED.name WHERE NOT apis.builtin
+    RETURNING apis.identifier
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'api.saved', NULL, jsonb_build_object('api', put.identifier, 'by', @by::text) FROM put;
 
 -- name: DeleteAPI :execrows
 -- Its Permissions, Roles and their assignments go with it, but only when
 -- force confirms that; no row while someone holds one of its Roles. Each
--- User who held one gets user.updated.
+-- User who held one gets user.updated. Audited with who did it.
 WITH gone AS (
     DELETE FROM apis
     WHERE apis.identifier = @identifier AND NOT apis.builtin
@@ -132,15 +138,26 @@ WITH gone AS (
     SELECT e.client_id, e.payload FROM (SELECT DISTINCT ur.user_id FROM user_roles ur JOIN gone ON ur.api = gone.identifier) h,
                     user_event('user.updated', h.user_id, '{roles}') e
 )
-SELECT 1 FROM gone;
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'api.deleted', NULL, jsonb_build_object('api', gone.identifier, 'force', @force::boolean, 'by', @by::text) FROM gone;
 
 -- name: PutPermission :exec
-INSERT INTO permissions (api, key, name) VALUES ($1, $2, $3)
-ON CONFLICT (api, key) DO UPDATE SET name = EXCLUDED.name;
+-- Audited with who did it.
+WITH put AS (
+    INSERT INTO permissions (api, key, name) VALUES (@api, @key, @name)
+    ON CONFLICT (api, key) DO UPDATE SET name = EXCLUDED.name
+)
+INSERT INTO audit_log (event, sub, detail)
+VALUES ('permission.saved', NULL, jsonb_build_object('api', @api::text, 'key', @key::text, 'by', @by::text));
 
 -- name: DeletePermission :execrows
--- Its Roles lose it too (role_permissions cascades).
-DELETE FROM permissions WHERE api = $1 AND key = $2 AND NOT builtin;
+-- Its Roles lose it too (role_permissions cascades). Audited with who did it.
+WITH gone AS (
+    DELETE FROM permissions WHERE permissions.api = @api AND permissions.key = @key AND NOT permissions.builtin
+    RETURNING permissions.api, permissions.key
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'permission.deleted', NULL, jsonb_build_object('api', gone.api, 'key', gone.key, 'by', @by::text) FROM gone;
 
 -- name: PutRole :execrows
 -- default_role is only ever true for a business API Role; the Management API
@@ -168,7 +185,7 @@ FROM roles r WHERE r.api = $1 AND r.key = $2;
 -- name: DeleteRole :execrows
 -- Its assignments go with it (user_roles and application_roles cascade), but
 -- only when force confirms that; no row while anyone holds it. Each User
--- who held it gets user.updated.
+-- who held it gets user.updated. Audited with who did it.
 WITH gone AS (
     DELETE FROM roles
     WHERE roles.api = @api AND roles.key = @key AND NOT roles.builtin
@@ -180,7 +197,8 @@ WITH gone AS (
     SELECT e.client_id, e.payload FROM user_roles ur JOIN gone ON ur.api = gone.api AND ur.role = gone.key,
                     user_event('user.updated', ur.user_id, '{roles}') e
 )
-SELECT 1 FROM gone;
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'role.deleted', NULL, jsonb_build_object('api', gone.api, 'key', gone.key, 'force', @force::boolean, 'by', @by::text) FROM gone;
 
 -- name: SetApplicationRoles :exec
 -- Makes roles an M2M Application's Roles on its default API, audited with
@@ -242,18 +260,36 @@ UPDATE applications SET
 WHERE client_id = @client_id AND NOT builtin;
 
 -- name: SetApplicationSecret :execrows
-UPDATE applications SET secret_hash = $2
-WHERE client_id = $1 AND type <> 'public' AND token_auth_method = 'client_secret_basic' AND NOT builtin;
+-- Audited with who did it.
+WITH put AS (
+    UPDATE applications SET secret_hash = @secret_hash
+    WHERE client_id = @client_id AND type <> 'public' AND token_auth_method = 'client_secret_basic' AND NOT builtin
+    RETURNING client_id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'application.secret_regenerated', NULL, jsonb_build_object('clientId', put.client_id, 'by', @by::text) FROM put;
 
 -- name: SetTokenAuthMethod :execrows
 -- Switches how the Application authenticates (ADR 0023): a secret_hash for
 -- client_secret_basic, NULL for private_key_jwt, which needs a registered key.
-UPDATE applications SET token_auth_method = @method, secret_hash = sqlc.narg(secret_hash)
-WHERE client_id = @client_id AND type <> 'public' AND NOT builtin
-  AND (@method <> 'private_key_jwt' OR jsonb_array_length(jwks -> 'keys') > 0);
+-- Audited with who did it.
+WITH put AS (
+    UPDATE applications SET token_auth_method = @method, secret_hash = sqlc.narg(secret_hash)
+    WHERE client_id = @client_id AND type <> 'public' AND NOT builtin
+      AND (@method <> 'private_key_jwt' OR jsonb_array_length(jwks -> 'keys') > 0)
+    RETURNING client_id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'application.auth_method_changed', NULL, jsonb_build_object('clientId', put.client_id, 'by', @by::text) FROM put;
 
 -- name: DeleteApplication :exec
-DELETE FROM applications WHERE client_id = $1 AND NOT builtin;
+-- Audited with who did it.
+WITH gone AS (
+    DELETE FROM applications WHERE client_id = @client_id AND NOT builtin
+    RETURNING client_id
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'application.deleted', NULL, jsonb_build_object('clientId', gone.client_id, 'by', @by::text) FROM gone;
 
 -- name: GetSettings :one
 SELECT password_login, require_phone, daily_send_limit, terms_url, privacy_url, terms_version, audit_retention_days,

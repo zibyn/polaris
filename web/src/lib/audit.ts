@@ -51,11 +51,11 @@ export const eventGroups: [string, [string, string][]][] = [
 	[
 		"应用",
 		[
-			["create-application", "创建应用"],
-			["update-application", "修改应用"],
-			["delete-application", "删除应用"],
-			["new-application-secret", "重新生成 client secret"],
-			["set-application-auth-method", "切换客户端认证方式"],
+			["application.created", "创建应用"],
+			["application.updated", "修改应用"],
+			["application.deleted", "删除应用"],
+			["application.secret_regenerated", "重新生成 client secret"],
+			["application.auth_method_changed", "切换客户端认证方式"],
 			["application_roles.assigned", "设置角色"],
 			["webhook.failed", "用户删除通知发送失败"],
 		],
@@ -63,27 +63,27 @@ export const eventGroups: [string, [string, string][]][] = [
 	[
 		"API 资源",
 		[
-			["put-api", "保存 API 资源"],
-			["delete-api", "删除 API 资源"],
-			["put-permission", "保存权限"],
-			["delete-permission", "删除权限"],
-			["put-role", "保存角色"],
-			["delete-role", "删除角色"],
+			["api.saved", "保存 API 资源"],
+			["api.deleted", "删除 API 资源"],
+			["permission.saved", "保存权限"],
+			["permission.deleted", "删除权限"],
+			["role.saved", "保存角色"],
+			["role.deleted", "删除角色"],
 		],
 	],
 	[
 		"登录与通道",
 		[
 			["settings.updated", "修改登录设置"],
-			["put-channel", "配置验证码通道"],
-			["delete-channel", "停用验证码通道"],
-			["test-channel", "发送测试验证码"],
+			["channel.saved", "配置验证码通道"],
+			["channel.deleted", "停用验证码通道"],
+			["channel.tested", "发送测试验证码"],
 			["send.daily_cap_reached", "验证码达到每日发送上限"],
-			["create-provider", "添加认证源"],
-			["update-provider", "修改认证源"],
-			["enable-provider", "启用认证源"],
-			["disable-provider", "停用认证源"],
-			["delete-provider", "删除认证源"],
+			["provider.created", "添加认证源"],
+			["provider.updated", "修改认证源"],
+			["provider.enabled", "启用认证源"],
+			["provider.disabled", "停用认证源"],
+			["provider.deleted", "删除认证源"],
 			["provider.unlink_failed", "外部账号吊销授权失败"],
 		],
 	],
@@ -237,13 +237,13 @@ export function describe(
 			const roles = Array.isArray(d.roles) ? (d.roles as string[]) : [];
 			return { parts: roleSentence(user, roles) };
 		}
-		case "create-application":
+		case "application.created":
 			return { parts: ["创建了一个应用"] };
-		case "update-application":
+		case "application.updated":
 			return { parts: ["修改了应用 ", app(names, str("clientId"))] };
-		case "delete-application":
+		case "application.deleted":
 			return { parts: ["删除了应用 ", app(names, str("clientId"))] };
-		case "new-application-secret":
+		case "application.secret_regenerated":
 			return {
 				parts: [
 					"重新生成了应用 ",
@@ -251,7 +251,7 @@ export function describe(
 					" 的 client secret",
 				],
 			};
-		case "set-application-auth-method":
+		case "application.auth_method_changed":
 			return {
 				parts: [
 					"切换了应用 ",
@@ -274,25 +274,25 @@ export function describe(
 				],
 				title: str("id") ? `投递 ID：${str("id")}` : undefined,
 			};
-		case "put-api":
+		case "api.saved":
 			return { parts: ["保存了 API 资源 ", apiName] };
-		case "delete-api":
+		case "api.deleted":
 			return { parts: ["删除了 API 资源 ", apiName] };
-		case "put-permission":
+		case "permission.saved":
 			return { parts: inAPI("保存了", "permissions") };
-		case "delete-permission":
+		case "permission.deleted":
 			return { parts: inAPI("删除了", "permissions") };
-		case "put-role":
+		case "role.saved":
 			return { parts: inAPI("保存了", "roles") };
-		case "delete-role":
+		case "role.deleted":
 			return { parts: inAPI("删除了", "roles") };
 		case "settings.updated":
 			return { parts: ["修改了登录设置"] };
-		case "put-channel":
+		case "channel.saved":
 			return { parts: [`配置了${kind}验证码通道`] };
-		case "delete-channel":
+		case "channel.deleted":
 			return { parts: [`停用了${kind}验证码通道`] };
-		case "test-channel":
+		case "channel.tested":
 			return { parts: [`发送了一条${kind}测试验证码`] };
 		case "send.daily_cap_reached":
 			return {
@@ -327,15 +327,15 @@ export function describe(
 				],
 				title: typeof d.count === "number" ? `计数器：${d.count}` : undefined,
 			};
-		case "create-provider":
+		case "provider.created":
 			return { parts: ["添加了认证源 ", raw(str("id"))] };
-		case "update-provider":
+		case "provider.updated":
 			return { parts: ["修改了认证源 ", raw(str("id"))] };
-		case "enable-provider":
+		case "provider.enabled":
 			return { parts: ["启用了认证源 ", raw(str("id"))] };
-		case "disable-provider":
+		case "provider.disabled":
 			return { parts: ["停用了认证源 ", raw(str("id"))] };
-		case "delete-provider":
+		case "provider.deleted":
 			return { parts: ["删除了认证源 ", raw(str("id"))] };
 		case "provider.unlink_failed":
 			return {

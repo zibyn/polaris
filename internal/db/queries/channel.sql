@@ -27,7 +27,12 @@ ON CONFLICT (kind, field) DO UPDATE SET value = excluded.value, updated_at = now
 DELETE FROM channel_secrets WHERE kind = $1;
 
 -- name: DeleteChannel :exec
-DELETE FROM channels WHERE kind = $1;
+-- Audited with who did it, when there was one to delete.
+WITH gone AS (
+    DELETE FROM channels WHERE kind = @kind RETURNING kind
+)
+INSERT INTO audit_log (event, sub, detail)
+SELECT 'channel.deleted', NULL, jsonb_build_object('kind', gone.kind, 'by', @by::text) FROM gone;
 
 -- name: ChannelKinds :many
 SELECT kind FROM channels;

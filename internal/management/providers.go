@@ -2,13 +2,10 @@ package management
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/provider"
 )
@@ -54,12 +51,7 @@ type createProviderInput struct {
 
 func (s *Service) createProvider(ctx context.Context, in *createProviderInput) (*struct{}, error) {
 	b := in.Body
-	if err := s.providers.Create(ctx, b.ID, b.Type, b.Name, b.Config); err != nil {
-		return nil, providerErr(err)
-	}
-	// Audited here: the generic audit only records path parameters.
-	detail, _ := json.Marshal(map[string]string{"id": b.ID, "type": b.Type, "by": callerSub(ctx)})
-	return nil, s.q.Audit(ctx, sqlc.AuditParams{Event: "create-provider", Sub: pgtype.Text{}, Detail: detail})
+	return nil, providerErr(s.providers.Create(ctx, b.ID, b.Type, b.Name, b.Config, callerSub(ctx)))
 }
 
 type providerPath struct {
@@ -70,19 +62,19 @@ func (s *Service) updateProvider(ctx context.Context, in *struct {
 	ID   string `path:"id"`
 	Body ProviderSettings
 }) (*struct{}, error) {
-	return nil, providerErr(s.providers.Update(ctx, in.ID, in.Body.Name, in.Body.Config))
+	return nil, providerErr(s.providers.Update(ctx, in.ID, in.Body.Name, in.Body.Config, callerSub(ctx)))
 }
 
 func (s *Service) enableProvider(ctx context.Context, in *providerPath) (*struct{}, error) {
-	return nil, providerErr(s.providers.SetEnabled(ctx, in.ID, true))
+	return nil, providerErr(s.providers.SetEnabled(ctx, in.ID, true, callerSub(ctx)))
 }
 
 func (s *Service) disableProvider(ctx context.Context, in *providerPath) (*struct{}, error) {
-	return nil, providerErr(s.providers.SetEnabled(ctx, in.ID, false))
+	return nil, providerErr(s.providers.SetEnabled(ctx, in.ID, false, callerSub(ctx)))
 }
 
 func (s *Service) deleteProvider(ctx context.Context, in *providerPath) (*struct{}, error) {
-	return nil, providerErr(s.providers.Delete(ctx, in.ID))
+	return nil, providerErr(s.providers.Delete(ctx, in.ID, callerSub(ctx)))
 }
 
 type listExternalIdentitiesOutput struct {

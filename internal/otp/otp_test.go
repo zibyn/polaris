@@ -60,7 +60,7 @@ func setup(t *testing.T) (*Service, *inbox, *clock) {
 	t.Cleanup(hook.Close)
 	channels := channel.NewStore(pool, keyring)
 	for _, kind := range []string{"phone", "email"} {
-		if err := channels.Put(ctx, kind, "webhook", map[string]string{"url": hook.URL, "secret": "s"}); err != nil {
+		if err := channels.Put(ctx, kind, "webhook", map[string]string{"url": hook.URL, "secret": "s"}, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -221,7 +221,7 @@ func TestCheck(t *testing.T) {
 func TestSendWithoutChannel(t *testing.T) {
 	s, _, _ := setup(t)
 	ctx := context.Background()
-	if err := s.channels.Delete(ctx, "email"); err != nil {
+	if err := s.channels.Delete(ctx, "email", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Send(ctx, "email", "a@example.com", "10.0.0.1"); !errors.Is(err, ErrNoChannel) {
@@ -294,7 +294,7 @@ func TestChannelErrorsAreCounted(t *testing.T) {
 	}))
 	t.Cleanup(down.Close)
 	for _, kind := range []string{"phone", "email"} {
-		if err := s.channels.Put(ctx, kind, "webhook", map[string]string{"url": down.URL, "secret": "s"}); err != nil {
+		if err := s.channels.Put(ctx, kind, "webhook", map[string]string{"url": down.URL, "secret": "s"}, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
