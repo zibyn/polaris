@@ -64,7 +64,7 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
 
 - **`amr`**:按 RFC 8176 取 `sms`、`otp`、`pwd`、`hwk` / `swk`;做过两步验证(TOTP 或恢复码)时为 `[第一因素, "otp", "mfa"]`(第一因素的值加上 `otp`、`mfa`,不重复:邮箱验证码登录为 `["otp", "mfa"]`,短信为 `["sms", "otp", "mfa"]`);Passkey 登录为 `["swk", "mfa"]`(凭证可跨设备同步)或 `["hwk", "mfa"]`(仅本机),Passkey 本身已验证持有与本人,不再加 `otp`;Application 以 `mfa` 判断是否做过两步验证;Provider 登录一律为自定义值 `fed`;接受注册邀请建立的那次会话为 `["otp"]`(链接证明邮箱控制权,与邮箱验证码同一种证据,见 [authentication.md](authentication.md#注册邀请))。
 - **业务后端校验**:用 JWKS 本地验签,检查签名、`aud`、`typ`,权限读 `entitlements`。
-- **签名**:只用 RS256;由管理员手动轮换。最新的 key 签发新 token;旧 key 在它的下一把 key 创建后继续留在 JWKS 里 1 小时(最长 token 寿命 10 分钟加上 RP 缓存 JWKS 的余量),期满即不再发布,随后由每小时的清理任务删除。只剩一把 key 时它一直有效。
+- **签名**:只用 RS256;每 90 天自动轮换(每小时的清理任务检查最新 key 的创建时间),管理员也可以手动轮换。最新的 key 签发新 token;旧 key 在它的下一把 key 创建后继续留在 JWKS 里 1 小时(最长 token 寿命 10 分钟加上 RP 缓存 JWKS 的余量),期满即不再发布,随后由每小时的清理任务删除。只剩一把 key 时它一直有效。
 - **吊销**:最多滞后一个 access token 的寿命。
 
 ## Session
