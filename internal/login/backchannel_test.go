@@ -192,9 +192,11 @@ func TestEndingASessionSendsLogoutTokens(t *testing.T) {
 // deletes it.
 func TestExpiredSessionSendsNothing(t *testing.T) {
 	for name, c := range map[string]struct{ lapse, by string }{
-		"idle, cleaned up":     {"last_seen_at = now() - interval '100 days'", "cleanup"},
-		"capped, cleaned up":   {"auth_time = now() - interval '200 days'", "cleanup"},
-		"capped, User deleted": {"auth_time = now() - interval '91 days'", "delete"},
+		"idle, cleaned up":      {"last_seen_at = now() - interval '100 days'", "cleanup"},
+		"capped, cleaned up":    {"auth_time = now() - interval '200 days'", "cleanup"},
+		"capped, User deleted":  {"auth_time = now() - interval '91 days'", "delete"},
+		"idle, User disabled":   {"last_seen_at = now() - interval '100 days'", "disable"},
+		"capped, User disabled": {"auth_time = now() - interval '91 days'", "disable"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e, r, sub, sid := signedInEverywhere(t)
@@ -204,17 +206,22 @@ func TestExpiredSessionSendsNothing(t *testing.T) {
 			}
 			q := sqlc.New(e.pool)
 			var err error
-			if c.by == "cleanup" {
+			switch c.by {
+			case "cleanup":
 				err = q.DeleteOldSessions(ctx)
-			} else {
+			case "delete":
 				_, err = q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: "ADMIN"})
+			case "disable":
+				_, err = q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{Disabled: true, UserID: sub, By: "ADMIN"})
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			var n int
-			if err := e.pool.QueryRow(ctx, "SELECT count(*) FROM sessions WHERE id = $1", sid).Scan(&n); err != nil || n != 0 {
-				t.Fatalf("Session not deleted: %d %v", n, err)
+			if c.by != "disable" {
+				var n int
+				if err := e.pool.QueryRow(ctx, "SELECT count(*) FROM sessions WHERE id = $1", sid).Scan(&n); err != nil || n != 0 {
+					t.Fatalf("Session not deleted: %d %v", n, err)
+				}
 			}
 			r.deliver()
 			if got := r.received(sub, sid); len(got) != 0 {
