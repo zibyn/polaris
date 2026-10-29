@@ -62,7 +62,7 @@
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           },
           "403": {
-            "description": "`insufficient_authorization`: another step is needed, named by `next`; send it with the `auth_session` returned. `next` is `password` when an admin created the account and the User has not replaced the initial password yet; that step comes first, before 两步验证 and the rest.",
+            "description": "`insufficient_authorization`: another step is needed, named by `next`; send it with the `auth_session` returned. `next` is `password` when an admin created the account and the User has not replaced the initial password yet; that step comes first, before 两步验证 and the rest. `application_access_denied` (non-standard): the User signed in, but the Application requires a Role on its default API and they hold none; no `auth_session`, nothing to retry — tell them to ask an admin, or sign in as someone else.",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           }
         }
@@ -111,7 +111,7 @@
         "type": "object",
         "required": ["error"],
         "properties": {
-          "error": {"type": "string", "enum": ["invalid_request", "invalid_grant", "access_denied", "invalid_client", "unauthorized_client", "invalid_scope", "invalid_session", "insufficient_authorization", "server_error"]},
+          "error": {"type": "string", "enum": ["invalid_request", "invalid_grant", "access_denied", "application_access_denied", "invalid_client", "unauthorized_client", "invalid_scope", "invalid_session", "insufficient_authorization", "server_error"]},
           "error_description": {"type": "string"},
           "auth_session": {"type": "string"},
           "next": {"type": "string", "enum": ["code", "phone", "totp"], "description": "Sent with `insufficient_authorization` only (non-standard, ADR 0010): the step to take. `code`: enter the code just sent. `phone`: bind a phone number (send a code to one, then enter it). `totp`: the User has 两步验证 on; send `totp` or `recovery_code` (comes before `phone`). Values are only ever added, never renamed or removed; treat one you do not know as a failure (ask the User to update the App)."}

@@ -32,6 +32,9 @@ const (
 	errInsufficientAuthorization = "insufficient_authorization"
 	// RFC 6749's: a Provider turned the client token down.
 	errInvalidGrant = "invalid_grant"
+	// Ours: the Application requires a Role on its default API, and the User
+	// holds none (docs/spec/rbac.md). Only ever added to, like next.
+	errApplicationAccessDenied = "application_access_denied"
 )
 
 // Values of next (ADR 0010): only ever added to, never renamed or removed.
@@ -222,6 +225,11 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		case stepPhone:
 			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr}, ""
 			return next(nextPhone, "a phone number must be bound: send a code to one")
+		}
+		if ok, err := s.mayUse(ctx, c.ID, sub); err != nil {
+			return answer{}, err
+		} else if !ok {
+			return answer{}, &challengeError{status: http.StatusForbidden, Code: errApplicationAccessDenied, Description: errNoRole}
 		}
 		// Spent before the code exists: one auth_session, one code.
 		if token != "" {

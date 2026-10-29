@@ -180,7 +180,7 @@ SELECT role FROM application_roles WHERE client_id = $1 AND api = $2 ORDER BY ro
 SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_redirect_uris,
        COALESCE(default_api, '')::text AS default_api,
        COALESCE(extract(epoch FROM session_idle_timeout), 0)::int AS session_idle_timeout,
-       refresh_tokens, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
+       refresh_tokens, require_role, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
        COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps
 FROM applications
 WHERE @client_id::text = '' OR client_id = @client_id
@@ -199,6 +199,7 @@ UPDATE applications SET
     default_api = NULLIF(@default_api::text, ''),
     session_idle_timeout = NULLIF(@idle_secs::int, 0) * interval '1 second',
     refresh_tokens = @refresh_tokens,
+    require_role = @require_role,
     webhook_url = NULLIF(@webhook_url::text, ''),
     webhook_secret = CASE WHEN @webhook_url = '' THEN NULL ELSE COALESCE(sqlc.narg(webhook_secret), webhook_secret) END,
     webhook_secret_updated_at = CASE WHEN @webhook_url = '' THEN NULL
