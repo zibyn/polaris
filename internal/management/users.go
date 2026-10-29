@@ -138,10 +138,8 @@ func (s *Service) mayManage(ctx context.Context, sub string) error {
 	return nil
 }
 
-// guardOwners runs change under identity's last-usable-owner guard, turning
-// its refusal into a 409.
-func (s *Service) guardOwners(ctx context.Context, change func(*sqlc.Queries) error) error {
-	err := s.ids.GuardOwners(ctx, change)
+// ownerErr turns identity's last-usable-owner refusal into a 409.
+func ownerErr(err error) error {
 	if errors.Is(err, identity.ErrLastOwner) {
 		return huma.Error409Conflict("不能禁用、删除或降级最后一个所有者")
 	}
@@ -160,10 +158,7 @@ func (s *Service) setDisabled(ctx context.Context, sub string, disabled bool) er
 	if err := s.mayManage(ctx, sub); err != nil {
 		return err
 	}
-	return s.guardOwners(ctx, func(q *sqlc.Queries) error {
-		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: sub, Disabled: disabled, By: callerSub(ctx)})
-		return err
-	})
+	return ownerErr(s.ids.SetDisabled(ctx, sub, disabled, callerSub(ctx)))
 }
 
 // deleteUser removes the User and all their data; only audit events keep
@@ -173,13 +168,7 @@ func (s *Service) deleteUser(ctx context.Context, in *subPath) (*struct{}, error
 		return nil, err
 	}
 	return nil, s.providers.DeleteUser(ctx, in.Sub, func(ctx context.Context, sub string) error {
-		return s.guardOwners(ctx, func(q *sqlc.Queries) error {
-			if err := profile.DeleteAvatar(ctx, q, sub); err != nil {
-				return err
-			}
-			_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: callerSub(ctx)})
-			return err
-		})
+		return ownerErr(s.ids.Delete(ctx, sub, callerSub(ctx)))
 	})
 }
 

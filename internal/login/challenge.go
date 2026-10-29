@@ -474,7 +474,9 @@ func (s *Service) terms(w http.ResponseWriter, r *http.Request) {
 // deletePending deletes the account of a 待激活 User at their own request: the
 // same deletion as 注销, minus the browser Session a 待激活 User cannot have.
 func (s *Service) deletePending(ctx context.Context, sub string) error {
-	err := s.providers.DeleteUser(ctx, sub, s.ids.Delete)
+	err := s.providers.DeleteUser(ctx, sub, func(ctx context.Context, sub string) error {
+		return s.ids.Delete(ctx, sub, sub)
+	})
 	if errors.Is(err, identity.ErrLastOwner) {
 		return invalid(identity.ErrLastOwner.Error())
 	}

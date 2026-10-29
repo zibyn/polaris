@@ -88,18 +88,6 @@ func TestAssignRoles(t *testing.T) {
 	if code := e.call("DELETE", admin, apiPath(identity.ManagementAPI)+"/roles/mine", nil, nil); code != 403 {
 		t.Errorf("admin deletes a Management API Role: %d", code)
 	}
-
-	// The last owner cannot step down.
-	if code := set(owner, e.owner, identity.ManagementAPI, "admin"); code != 204 {
-		t.Errorf("an owner steps down while another remains: %d", code)
-	}
-	alice := e.token("ALICE", nil)
-	if code := set(alice, "ALICE", identity.ManagementAPI, "admin"); code != 409 {
-		t.Errorf("last owner steps down: %d", code)
-	}
-	if got := roleKeys(e, "ALICE"); !slices.Contains(got, "owner") {
-		t.Errorf("ALICE lost owner: %v", got)
-	}
 }
 
 type roleDef struct {

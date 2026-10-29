@@ -284,6 +284,11 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
+func isFKViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+}
+
 // CreatePendingUser makes a User for an admin to hand over (ADR 0016), with
 // an Identifier and an initial password of the admin's choosing, in 待激活.
 // The Identifier is stored as verified, so it can also receive codes; the

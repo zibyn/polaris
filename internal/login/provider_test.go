@@ -215,7 +215,7 @@ func TestDeletedUserLeavesTheirExternalIdentity(t *testing.T) {
 	resp, _ := e.signInWith(page, "google")
 	sub := e.idToken(e.code(resp))["sub"].(string)
 
-	if err := e.ids.Delete(context.Background(), sub); err != nil {
+	if err := e.ids.Delete(context.Background(), sub, sub); err != nil {
 		t.Fatal(err)
 	}
 	e.newBrowser()
