@@ -30,6 +30,7 @@ class FakeServer {
   val forms = mutableListOf<Pair<String, Map<String, String>>>()
   val bodies = mutableListOf<Pair<String, String>>()
   val authHeaders = mutableListOf<Pair<String, String?>>()
+  val userAgents = mutableListOf<String?>()
   var handlers = mutableMapOf<String, MockRequestHandleScope.(Map<String, String>) -> HttpResponseData>()
   val store = MemoryTokenStore()
 
@@ -44,6 +45,7 @@ class FakeServer {
       forms += req.url.encodedPath to form
       bodies += req.url.encodedPath to body
       authHeaders += req.url.encodedPath to req.headers[HttpHeaders.Authorization]
+      userAgents += req.headers[HttpHeaders.UserAgent]
       handlers[req.url.encodedPath]?.invoke(this, form) ?: respond("", HttpStatusCode.NotFound)
     }),
     passkeys,
@@ -267,6 +269,29 @@ class PolarisTest {
   fun termsComeFromTheServer() = runTest {
     server.handlers["/v1/auth/terms"] = { json("""{"terms_url":"https://t","privacy_url":"https://p","version":"v2"}""") }
     assertEquals(Terms("https://t", "https://p", "v2"), server.auth().terms())
+  }
+
+  // Every request names the App, the device and the SDK, so the User can
+  // tell its Session apart in the account center.
+  @Test
+  fun requestsCarryADescriptiveUserAgent() = runTest {
+    server.handlers["/v1/auth/terms"] = { json("""{"terms_url":"https://t","privacy_url":"https://p","version":"v2"}""") }
+    server.auth().terms()
+    val ua = assertNotNull(server.userAgents.single())
+    assertTrue(Regex("""\S+/\S+ \(\S+ [^;]+; [^)]+\) Polaris-KMP/""" + Regex.escape(SDK_VERSION)).matches(ua), ua)
+  }
+
+  @Test
+  fun userAgentFormat() {
+    assertEquals(
+      "Notes/2.1.0 (Android 14; Pixel 8) Polaris-KMP/0.1.0",
+      userAgent(Device("Notes", "2.1.0", "Android", "14", "Pixel 8"), "0.1.0"),
+    )
+    // A header is ASCII: a name that is not falls back, and a blank gets a placeholder.
+    assertEquals(
+      "com.example.notes/unknown (iOS 17.5; iPhone15,2) Polaris-KMP/0.1.0",
+      userAgent(Device("笔记", "", "iOS", "17.5", "iPhone15,2", fallbackName = "com.example.notes"), "0.1.0"),
+    )
   }
 
   // Passkey: begin gives the sheet its options, then the assertion goes back
