@@ -4,6 +4,7 @@ import {
 	accountAPI,
 	androidApps,
 	androidLines,
+	backchannelSchema,
 	createSchema,
 	loginSchema,
 	m2mAPIs,
@@ -138,6 +139,19 @@ test("the webhook goes to an http(s) URL", () => {
 		),
 		{ webhookUrl: "请填写 http 或 https 开头的地址。" },
 	);
+});
+
+test("the back-channel logout URI is an http(s) URL without #, or empty", () => {
+	const check = (backchannelLogoutUri: string) =>
+		fieldErrors(backchannelSchema.safeParse({ backchannelLogoutUri }));
+	assert.deepEqual(check(""), {});
+	assert.deepEqual(check("https://shop.example.com/logout"), {});
+	assert.deepEqual(check("shop.example.com/logout"), {
+		backchannelLogoutUri: "请填写 http 或 https 开头的地址。",
+	});
+	assert.deepEqual(check("https://shop.example.com/logout#x"), {
+		backchannelLogoutUri: "地址不能带 #。",
+	});
 });
 
 test("sign-in redirects are URLs and idle days a whole number up to a year", () => {

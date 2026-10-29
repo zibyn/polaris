@@ -12,7 +12,7 @@ import (
 )
 
 const application = `-- name: Application :one
-SELECT client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, session_idle_timeout, builtin, created_at, refresh_tokens, webhook_url, webhook_secret, webhook_secret_updated_at, apple_app_ids, android_apps FROM applications WHERE client_id = $1
+SELECT client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, session_idle_timeout, builtin, created_at, refresh_tokens, webhook_url, webhook_secret, webhook_secret_updated_at, apple_app_ids, android_apps, backchannel_logout_uri FROM applications WHERE client_id = $1
 `
 
 func (q *Queries) Application(ctx context.Context, clientID string) (Application, error) {
@@ -35,6 +35,7 @@ func (q *Queries) Application(ctx context.Context, clientID string) (Application
 		&i.WebhookSecretUpdatedAt,
 		&i.AppleAppIds,
 		&i.AndroidApps,
+		&i.BackchannelLogoutUri,
 	)
 	return i, err
 }
@@ -111,8 +112,8 @@ func (q *Queries) ConsumeJTI(ctx context.Context, arg ConsumeJTIParams) (int64, 
 }
 
 const createApplication = `-- name: CreateApplication :exec
-INSERT INTO applications (client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO applications (client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, backchannel_logout_uri)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 
 type CreateApplicationParams struct {
@@ -123,6 +124,7 @@ type CreateApplicationParams struct {
 	RedirectUris           []string
 	PostLogoutRedirectUris []string
 	DefaultApi             pgtype.Text
+	BackchannelLogoutUri   pgtype.Text
 }
 
 func (q *Queries) CreateApplication(ctx context.Context, arg CreateApplicationParams) error {
@@ -134,6 +136,7 @@ func (q *Queries) CreateApplication(ctx context.Context, arg CreateApplicationPa
 		arg.RedirectUris,
 		arg.PostLogoutRedirectUris,
 		arg.DefaultApi,
+		arg.BackchannelLogoutUri,
 	)
 	return err
 }
@@ -367,6 +370,10 @@ WITH g AS (
         expires_at = EXCLUDED.expires_at,
         sealed = EXCLUDED.sealed
     RETURNING session_id
+), issued AS (
+    INSERT INTO session_applications (session_id, client_id)
+    SELECT g.session_id, $8 FROM g WHERE g.session_id IS NOT NULL
+    ON CONFLICT DO NOTHING
 )
 UPDATE sessions SET ended_at = now()
 WHERE $1::boolean AND sessions.id_hash IS NULL AND sessions.ended_at IS NULL
@@ -381,10 +388,12 @@ type SaveGrantParams struct {
 	ExpiresAt        pgtype.Timestamptz
 	SessionID        pgtype.Text
 	Sealed           []byte
+	ClientID         string
 }
 
 // Revoking the refresh token of an App Session ends the Session: the chain
-// is the Session.
+// is the Session. The Session remembers the Application, for Back-Channel
+// Logout.
 func (q *Queries) SaveGrant(ctx context.Context, arg SaveGrantParams) error {
 	_, err := q.db.Exec(ctx, saveGrant,
 		arg.Revoked,
@@ -394,6 +403,7 @@ func (q *Queries) SaveGrant(ctx context.Context, arg SaveGrantParams) error {
 		arg.ExpiresAt,
 		arg.SessionID,
 		arg.Sealed,
+		arg.ClientID,
 	)
 	return err
 }

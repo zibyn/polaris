@@ -176,6 +176,10 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 			claims := s.userClaims(ctx, g)
 			claims[goidc.ClaimAuthTime] = g.Store[storeAuthTime]
 			claims[goidc.ClaimAMR] = g.Store[storeAMR]
+			// Back-Channel Logout names the Session by it.
+			if sid, ok := g.Store[oidcstore.SessionKey].(string); ok {
+				claims["sid"] = sid
+			}
 			return claims
 		}),
 		oidcop.WithUserInfoClaims(s.userClaims),
@@ -187,7 +191,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 			},
 		}, oidcop.WithLogoutPolicies(goidc.NewLogoutPolicy("session",
 			func(*http.Request, *goidc.LogoutSession) bool { return true },
-			s.logout))),
+			s.logout)), oidcop.WithBackChannelLogout()),
 		oidcop.WithErrorRenderer(renderError),
 		oidcop.WithErrorHandler(func(_ context.Context, err error) { slog.Info("oidc", "err", err) }),
 	)
@@ -201,7 +205,10 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 // Register adds the OIDC endpoints, the direct auth API and the setup page
 // to mux.
 func (s *Service) Register(mux *http.ServeMux) {
-	s.op.RegisterRoutes(mux, clientCredentialsRules)
+	s.op.RegisterRoutes(mux, clientCredentialsRules, s.cors) // cors outermost: rejected requests get it too
+	for path := range corsMethods {
+		mux.Handle("OPTIONS "+path, s.cors(http.HandlerFunc(preflight)))
+	}
 	mux.HandleFunc("GET /altcha/challenge", s.pow.ServeChallenge)
 	mux.HandleFunc("GET /altcha/altcha.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=86400")
