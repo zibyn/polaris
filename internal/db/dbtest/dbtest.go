@@ -3,9 +3,12 @@ package dbtest
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -31,7 +34,7 @@ func Fresh(t *testing.T) *pgxpool.Pool {
 	// with the same name would drop each other's database (DROP ... WITH
 	// FORCE). Prefix the package directory.
 	_, file, _, _ := runtime.Caller(1)
-	name := "t_" + filepath.Base(filepath.Dir(file)) + "_" + t.Name()
+	name := dbName("t_" + filepath.Base(filepath.Dir(file)) + "_" + t.Name())
 	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)"); err != nil {
 		t.Fatal(err)
 	}
@@ -49,4 +52,14 @@ func Fresh(t *testing.T) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	return pool
+}
+
+// dbName fits name in Postgres's 63 bytes: a longer one is cut and gets a
+// hash of the whole, so tests sharing a long prefix stay apart.
+func dbName(name string) string {
+	if len(name) <= 63 {
+		return name
+	}
+	sum := sha256.Sum256([]byte(name))
+	return strings.ToValidUTF8(name[:54], "") + "_" + hex.EncodeToString(sum[:4])
 }
