@@ -32,6 +32,10 @@ _Avoid_: 自助注册, 注册开关, 仅邀请
 在 Polaris 注册的一个接入方:委托 Polaris 认证 User(App、小程序或 Web 端),或以自己的身份调用 API(M2M Application)。
 _Avoid_: Client, 租户, 项目
 
+**Webhook**:
+Application 选配的一个地址,Polaris 向它推送 User 的变更(注销或删除、禁用或恢复、Identifier、用户资料、Role);不含 Session 终止,那由 Back-Channel Logout 通知。
+_Avoid_: 回调, 事件订阅, 通知地址
+
 **First-party Application**:
 由该实例的运营方自己开发和运营的 Application;当前所有 Application 都属于此类。
 _Avoid_: 内部应用, 自有客户端
@@ -53,8 +57,8 @@ _Avoid_: 标识, Identifier, audience
 _Avoid_: Default Audience, 目标 API, 资源
 
 **Session**:
-一个 User 在一台设备或一个浏览器上的一次登录;App 中由 refresh token 承载,浏览器中由 cookie 承载,终止它即让该设备下线。
-_Avoid_: 登录态, 会话令牌, 设备
+一个 User 在一台设备或一个浏览器上的一次登录;App 中由 refresh token 承载,浏览器中由 cookie 承载,终止它即让该设备退出登录。
+_Avoid_: 登录态, 会话令牌, 设备, 吊销, 下线, revoke
 
 **闲置时长**:
 Session 多久没有活动就失效;每次活动重新计时。
