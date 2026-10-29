@@ -125,7 +125,8 @@ export function oidcClient({
 		return tok && tok.expiresAt - 30_000 > Date.now() ? tok.accessToken : null;
 	}
 
-	// api calls an API path, signing in first when needed; body goes as JSON.
+	// api calls an API path, signing in first when needed; body goes as JSON,
+	// a Blob (an uploaded file) as it is.
 	async function api<T>(
 		path: string,
 		init?: { method: "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown },
@@ -134,15 +135,20 @@ export function oidcClient({
 		if (!token) {
 			return login(here());
 		}
+		const raw = init?.body instanceof Blob ? init.body : undefined;
 		const res = await fetch(`${apiPrefix}${path}`, {
 			method: init?.method,
 			headers: {
 				Authorization: `Bearer ${token}`,
 				...(init?.body !== undefined && {
-					"Content-Type": "application/json",
+					"Content-Type": raw
+						? raw.type || "application/octet-stream"
+						: "application/json",
 				}),
 			},
-			body: init?.body === undefined ? undefined : JSON.stringify(init.body),
+			body:
+				raw ??
+				(init?.body === undefined ? undefined : JSON.stringify(init.body)),
 		});
 		if (res.status === 401) {
 			sessionStorage.removeItem(tokenKey);

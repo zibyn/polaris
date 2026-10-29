@@ -46,6 +46,7 @@ import { Input } from "#/components/ui/input";
 import { Item, ItemActions, ItemContent } from "#/components/ui/item";
 import { Label } from "#/components/ui/label";
 import { UserAvatar } from "#/components/user-avatar";
+import { nicknameSchema } from "#/lib/account";
 import {
 	APIError,
 	type Application,
@@ -166,7 +167,7 @@ function useHeader(): Header | null {
 	return {
 		title: (
 			<>
-				<UserAvatar name={name} size="lg" />
+				<UserAvatar name={u.nickname ?? name} picture={u.picture} size="lg" />
 				{name ?? "未绑定登录标识"}
 			</>
 		),
@@ -254,8 +255,61 @@ function UserPage() {
 	const u = useSuspenseQuery(userQuery(sub)).data;
 	const name = primaryIdentifier(u.identifiers);
 	const [changing, setChanging] = useState<Identifier["kind"] | null>(null);
+	const [renaming, setRenaming] = useState(false);
 	return (
 		<div className="space-y-10 pt-4">
+			<Section title="个人资料">
+				<ItemList>
+					<Row label="昵称">
+						{u.nickname ?? (
+							<span className="text-muted-foreground">未设置</span>
+						)}
+						{writable && (
+							<Button
+								size="sm"
+								variant="ghost"
+								onClick={() => setRenaming(true)}
+							>
+								修改
+							</Button>
+						)}
+					</Row>
+					<Row label="头像">
+						{u.picture ? (
+							<UserAvatar picture={u.picture} name={u.nickname ?? name} />
+						) : (
+							<span className="text-muted-foreground">未上传</span>
+						)}
+						{writable && u.picture && (
+							<ConfirmDialog
+								trigger={
+									<Button size="sm" variant="ghost" disabled={act.isPending}>
+										移除
+									</Button>
+								}
+								title="移除头像?"
+								action="移除头像"
+								onConfirm={() =>
+									act.mutate({
+										method: "DELETE",
+										path: "/avatar",
+										what: "移除头像失败",
+									})
+								}
+							>
+								用于处理违规图片:头像立即从各应用消失,本人可以重新上传。
+							</ConfirmDialog>
+						)}
+					</Row>
+				</ItemList>
+			</Section>
+			{renaming && (
+				<EditNickname
+					sub={u.sub}
+					current={u.nickname ?? ""}
+					onClose={() => setRenaming(false)}
+				/>
+			)}
 			<Section title="登录标识与密码">
 				<ItemList>
 					{identifierKinds.map((kind) => {
@@ -474,6 +528,71 @@ function ChangeIdentifier({
 							)}
 						</form.Field>
 					</FieldGroup>
+					<FormError error={save.error} />
+					<div className="flex justify-end gap-2">
+						<Button type="button" variant="outline" onClick={onClose}>
+							取消
+						</Button>
+						<Button type="submit" disabled={save.isPending}>
+							保存
+						</Button>
+					</div>
+				</form>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+function EditNickname({
+	sub,
+	current,
+	onClose,
+}: {
+	sub: string;
+	current: string;
+	onClose: () => void;
+}) {
+	const client = useQueryClient();
+	const save = useMutation({
+		mutationFn: (nickname: string) =>
+			api(`/users/${encodeURIComponent(sub)}/profile`, {
+				method: "PATCH",
+				body: { nickname },
+			}),
+		onSuccess: async () => {
+			await client.invalidateQueries();
+			saved();
+			onClose();
+		},
+	});
+	const form = useForm({
+		defaultValues: { nickname: current },
+		validationLogic: revalidateLogic(),
+		validators: { onDynamic: nicknameSchema },
+		onSubmit: ({ value }) => save.mutate(value.nickname.trim()),
+	});
+	return (
+		<Dialog open onOpenChange={(open) => !open && onClose()}>
+			<DialogContent>
+				<DialogTitle>修改昵称</DialogTitle>
+				<DialogDescription>留空即清除昵称。</DialogDescription>
+				<form
+					noValidate
+					className="space-y-3"
+					onSubmit={(e) => {
+						e.preventDefault();
+						form.handleSubmit();
+					}}
+				>
+					<form.Field name="nickname">
+						{(field) => (
+							<FormField field={field} label="昵称">
+								{(control) => (
+									<Input {...control} autoComplete="off" maxLength={64} />
+								)}
+							</FormField>
+						)}
+					</form.Field>
 					<FormError error={save.error} />
 					<div className="flex justify-end gap-2">
 						<Button type="button" variant="outline" onClick={onClose}>

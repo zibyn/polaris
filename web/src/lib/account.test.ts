@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+	avatarProblem,
 	bindSchema,
 	deleteSchema,
+	nicknameSchema,
 	passwordSchema,
 	providerReturn,
 	reauthChoices,
@@ -173,4 +175,39 @@ test("with 两步验证 on, a Passkey joins the TOTP as a way to reauthenticate"
 		"passkey",
 		"totp",
 	]);
+});
+
+test("a nickname is at most 32 characters with no control characters; empty clears it", () => {
+	for (const nickname of ["", "  ", "小明", "字".repeat(32), "👨‍👩‍👧 一家"]) {
+		assert.equal(
+			nicknameSchema.safeParse({ nickname }).success,
+			true,
+			nickname,
+		);
+	}
+	assert.deepEqual(
+		fieldErrors(nicknameSchema.safeParse({ nickname: "字".repeat(33) })),
+		{
+			nickname: "昵称最多 32 个字符",
+		},
+	);
+	assert.deepEqual(
+		fieldErrors(nicknameSchema.safeParse({ nickname: "a\nb" })),
+		{
+			nickname: "昵称不能含控制字符",
+		},
+	);
+});
+
+test("an avatar is a JPEG, PNG or WebP of at most 5 MB", () => {
+	assert.equal(avatarProblem({ type: "image/png", size: 5 << 20 }), undefined);
+	assert.equal(avatarProblem({ type: "image/webp", size: 10 }), undefined);
+	assert.equal(
+		avatarProblem({ type: "image/gif", size: 10 }),
+		"头像须为 JPEG、PNG 或 WebP 图片",
+	);
+	assert.equal(
+		avatarProblem({ type: "image/jpeg", size: (5 << 20) + 1 }),
+		"头像不能超过 5 MB",
+	);
 });

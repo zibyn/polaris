@@ -32,6 +32,9 @@ export type Invite = {
 	expiresAt?: string;
 };
 export type UserDetail = User & {
+	nickname?: string;
+	// The avatar's URL.
+	picture?: string;
 	hasPassword: boolean;
 	twoFactor: boolean;
 	twoFactorOrPasskey: boolean;

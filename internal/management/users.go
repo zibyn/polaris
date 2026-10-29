@@ -12,6 +12,7 @@ import (
 
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/profile"
 	"github.com/zibyn/polaris/internal/twofactor"
 )
 
@@ -173,10 +174,41 @@ func (s *Service) deleteUser(ctx context.Context, in *subPath) (*struct{}, error
 	}
 	return nil, s.providers.DeleteUser(ctx, in.Sub, func(ctx context.Context, sub string) error {
 		return s.guardOwners(ctx, func(q *sqlc.Queries) error {
+			if err := profile.DeleteAvatar(ctx, q, sub); err != nil {
+				return err
+			}
 			_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: callerSub(ctx)})
 			return err
 		})
 	})
+}
+
+type setNicknameInput struct {
+	Sub  string `path:"sub"`
+	Body struct {
+		Nickname string `json:"nickname" doc:"Trimmed; 1–32 characters with no control characters, or empty to clear it"`
+	}
+}
+
+func (s *Service) setNickname(ctx context.Context, in *setNicknameInput) (*struct{}, error) {
+	if err := s.mayManage(ctx, in.Sub); err != nil {
+		return nil, err
+	}
+	err := s.profiles.SetNickname(ctx, in.Sub, in.Body.Nickname, callerSub(ctx))
+	var invalid profile.Invalid
+	if errors.As(err, &invalid) {
+		return nil, huma.Error400BadRequest(invalid.Error())
+	}
+	return nil, err
+}
+
+// removeAvatar takes down an avatar that breaks the rules; an admin cannot
+// put one up.
+func (s *Service) removeAvatar(ctx context.Context, in *subPath) (*struct{}, error) {
+	if err := s.mayManage(ctx, in.Sub); err != nil {
+		return nil, err
+	}
+	return nil, s.profiles.RemoveAvatar(ctx, in.Sub, callerSub(ctx))
 }
 
 type replaceIdentifierInput struct {

@@ -74,6 +74,8 @@ docker compose exec -T postgres pg_restore -U polaris -d polaris < polaris-2026-
 docker compose start polaris
 ```
 
+头像存在 PG 里(`blobs` 表,每个 512×512 JPEG 约几十 KB),会让 `pg_dump` 随用户数变大。`/avatars/` 的响应可以永久缓存(地址随每次上传改变),用户多时建议在 Caddy 或 CDN 上缓存这一路径。
+
 ## 升级
 
 迁移脚本永不删除、永不合并,任何旧版本都能直接升到最新版。**不支持降级**,也**不支持滚动升级**。

@@ -43,6 +43,7 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
   - 所同意的协议版本号,见 [security-compliance.md](security-compliance.md#协议同意);
   - 发码请求和密码登录请求还要附带 PoW 解答。`next: "password"` 那一步的改密请求不带:它是同一次登录已经在进行的下一步,密码本身就是证明。取 Passkey challenge(`passkey=begin`)不带 PoW:它不发码也不验密码,只按 IP 限流兜底(ADR 0014)。
 - **其他用途**:注销账号也有对应接口。
+- **用户资料**:App 用签发给本人的 access token(鉴权与注销接口相同,只能改本人;无效或缺失返回 `401`)调用:`PATCH /v1/auth/profile` 改昵称(`{"nickname": ""}` 清除),`PUT /v1/auth/profile/avatar` 上传头像(请求体就是图片:JPEG/PNG/WebP、≤ 5 MB,按内容识别;超限 `413`,不是图片 `400`),`DELETE /v1/auth/profile/avatar` 移除。都返回当前的 `{nickname, picture}`。头像统一裁成 512×512 JPEG、去掉 EXIF,经 `GET /avatars/{key}` 公开提供(不鉴权,`Cache-Control: public, max-age=31536000, immutable`)。
 
 ### 直连认证 API 的 Passkey 登录
 
@@ -60,7 +61,7 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
 | 令牌 | 形态 | 寿命 | 要点 |
 |---|---|---|---|
 | access token | JWT,RFC 9068(`typ: at+jwt`),RS256 | 10 分钟 | `aud` 为 API 标识符;带 `client_id`、`roles`、`entitlements`(只限当前 API) |
-| ID token | JWT,RS256 | — | `sub`、`amr`、`sid`(签发它的 Session);scope 为 `phone` / `email` 时带对应 claim;不带角色 |
+| ID token | JWT,RS256 | — | `sub`、`amr`、`sid`(签发它的 Session);scope 为 `phone` / `email` / `profile` 时带对应 claim(`profile`:`nickname`、`picture`,只发有值的,与 userinfo 相同);不带角色 |
 | refresh token | 不透明 | 跟随 Session | 每次刷新都轮换;最近换下的那个 60 秒内再来,再轮换一次签发新令牌(宽限,审计 `refresh_token.grace`);其余重用终止整个 Session |
 
 - **`amr`**:按 RFC 8176 取 `sms`、`otp`、`pwd`、`hwk` / `swk`;做过两步验证(TOTP 或恢复码)时为 `[第一因素, "otp", "mfa"]`(第一因素的值加上 `otp`、`mfa`,不重复:邮箱验证码登录为 `["otp", "mfa"]`,短信为 `["sms", "otp", "mfa"]`);Passkey 登录为 `["swk", "mfa"]`(凭证可跨设备同步)或 `["hwk", "mfa"]`(仅本机),Passkey 本身已验证持有与本人,不再加 `otp`;Application 以 `mfa` 判断是否做过两步验证;Provider 登录一律为自定义值 `fed`;接受注册邀请建立的那次会话为 `["otp"]`(链接证明邮箱控制权,与邮箱验证码同一种证据,见 [authentication.md](authentication.md#注册邀请))。

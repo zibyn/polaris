@@ -3,9 +3,12 @@ package com.zibyn.polaris
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.UserAgent
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.delete
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -59,6 +62,14 @@ public data class Tokens(
 
 /** What the terms checkbox links to, and the version to sign in with once it is ticked. */
 public data class Terms(val termsUrl: String, val privacyUrl: String, val version: String)
+
+/** The User's 用户资料, as every Application sees it; null for unset. */
+@Serializable
+public data class Profile(
+  val nickname: String? = null,
+  /** The avatar's URL: a 512×512 JPEG, a new URL after every upload. */
+  val picture: String? = null,
+)
 
 /** A Passkey on the User's account, from the account center. */
 @Serializable
@@ -432,6 +443,50 @@ public class Polaris(
     }
   }
 
+  /**
+   * Sets the User's nickname, trimmed; an empty one clears it. At most 32
+   * characters and no control characters, else throws [PolarisException]
+   * `invalid_request` with the reason to show.
+   */
+  @Throws(Exception::class)
+  public suspend fun setNickname(nickname: String): Profile = profileCall {
+    http.patch("$issuer/v1/auth/profile") {
+      bearerAuth(it)
+      contentType(ContentType.Application.Json)
+      setBody(json.encodeToString(NicknameRequest(nickname)))
+    }
+  }
+
+  /**
+   * Uploads [image] (JPEG, PNG or WebP bytes, at most 5 MB) as the User's
+   * avatar; Polaris crops it square and keeps a 512×512 JPEG. A file that is
+   * not one throws [PolarisException] `invalid_request`.
+   */
+  @Throws(Exception::class)
+  public suspend fun uploadAvatar(image: ByteArray): Profile = profileCall {
+    http.put("$issuer/v1/auth/profile/avatar") {
+      bearerAuth(it)
+      contentType(ContentType.Application.OctetStream)
+      setBody(image)
+    }
+  }
+
+  /** Removes the User's avatar. */
+  @Throws(Exception::class)
+  public suspend fun removeAvatar(): Profile = profileCall {
+    http.delete("$issuer/v1/auth/profile/avatar") { bearerAuth(it) }
+  }
+
+  // A 401 means the Session is gone: forget the tokens.
+  private suspend fun profileCall(call: suspend (token: String) -> HttpResponse): Profile {
+    val r = call(accessToken())
+    if (r.status == HttpStatusCode.Unauthorized) {
+      mutex.withLock { save(null); account = null }
+      throw signedOut()
+    }
+    return decode<Profile>(r)
+  }
+
   // Call with the mutex held. The account center's token, which the Account
   // API takes; in memory only, so it is either from this run or gone.
   private fun accountAccessToken(): String {
@@ -519,6 +574,8 @@ private fun newVerifier(): String = base64Url.encode(Uuid.random().toByteArray()
 )
 
 @Serializable private class PasskeyOptionsResponse(val options: JsonElement)
+
+@Serializable private class NicknameRequest(val nickname: String)
 
 @Serializable private class CodeResponse(@SerialName("authorization_code") val authorizationCode: String)
 

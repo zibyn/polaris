@@ -24,6 +24,7 @@ import (
 	"github.com/zibyn/polaris/internal/oidcstore"
 	"github.com/zibyn/polaris/internal/otp"
 	"github.com/zibyn/polaris/internal/passkey"
+	"github.com/zibyn/polaris/internal/profile"
 	"github.com/zibyn/polaris/internal/provider"
 	"github.com/zibyn/polaris/internal/twofactor"
 )
@@ -44,6 +45,7 @@ type Service struct {
 	passkeys  *passkey.Store
 	ids       *identity.Store
 	codes     *otp.Service
+	profiles  *profile.Store
 }
 
 func New(pool *pgxpool.Pool, keyring *crypt.Keyring, issuer string) (*Service, error) {
@@ -52,7 +54,7 @@ func New(pool *pgxpool.Pool, keyring *crypt.Keyring, issuer string) (*Service, e
 		return nil, err
 	}
 	channels := channel.NewStore(pool, keyring)
-	return &Service{issuer: issuer, pool: pool, keyring: keyring, q: sqlc.New(pool), keys: oidcstore.NewKeys(pool, keyring), channels: channels, twoFactor: twofactor.New(pool, keyring), providers: provider.NewStore(pool, keyring), passkeys: passkeys, ids: identity.New(pool, keyring), codes: otp.New(pool, channels)}, nil
+	return &Service{issuer: issuer, pool: pool, keyring: keyring, q: sqlc.New(pool), keys: oidcstore.NewKeys(pool, keyring), channels: channels, twoFactor: twofactor.New(pool, keyring), providers: provider.NewStore(pool, keyring), passkeys: passkeys, ids: identity.New(pool, keyring), codes: otp.New(pool, channels), profiles: profile.New(pool, issuer)}, nil
 }
 
 type callerKey struct{}
@@ -103,6 +105,9 @@ func (s *Service) Register(mux *http.ServeMux) {
 	op(api, http.MethodDelete, "delete-user", "users:write", "/users/{sub}", "Delete a User and all their data", s.deleteUser, http.StatusConflict)
 	op(api, http.MethodDelete, "reset-two-factor", "users:write", "/users/{sub}/2fa", "Reset a User's 两步验证: their TOTP and 恢复码 go, their Sessions stay", s.resetTwoFactor, http.StatusConflict)
 	op(api, http.MethodPut, "replace-identifier", "users:write", "/users/{sub}/identifiers/{kind}", "Set a User's Identifier of a kind, replacing theirs", s.replaceIdentifier, http.StatusConflict)
+	// 用户资料: an admin edits the nickname and can only take an avatar down, never upload one.
+	op(api, http.MethodPatch, "set-user-nickname", "users:write", "/users/{sub}/profile", "Set or clear a User's nickname; 400 for one refused", s.setNickname, http.StatusBadRequest)
+	op(api, http.MethodDelete, "remove-user-avatar", "users:write", "/users/{sub}/avatar", "Take a User's avatar down", s.removeAvatar)
 	get(api, "list-user-passkeys", "users:read", "/users/{sub}/passkeys", "A User's Passkeys", s.listPasskeys)
 	op(api, http.MethodDelete, "remove-user-passkey", "users:write", "/users/{sub}/passkeys/{id}", "Delete one of a User's Passkeys; its audit names the admin, not the User", s.removePasskey)
 	get(api, "list-external-identities", "users:read", "/users/{sub}/external-identities", "A User's External Identities", s.listExternalIdentities)
@@ -264,6 +269,8 @@ type Invite struct {
 
 type UserDetail struct {
 	User
+	Nickname           string `json:"nickname,omitempty"`
+	Picture            string `json:"picture,omitempty" doc:"The avatar's URL"`
 	HasPassword        bool   `json:"hasPassword"`
 	TwoFactor          bool   `json:"twoFactor" doc:"两步验证 is on"`
 	TwoFactorOrPasskey bool   `json:"twoFactorOrPasskey" doc:"已开启两步验证或仍有至少一把 Passkey"`
@@ -360,6 +367,7 @@ func (s *Service) getUser(ctx context.Context, in *struct {
 	if err != nil {
 		return nil, err
 	}
+	u.Picture = s.profiles.Picture(r.Avatar)
 	return &getUserOutput{Body: u}, nil
 }
 
@@ -372,6 +380,7 @@ func userDetail(r sqlc.GetUserRow) (UserDetail, error) {
 	}
 	return UserDetail{
 		User:               u,
+		Nickname:           r.Nickname,
 		HasPassword:        r.HasPassword,
 		TwoFactor:          r.TwoFactor,
 		TwoFactorOrPasskey: r.TwoFactorOrPasskey,
