@@ -57,6 +57,18 @@ func SessionDefaults(browser bool) (idleSecs, maxSecs int32) {
 	return 90 * 86400, 180 * 86400
 }
 
+// CreateSession signs sub in for clientID: a browser Session under the
+// cookie hash idHash, or an App Session if idHash is nil. Its device comes
+// from ctx (WithDevice). pgx.ErrNoRows: the User is disabled.
+func (s *Store) CreateSession(ctx context.Context, idHash []byte, clientID, sub string, authTime time.Time, amr []string) (sqlc.CreateSessionRow, error) {
+	ip, ua := Device(ctx)
+	idle, maxLife := SessionDefaults(idHash != nil)
+	return s.q.CreateSession(ctx, sqlc.CreateSessionParams{
+		IDHash: idHash, ClientID: clientID, UserID: sub, AuthTime: pgtype.Timestamptz{Time: authTime, Valid: true},
+		Amr: amr, Ip: ip, UserAgent: ua, DefaultIdleSecs: idle, DefaultMaxSecs: maxLife,
+	})
+}
+
 // GraceWindow is how long the refresh token a rotation spent last still
 // rotates its grant again instead of counting as reuse (ADR 0019).
 const GraceWindow = 60 * time.Second

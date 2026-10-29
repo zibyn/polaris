@@ -5,24 +5,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
-
-	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/oidcstore"
 )
 
 // session starts a Session for sub: a browser one, or an App one for clientID.
 func (e *env) session(sub, clientID string, browser bool) string {
 	e.t.Helper()
-	p := sqlc.CreateSessionParams{
-		ClientID: clientID, UserID: sub, Amr: []string{"sms"},
-		AuthTime: pgtype.Timestamptz{Time: time.Now(), Valid: true},
-	}
+	var idHash []byte
 	if browser {
-		p.IDHash = []byte(sub + clientID)
+		idHash = []byte(sub + clientID)
 	}
-	p.DefaultIdleSecs, p.DefaultMaxSecs = oidcstore.SessionDefaults(browser)
-	s, err := sqlc.New(e.pool).CreateSession(context.Background(), p)
+	s, err := oidcstore.New(e.pool, e.keyring).CreateSession(context.Background(), idHash, clientID, sub, time.Now(), []string{"sms"})
 	if err != nil {
 		e.t.Fatal(err)
 	}
