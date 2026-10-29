@@ -248,9 +248,9 @@ func (s *Store) SignIn(ctx context.Context, kind, value string) (string, error) 
 }
 
 // AddIdentifier binds a verified phone number or email to sub; never one
-// another User holds (ADR 0003).
+// another User holds (ADR 0003). Applications hear of it by webhook.
 func (s *Store) AddIdentifier(ctx context.Context, sub, kind, value string) error {
-	err := s.q.AddIdentifier(ctx, sqlc.AddIdentifierParams{UserID: sub, Kind: kind, Value: value})
+	err := s.q.BindIdentifier(ctx, sqlc.BindIdentifierParams{UserID: sub, Kind: kind, Value: value})
 	if isUniqueViolation(err) {
 		return ErrIdentifierTaken
 	}
