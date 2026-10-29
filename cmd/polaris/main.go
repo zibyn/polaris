@@ -29,6 +29,7 @@ import (
 	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/login"
 	"github.com/zibyn/polaris/internal/management"
+	"github.com/zibyn/polaris/internal/metrics"
 	"github.com/zibyn/polaris/internal/oidcstore"
 	"github.com/zibyn/polaris/internal/otp"
 	"github.com/zibyn/polaris/internal/passkey"
@@ -112,6 +113,24 @@ func serve() error {
 			managementSvc.Register, accountSvc.Register),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	servers := []*http.Server{srv}
+	if cfg.MetricsListen != "" {
+		mux := http.NewServeMux()
+		mux.Handle("GET /metrics", metrics.Handler(pool))
+		m := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+		// Bound here so a port that is taken fails startup, not a goroutine.
+		ln, err := net.Listen("tcp", cfg.MetricsListen)
+		if err != nil {
+			return fmt.Errorf("POLARIS_METRICS_LISTEN: %w", err)
+		}
+		servers = append(servers, m)
+		slog.Info("metrics listening", "addr", cfg.MetricsListen)
+		go func() {
+			if err := m.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("metrics", "err", err)
+			}
+		}()
+	}
 	cleanupTasks = append(cleanupTasks, func(ctx context.Context, _ *pgxpool.Pool) error { return keys.RotateDue(ctx) })
 	go runCleanup(ctx, pool)
 	go webhook.New(pool, keyring, cfg.Issuer).Run(ctx)
@@ -121,8 +140,10 @@ func serve() error {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := srv.Shutdown(shutdown); err != nil {
-			slog.Error("shutdown", "err", err)
+		for _, s := range servers {
+			if err := s.Shutdown(shutdown); err != nil {
+				slog.Error("shutdown", "err", err)
+			}
 		}
 	}()
 	slog.Info("listening", "addr", cfg.Listen, "issuer", cfg.Issuer)

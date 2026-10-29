@@ -20,6 +20,7 @@ import (
 	"github.com/zibyn/polaris/internal/channel"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/metrics"
 )
 
 const (
@@ -39,6 +40,9 @@ const (
 	ttl           = 5 * time.Minute
 	auditDailyCap = "send.daily_cap_reached"
 )
+
+// channelKind names a Channel by what it is, for metrics labels.
+var channelKind = map[string]string{"phone": "sms", "email": "email"}
 
 type Service struct {
 	pool     *pgxpool.Pool
@@ -69,6 +73,7 @@ func (s *Service) Send(ctx context.Context, kind, value, ip string) error {
 	}
 	if err := ch.Send(ctx, value, code); err != nil {
 		slog.Error("send code", "kind", kind, "err", err)
+		metrics.CodeSendFailures.WithLabelValues(channelKind[kind]).Inc()
 		return ErrSendFailed
 	}
 	return nil
@@ -91,6 +96,7 @@ func (s *Service) SendInvite(ctx context.Context, value, link string) error {
 	}
 	if err := ch.SendLink(ctx, value, link); err != nil {
 		slog.Error("send invite", "err", err)
+		metrics.CodeSendFailures.WithLabelValues("email").Inc()
 		return ErrInviteFailed
 	}
 	return nil
