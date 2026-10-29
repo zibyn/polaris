@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -16,10 +17,16 @@ type Attempt struct {
 	ClientID, IP, UA string
 }
 
+// UserAgent is how much of a User-Agent is kept, by a Session or a login
+// event: 512 bytes, valid UTF-8 for a text column, a rune cut in half
+// dropped.
+func UserAgent(ua string) string {
+	return strings.ToValidUTF8(ua[:min(len(ua), 512)], "")
+}
+
 // detail is a login event's detail: the Attempt and extra.
 func (a Attempt) detail(extra map[string]any) []byte {
-	ua := []rune(a.UA)
-	d := map[string]any{"client_id": a.ClientID, "ip": a.IP, "ua": string(ua[:min(len(ua), 256)])}
+	d := map[string]any{"client_id": a.ClientID, "ip": a.IP, "ua": UserAgent(a.UA)}
 	maps.Copy(d, extra)
 	out, _ := json.Marshal(d)
 	return out

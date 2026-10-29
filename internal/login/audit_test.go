@@ -96,7 +96,8 @@ func TestHostedLoginIsAudited(t *testing.T) {
 	}
 }
 
-// A User-Agent is kept to 256 characters.
+// A User-Agent is kept to 512 bytes, as a Session keeps it, without a
+// character cut in half.
 func TestLoginAuditTruncatesUserAgent(t *testing.T) {
 	e := start(t)
 	e.ua = strings.Repeat("浏", 300)
@@ -104,7 +105,7 @@ func TestLoginAuditTruncatesUserAgent(t *testing.T) {
 	resp, _ := e.codeLogin(page, "+8613800138000", "+8613800138000")
 	e.code(resp)
 	got := e.events("login.succeeded")
-	if len(got) != 1 || got[0].Detail["ua"] != strings.Repeat("浏", 256) {
+	if len(got) != 1 || got[0].Detail["ua"] != strings.Repeat("浏", 170) {
 		t.Errorf("ua: %+v", got)
 	}
 }
