@@ -41,8 +41,9 @@ func (e *env) queued(what string, changed ...string) {
 	}
 }
 
-// A User changing their own phone number or email queues user.updated;
-// changing Credentials or External Identities does not.
+// A User changing their own phone number queues user.updated; changing
+// Credentials or External Identities does not. Which writes queue what is
+// TestUserEventQueries in internal/db.
 func TestWebhookOnOwnChanges(t *testing.T) {
 	e := start(t)
 	e.hooked()
@@ -55,15 +56,6 @@ func TestWebhookOnOwnChanges(t *testing.T) {
 		t.Fatalf("change phone: %d", c)
 	}
 	e.queued("change phone", "phone")
-	e.call("POST", tok, "/v1/account/identifiers/email/code", map[string]string{"value": "alice@example.com"}, nil)
-	if c := e.call("PUT", tok, "/v1/account/identifiers/email", map[string]string{"value": "alice@example.com", "code": e.inbox.take("alice@example.com")}, nil); c != 204 {
-		t.Fatalf("bind email: %d", c)
-	}
-	e.queued("bind email", "email")
-	if c := e.call("DELETE", tok, "/v1/account/identifiers/email", nil, nil); c != 204 {
-		t.Fatalf("unbind email: %d", c)
-	}
-	e.queued("unbind email", "email")
 
 	if c := e.call("PUT", tok, "/v1/account/password", map[string]string{"password": "password1"}, nil); c != 204 {
 		t.Fatalf("set password: %d", c)
