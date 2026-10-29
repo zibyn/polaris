@@ -145,11 +145,18 @@ export type ApplicationSettings = {
 	backchannelLogoutUri?: string; // confidential only; empty for none
 	appleAppIds: string[];
 	androidApps: AndroidApp[];
+	jwks?: { keys: unknown[] }; // Application 公钥; absent keeps the stored set
 };
+// TokenAuthMethod is the 客户端认证方式; none for a public Application.
+export type TokenAuthMethod =
+	| "none"
+	| "client_secret_basic"
+	| "private_key_jwt";
 export type Application = ApplicationSettings & {
 	clientId: string;
 	type: "public" | "confidential" | "m2m";
 	builtin: boolean;
+	tokenAuthMethod: TokenAuthMethod;
 	createdAt: string;
 	webhookSecretUpdatedAt?: string;
 };

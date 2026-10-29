@@ -2,9 +2,14 @@ package management
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -12,6 +17,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -33,6 +39,9 @@ type ApplicationSettings struct {
 	BackchannelLogoutURI   string       `json:"backchannelLogoutUri,omitempty" doc:"Where OIDC Back-Channel Logout tokens are sent when a Session ends; Web (confidential) Applications only, empty for none"`
 	AppleAppIDs            []string     `json:"appleAppIds" nullable:"false" doc:"Team ID + Bundle ID, as ABCDE12345.com.example.app"`
 	AndroidApps            []AndroidApp `json:"androidApps" nullable:"false"`
+	// Kept apart from the authentication method: registering keys switches
+	// nothing, so a client can deploy them first (ADR 0023).
+	JWKS json.RawMessage `json:"jwks,omitempty" doc:"Application 公钥 checking its private_key_jwt assertions, as a JWKS of public RSA (2048 bits or more) and EC P-256 keys, each with a distinct kid, at most 5; replaces the registered set, absent keeps it. Not for public Applications."`
 }
 
 type AndroidApp struct {
@@ -46,6 +55,7 @@ type Application struct {
 	Builtin   bool      `json:"builtin" doc:"The console: read-only"`
 	CreatedAt time.Time `json:"createdAt"`
 	ApplicationSettings
+	TokenAuthMethod        string     `json:"tokenAuthMethod" enum:"none,client_secret_basic,private_key_jwt" doc:"How it authenticates at the token endpoint; none for a public Application. Switch it with the auth-method operation."`
 	WebhookSecretUpdatedAt *time.Time `json:"webhookSecretUpdatedAt,omitempty" doc:"When the webhook signing key was last set"`
 }
 
@@ -101,7 +111,12 @@ func (s *Service) applications(ctx context.Context, clientID string) ([]Applicat
 				Name: r.Name, RedirectURIs: r.RedirectUris, PostLogoutRedirectURIs: r.PostLogoutRedirectUris,
 				DefaultAPI: r.DefaultApi, SessionIdleTimeout: r.SessionIdleTimeout, RefreshTokens: r.RefreshTokens,
 				WebhookURL: r.WebhookUrl, BackchannelLogoutURI: r.BackchannelLogoutUri, AppleAppIDs: r.AppleAppIds,
+				JWKS: r.Jwks,
 			},
+			TokenAuthMethod: r.TokenAuthMethod,
+		}
+		if r.Type == "public" {
+			a.TokenAuthMethod = "none"
 		}
 		if r.WebhookSecretUpdatedAt.Valid {
 			a.WebhookSecretUpdatedAt = &r.WebhookSecretUpdatedAt.Time
@@ -166,6 +181,9 @@ func (s *Service) updateApplication(ctx context.Context, in *struct {
 	// (ADR 0015).
 	if app.Type == "m2m" && in.Body.DefaultAPI != app.DefaultAPI {
 		return nil, huma.Error422UnprocessableEntity("M2M Application 的默认 API 创建后不可改")
+	}
+	if app.TokenAuthMethod == privateKeyJWT && in.Body.JWKS != nil && emptyJWKS(in.Body.JWKS) {
+		return nil, huma.Error422UnprocessableEntity("私钥签名认证时不能清空 Application 公钥")
 	}
 	_, err = s.saveSettings(ctx, s.q, in.ClientID, app.Type, &in.Body)
 	return nil, err
@@ -232,6 +250,14 @@ func (st *ApplicationSettings) validate(typ string) error {
 			return identity.Invalid("Back-Channel Logout URI 须为 http(s) 地址,不带 #")
 		}
 	}
+	if st.JWKS != nil {
+		if err := validJWKS(st.JWKS); err != nil {
+			return err
+		}
+		if typ == "public" && !emptyJWKS(st.JWKS) {
+			return identity.Invalid("public Application 不做客户端认证,不登记公钥")
+		}
+	}
 	for _, id := range st.AppleAppIDs {
 		if !appleAppID.MatchString(id) {
 			return identity.Invalid("Apple App ID 须为 Team ID.Bundle ID:" + id)
@@ -273,7 +299,7 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 		PostLogoutRedirectUris: append([]string{}, st.PostLogoutRedirectURIs...),
 		DefaultApi:             st.DefaultAPI, IdleSecs: st.SessionIdleTimeout, RefreshTokens: st.RefreshTokens,
 		WebhookUrl: st.WebhookURL, WebhookSecret: secret, BackchannelLogoutUri: st.BackchannelLogoutURI,
-		AppleAppIds: append([]string{}, st.AppleAppIDs...), AndroidApps: android,
+		AppleAppIds: append([]string{}, st.AppleAppIDs...), AndroidApps: android, Jwks: st.JWKS,
 	})
 	var pg *pgconn.PgError
 	switch {
@@ -281,6 +307,8 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 		return 0, huma.Error422UnprocessableEntity("没有这个 API")
 	case errors.As(err, &pg) && pg.ConstraintName == "applications_webhook_check":
 		return 0, huma.Error422UnprocessableEntity("webhook 需要签名密钥")
+	case errors.As(err, &pg) && pg.ConstraintName == "applications_jwks_check": // switched to private_key_jwt meanwhile
+		return 0, huma.Error422UnprocessableEntity("私钥签名认证时不能清空 Application 公钥")
 	}
 	return n, err
 }
@@ -410,8 +438,116 @@ func (s *Service) newSecret(ctx context.Context, in *clientIDPath) (*newSecretOu
 	if err != nil || n > 0 {
 		return out, err
 	}
-	if err := s.notBuiltin(ctx, in.ClientID); err != nil {
+	app, err := s.application(ctx, in.ClientID)
+	switch {
+	case err != nil:
 		return nil, err
+	case app.Builtin:
+		return nil, errBuiltinApplication
+	case app.TokenAuthMethod == privateKeyJWT:
+		return nil, huma.Error409Conflict("私钥签名认证没有 client secret;切回共享密钥会生成新的")
 	}
 	return nil, huma.Error409Conflict("public Application 没有 client secret")
+}
+
+const (
+	clientSecretBasic = "client_secret_basic"
+	privateKeyJWT     = "private_key_jwt"
+)
+
+type setAuthMethodInput struct {
+	ClientID string `path:"clientId"`
+	Body     struct {
+		Method string `json:"method" enum:"client_secret_basic,private_key_jwt"`
+	}
+}
+
+type setAuthMethodOutput struct {
+	Body struct {
+		Secret string `json:"secret,omitempty" doc:"The new client secret when switched to client_secret_basic; shown this once"`
+	}
+}
+
+// setAuthMethod switches between the two ways a non-public Application
+// authenticates; only one works at a time (ADR 0023). private_key_jwt drops
+// the secret at once and needs a registered key; client_secret_basic issues a
+// new secret, every time, and keeps the keys.
+func (s *Service) setAuthMethod(ctx context.Context, in *setAuthMethodInput) (*setAuthMethodOutput, error) {
+	app, err := s.application(ctx, in.ClientID)
+	switch {
+	case err != nil:
+		return nil, err
+	case app.Builtin:
+		return nil, errBuiltinApplication
+	case app.Type == "public":
+		return nil, huma.Error409Conflict("public Application 不做客户端认证")
+	}
+	out := &setAuthMethodOutput{}
+	params := sqlc.SetTokenAuthMethodParams{ClientID: in.ClientID, Method: in.Body.Method}
+	if in.Body.Method == clientSecretBasic {
+		out.Body.Secret = rand.Text()
+		params.SecretHash = oidcstore.SecretHash(out.Body.Secret)
+	}
+	n, err := s.q.SetTokenAuthMethod(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, huma.Error409Conflict("先登记 Application 公钥,再切换到私钥签名")
+	}
+	return out, nil
+}
+
+// maxJWKSKeys is room for a key and its replacement during a rotation, and some.
+const maxJWKSKeys = 5
+
+// validJWKS accepts a JWKS of public signing keys Polaris can check RS256 or
+// ES256 assertions with, each named by its own kid.
+func validJWKS(raw json.RawMessage) error {
+	var set struct {
+		Keys *[]json.RawMessage `json:"keys"`
+	}
+	if err := json.Unmarshal(raw, &set); err != nil || set.Keys == nil {
+		return identity.Invalid(`Application 公钥须为 JWKS:{"keys": [...]}`)
+	}
+	if len(*set.Keys) > maxJWKSKeys {
+		return identity.Invalid(fmt.Sprintf("Application 公钥最多 %d 把", maxJWKSKeys))
+	}
+	kids := map[string]bool{}
+	for _, k := range *set.Keys {
+		var key jose.JSONWebKey
+		if err := key.UnmarshalJSON(k); err != nil {
+			return identity.Invalid("不是合法的 JWK:" + err.Error())
+		}
+		switch pub := key.Key.(type) {
+		case *rsa.PublicKey:
+			if pub.N.BitLen() < 2048 {
+				return identity.Invalid("RSA 公钥至少 2048 位:" + key.KeyID)
+			}
+		case *ecdsa.PublicKey:
+			if pub.Curve != elliptic.P256() {
+				return identity.Invalid("EC 公钥只支持 P-256:" + key.KeyID)
+			}
+		case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey, []byte:
+			return identity.Invalid("只登记公钥,JWK 不能带私钥部分:" + key.KeyID)
+		default:
+			return identity.Invalid("只支持 RSA 与 EC P-256 公钥:" + key.KeyID)
+		}
+		if key.KeyID == "" {
+			return identity.Invalid("每把公钥都要有 kid")
+		}
+		if kids[key.KeyID] {
+			return identity.Invalid("kid 重复:" + key.KeyID)
+		}
+		kids[key.KeyID] = true
+	}
+	return nil
+}
+
+// emptyJWKS is for a JWKS validJWKS accepted.
+func emptyJWKS(raw json.RawMessage) bool {
+	var set struct {
+		Keys []json.RawMessage `json:"keys"`
+	}
+	return json.Unmarshal(raw, &set) == nil && len(set.Keys) == 0
 }

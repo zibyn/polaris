@@ -149,6 +149,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 		oidcop.WithNoneAuthn(),
 		oidcop.WithSecretBasicAuthn(),
 		oidcop.WithSecretPostAuthn(),
+		oidcop.WithPrivateKeyJWTAuthn(goidc.SigAlgRS256, goidc.SigAlgES256),
 		oidcop.WithClientManager(store),
 		oidcop.WithClientSecretVerifier(oidcstore.VerifyClientSecret),
 		oidcop.WithJTIConsumer(store.ConsumeJTI),
@@ -234,7 +235,8 @@ func (s *Service) Register(mux *http.ServeMux) {
 // clientCredentialsRules applies ADR 0015 to a client_credentials request:
 // its scope is ignored (the token is for the Application's default API and
 // grants nothing else), and the secret goes in the Authorization header, not
-// the body — an M2M Application authenticates with client_secret_basic only.
+// the body — an M2M Application authenticates with client_secret_basic, or
+// private_key_jwt once switched (ADR 0023), never client_secret_post.
 // Only an m2m Application may use the grant, so the grant type alone
 // identifies such a request, wherever the token endpoint ends up mounted.
 func clientCredentialsRules(next http.Handler) http.Handler {

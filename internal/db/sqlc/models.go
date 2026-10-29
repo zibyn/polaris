@@ -33,6 +33,8 @@ type Application struct {
 	AppleAppIds            []string
 	AndroidApps            []byte
 	BackchannelLogoutUri   pgtype.Text
+	TokenAuthMethod        string
+	Jwks                   []byte
 }
 
 type ApplicationRole struct {
