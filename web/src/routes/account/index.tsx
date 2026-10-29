@@ -585,6 +585,7 @@ function Security({ me, guard }: { me: Me; guard: Guard }) {
 			<ItemList>
 				{me.passwordAllowed && (
 					<Row
+						id="password"
 						label="密码"
 						hint={
 							me.hasPassword
@@ -1177,7 +1178,7 @@ function RecentLogins() {
 			)}
 			<p className="mt-3 text-[13px] text-muted-foreground">
 				有不认识的登录?
-				<a className="underline" href="#passkeys">
+				<a className="underline" href="#password">
 					修改密码
 				</a>
 				,并在上方
@@ -1488,16 +1489,18 @@ function choiceLabel(m: ReauthChoice): string {
 }
 
 function Row({
+	id,
 	label,
 	hint,
 	children,
 }: {
+	id?: string;
 	label: React.ReactNode;
 	hint?: string;
 	children: React.ReactNode;
 }) {
 	return (
-		<Item>
+		<Item id={id}>
 			<ItemContent className="min-w-0">
 				<ItemTitle className="font-normal">{label}</ItemTitle>
 				{hint && (
