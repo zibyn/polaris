@@ -140,6 +140,7 @@ export type ApplicationSettings = {
 	refreshTokens: boolean;
 	webhookUrl?: string;
 	webhookSecret?: string; // write-only; empty keeps the stored one
+	backchannelLogoutUri?: string; // confidential only; empty for none
 	appleAppIds: string[];
 	androidApps: AndroidApp[];
 };

@@ -60,7 +60,7 @@
 - **创建**见[创建应用与接入清单](#创建应用与接入清单)。
 - **应用详情**分三个标签;后端服务没有「登录」(它不登入任何 User),换成「角色」:
   - **基本**:名称、类型(只读;「无后端应用 / 有后端应用 / 后端服务」,写明各适合什么、创建后不能改)、`client_id`、client secret、默认 API 资源(链到对应的 API 资源详情);页面底部是红框删除区。后端服务的默认 API 资源只读:它换到的令牌只对这个 API 有效,创建后不能改。
-  - **登录**:回调地址;「高级」折叠区里放退出后跳转地址、「闲置多久需重新登录」、「允许 App 保持登录」。无后端应用多一组「原生 App 关联」:iOS 的 Team ID + Bundle ID、Android 的包名 + SHA-256 签名指纹,各按行登记在文本框里,可以增删;保存后认证服务据此生成 `/.well-known/` 关联文件(见 [authentication.md](authentication.md#密码管理器适配)),iOS 和 Android 就允许这些 App 使用这个域名的通行密钥和密码自动填充。有后端应用不显示这一组。后端服务不登录,没有这个标签。
+  - **登录**:回调地址;「高级」折叠区里放退出后跳转地址、「闲置多久需重新登录」、「允许 App 保持登录」。无后端应用多一组「原生 App 关联」:iOS 的 Team ID + Bundle ID、Android 的包名 + SHA-256 签名指纹,各按行登记在文本框里,可以增删;保存后认证服务据此生成 `/.well-known/` 关联文件(见 [authentication.md](authentication.md#密码管理器适配)),iOS 和 Android 就允许这些 App 使用这个域名的通行密钥和密码自动填充。有后端应用不显示这一组,改为一组「退出通知」:一个 Back-Channel Logout 通知地址(`backchannel_logout_uri`),留空即不发(见 [protocol.md](protocol.md#back-channel-logout))。后端服务不登录,没有这个标签。
   - **角色**(后端服务):勾选它在其默认 API 资源上持有的 Role,它换到的 access token 带上这些角色与权限(见 [rbac.md](rbac.md))。默认 API 资源是管理 API 时,需要 `admin-roles:assign`;该 API 资源还没有角色时,链到 API 资源详情去建。
   - **用户删除通知**:通知地址与 Webhook 密钥,有一句导语说明用途。
 - 样页(应用详情的全部改写文案)见原型 [`prototype/console-copy`](https://github.com/zibyn/polaris/blob/prototype/console-copy/prototypes/console-copy/index.html) 的 A 版,以其 `NEW` 对象为准;删除区用 C 版的红框独立区块。
