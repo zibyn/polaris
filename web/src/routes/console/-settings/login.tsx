@@ -31,6 +31,7 @@ export function LoginTab() {
 	return (
 		<div className="space-y-10">
 			<CodeLogin channels={channels} />
+			<OpenRegistration current={p} editable={editable} />
 			<PasswordLogin current={p} editable={editable} />
 			<PasskeyLogin current={p} editable={editable} />
 			<RequirePhone current={p} editable={editable} sms={sms} />
@@ -100,6 +101,41 @@ function CodeLogin({ channels }: { channels: ChannelSettings[] }) {
 				)}
 			</div>
 		</section>
+	);
+}
+
+function OpenRegistration({ current, editable }: SectionProps) {
+	const save = useSavePolicy();
+	const form = useForm({
+		defaultValues: { openRegistration: current.openRegistration },
+		onSubmit: ({ value }) => save.mutate(value),
+	});
+	return (
+		<Section
+			title="开放注册"
+			editable={editable}
+			form={form}
+			footer={editable && <SaveBar save={save} />}
+		>
+			<form.Field name="openRegistration">
+				{(field) => (
+					<FormField
+						field={field}
+						label="开放注册"
+						help="陌生人用手机号、邮箱或外部账号第一次登录时，自动成为新用户。关闭后不再给没注册过的手机号或邮箱发验证码，没绑定过的外部账号也登录不了；已有用户照常登录，管理员仍可创建用户、发注册邀请。关闭后，登录页的提示会透露某个手机号或邮箱是否已注册。"
+					>
+						{({ id }) => (
+							<Switch
+								id={id}
+								checked={field.state.value}
+								disabled={!editable}
+								onCheckedChange={field.handleChange}
+							/>
+						)}
+					</FormField>
+				)}
+			</form.Field>
+		</Section>
 	);
 }
 

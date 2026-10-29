@@ -23,7 +23,7 @@ User (sub: 不透明、稳定、永不复用)
 ## 不变式
 
 1. **至少一个可登录途径**:User 至少要有以下之一:手机号、邮箱、用户名 + 密码、已启用 Provider 的 External Identity(停用的 Provider 登录不了,不算)。最后一个途径不允许解绑。
-2. **登录即注册**:用池内不存在的手机号或邮箱完成验证,或用没有绑定过的 External Identity 登录时,自动创建 User。不提供"关闭注册"开关。
+2. **开放注册时登录即注册**:用池内不存在的手机号或邮箱完成验证,或用没有绑定过的 External Identity 登录时,自动创建 User。实例级设置「开放注册」默认开;关闭后这两种登录直接拒绝,提示"本实例未开放注册",不给池外的手机号或邮箱发验证码。初始化页、管理员创建 User、注册邀请、已有 User 的全部登录方式和在账号中心绑定新 Identifier 不受影响。(ADR 0021)
 3. **永不合并**:要绑定的 Identifier 或 External Identity 已属于其他 User 时,直接拒绝;User 需先在那边解绑或注销。(ADR 0003)
 4. **不自动关联**:Provider 返回的邮箱或手机号不会把新的 External Identity 关联到已有 User;只能由已登录的 User 主动绑定。
 5. **设密码的前提**:至少要有一个 Identifier。只有 External Identity 的 User 不能设密码。

@@ -129,6 +129,7 @@ export type Policy = {
 	auditRetentionDays: number;
 	adminsNeedTwoFactor: boolean;
 	passkeyLogin: boolean;
+	openRegistration: boolean;
 };
 export type SigningKey = { kid: string; createdAt: string; current: boolean };
 
