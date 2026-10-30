@@ -16,7 +16,7 @@ identity 的导出方法不再出现 sqlc 生成类型:调用方只认识 identi
 - `RemoveExternalIdentity` 返回 `(subject string, sealedToken []byte, err error)`,不再返回 `sqlc.RemoveExternalIdentityRow`。
 - `management.replaceIdentifier` 改调 `identity.Store.ReplaceIdentifier`,删掉第二条写同一张表的调用。
 - `ReplaceIdentifier`、`LockOwners`、`CountOwners` 从 `management.sql` 搬到 `identity.sql`:改完之后它们只有 identity 调用。
-- **仍有一个公开面泄漏**:`GuardOwners(ctx, func(*sqlc.Queries) error)`。把它收进 identity 需要 identity 拥有 disable / delete / set-roles 三个 mutation,留给「所有者守卫吸收 mutation」的后续改动;在它落地前,"identity 公开面不含 sqlc"不是字面成立。
+- **公开面泄漏已堵上**(#167):原先的 `GuardOwners(ctx, func(*sqlc.Queries) error)` 改为不导出,disable / delete / set-roles 收进 identity 的 `SetDisabled`、`Delete`、`SetRoles`,内部执行所有者守卫;identity 导出方法不再含 sqlc 类型。
 - **`provider.Unbind` 仍自建 `identity.New`**:它是无状态构造(pool + keyring),没有行为代价;等组合根(composition root)落地时统一注入。
 - management 仍直接查 users 表:那是它的控制台读模型,不是绕过 identity 的写路径。
 - 新增值类型会带来少量映射代码;换来的是调用方不需要 import sqlc 类型。
