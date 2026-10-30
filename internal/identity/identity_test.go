@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db"
@@ -177,7 +178,8 @@ func TestFiveWrongPasswordsLockPasswordLogin(t *testing.T) {
 	if audited(t, s, "login.password_locked") != 0 {
 		t.Fatal("locked after 4 in a row")
 	}
-	if _, err := s.CheckPassword(ctx, Attempt{}, "owner", "wrong"); !errors.Is(err, ErrPasswordLocked) {
+	a := Attempt{ClientID: "rp", IP: "192.0.2.1", UA: "test-browser"}
+	if _, err := s.CheckPassword(ctx, a, "owner", "wrong"); !errors.Is(err, ErrPasswordLocked) {
 		t.Fatalf("5th wrong password: %v", err)
 	}
 	if _, err := s.CheckPassword(ctx, Attempt{}, "owner", "password1"); !errors.Is(err, ErrPasswordLocked) {
@@ -185,6 +187,20 @@ func TestFiveWrongPasswordsLockPasswordLogin(t *testing.T) {
 	}
 	if n := audited(t, s, "login.password_locked"); n != 1 {
 		t.Errorf("audited %d lockouts", n)
+	}
+	// Audited on the User with a, and when the lockout ends.
+	var got struct {
+		Sub    string
+		Detail map[string]any
+	}
+	var until time.Time
+	if err := s.pool.QueryRow(ctx, "SELECT a.sub, a.detail, l.until FROM audit_log a, lockouts l WHERE a.event = 'login.password_locked' AND l.key = 'sub:' || $1", sub).Scan(&got.Sub, &got.Detail, &until); err != nil {
+		t.Fatal(err)
+	}
+	at, err := time.Parse(time.RFC3339Nano, got.Detail["until"].(string))
+	if err != nil || !at.Equal(until) || got.Sub != sub || got.Detail["client_id"] != "rp" ||
+		got.Detail["ip"] != "192.0.2.1" || got.Detail["ua"] != "test-browser" {
+		t.Errorf("login.password_locked %+v, want until %v", got, until)
 	}
 
 	// 15 minutes later.

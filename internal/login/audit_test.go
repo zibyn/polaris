@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/zibyn/polaris/internal/identity"
 )
@@ -186,30 +185,4 @@ func TestDirectLoginIsAudited(t *testing.T) {
 	sent := e.challenge(url.Values{"identifier": {"+8613900139000"}, "altcha": {e.solve()}})
 	e.challenge(url.Values{"auth_session": {sent.AuthSession}, "code": {"000000"}})
 	e.wantFailed(sub, "password")
-}
-
-// Five wrong passwords in a row audit the lockout with when it ends.
-func TestPasswordLockoutIsAuditedWithItsEnd(t *testing.T) {
-	e := start(t)
-	e.ua = "test-browser"
-	e.bootstrap("owner", "password1")
-	sub := e.sub("owner")
-	_, page := e.authorize("")
-	for range 6 {
-		e.submit(page, "owner", "wrong")
-	}
-	e.wantFailed(sub, "password", "password", "password", "password", "password", "password")
-	got := e.events("login.password_locked")
-	if len(got) != 1 {
-		t.Fatalf("%d lockouts", len(got))
-	}
-	var until time.Time
-	if err := e.pool.QueryRow(context.Background(), "SELECT until FROM lockouts WHERE key = 'sub:' || $1", sub).Scan(&until); err != nil {
-		t.Fatal(err)
-	}
-	at, err := time.Parse(time.RFC3339Nano, got[0].Detail["until"].(string))
-	if err != nil || !at.Equal(until) || got[0].Sub != sub || got[0].Detail["client_id"] != clientID ||
-		got[0].Detail["ip"] != "127.0.0.1" || got[0].Detail["ua"] != "test-browser" {
-		t.Errorf("login.password_locked %+v, want until %v", got[0], until)
-	}
 }

@@ -79,20 +79,20 @@ func TestEveryWriteIsAudited(t *testing.T) {
 			code := e.call("POST", owner, "/applications", map[string]any{"type": "m2m", "settings": m2mSettings(api)}, &created)
 			clientID = created.Application.ClientID
 			return code
-		}, event: "application.created"},
+		}, event: "application.created", ofApp: true},
 		{op: "set-application-roles", call: func() int {
 			return e.call("PUT", owner, "/applications/"+clientID+"/roles", map[string]any{"roles": []string{"reader"}}, nil)
-		}, event: "application_roles.assigned"},
+		}, event: "application_roles.assigned", ofApp: true, detail: with("api", api, "roles", []string{"reader"})},
 		{op: "update-application", call: func() int {
 			return e.call("PUT", owner, "/applications/"+clientID, m2mSettings(api), nil)
-		}, event: "application.updated"},
+		}, event: "application.updated", ofApp: true},
 		{op: "new-application-secret", call: func() int { return e.call("POST", owner, "/applications/"+clientID+"/secret", nil, nil) },
-			event: "application.secret_regenerated"},
+			event: "application.secret_regenerated", ofApp: true},
 		{op: "set-application-auth-method", call: func() int {
 			return e.call("POST", owner, "/applications/"+clientID+"/auth-method", map[string]string{"method": "client_secret_basic"}, nil)
-		}, event: "application.auth_method_changed"},
+		}, event: "application.auth_method_changed", ofApp: true},
 		{op: "delete-application", call: func() int { return e.call("DELETE", owner, "/applications/"+clientID, nil, nil) },
-			event: "application.deleted"},
+			event: "application.deleted", ofApp: true},
 		{op: "delete-role", call: call("DELETE", apiPath+"/roles/reader?force=true", nil), event: "role.deleted",
 			detail: with("api", api, "key", "reader", "force", true)},
 		{op: "delete-permission", call: call("DELETE", apiPath+"/permissions/read", nil), event: "permission.deleted",
@@ -144,8 +144,13 @@ func TestEveryWriteIsAudited(t *testing.T) {
 			t.Errorf("%s: %+v, want one %s by the owner", r.op, added, r.event)
 			continue
 		}
-		if r.detail != nil && !maps.Equal(fmtMap(added[0].Detail), fmtMap(r.detail)) {
-			t.Errorf("%s detail: %v, want %v", r.op, added[0].Detail, r.detail)
+		want := r.detail
+		if r.ofApp {
+			want = with("clientId", clientID)
+			maps.Copy(want, r.detail)
+		}
+		if want != nil && !maps.Equal(fmtMap(added[0].Detail), fmtMap(want)) {
+			t.Errorf("%s detail: %v, want %v", r.op, added[0].Detail, want)
 		}
 	}
 
@@ -174,6 +179,7 @@ type auditRow struct {
 	call   func() int
 	event  string
 	detail map[string]any // the whole detail, when the write has one worth pinning down
+	ofApp  bool           // the detail names the Application it wrote, with detail's keys, if any, besides
 }
 
 // fmtMap makes JSON values comparable.

@@ -41,7 +41,7 @@ func (s *Service) setUserRoles(ctx context.Context, in *setUserRolesInput) (*str
 	}
 	err := s.ids.SetRoles(ctx, in.Sub, in.Body.API, in.Body.Roles, c.sub)
 	if errors.Is(err, identity.ErrNoSuchRole) {
-		return nil, huma.Error422UnprocessableEntity("没有这个 Role")
+		return nil, huma.Error422UnprocessableEntity(string(identity.ErrNoSuchRole))
 	}
 	return nil, ownerErr(err)
 }

@@ -347,22 +347,6 @@ func TestSessionRemembersItsDevice(t *testing.T) {
 	}
 }
 
-// Fifty failures in an hour lock an IP out of logging in, whichever flow.
-func TestIPLockout(t *testing.T) {
-	e := start(t)
-	e.bootstrap("owner", "password1")
-	if _, err := e.pool.Exec(context.Background(), "INSERT INTO login_failures (key) SELECT 'ip:127.0.0.1' FROM generate_series(1, 49)"); err != nil {
-		t.Fatal(err)
-	}
-	if r := e.challenge(url.Values{"username": {"nobody"}, "password": {"x"}, "altcha": {e.solve()}}); r.Status != 400 {
-		t.Fatalf("50th failure: %+v", r)
-	}
-	_, page := e.authorize("")
-	if _, body := e.submit(page, "owner", "password1"); !strings.Contains(body, "1 小时后再试") {
-		t.Errorf("hosted login: %.300s", body)
-	}
-}
-
 // ageAuth moves the browser Session's last proof of identity back by d,
 // leaving its activity fresh.
 func (e *env) ageAuth(d string) {

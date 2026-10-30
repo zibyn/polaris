@@ -93,7 +93,7 @@ func (s *Service) getApplication(ctx context.Context, in *clientIDPath) (*applic
 func (s *Service) application(ctx context.Context, clientID string) (Application, error) {
 	apps, err := s.applications(ctx, clientID)
 	if err == nil && len(apps) == 0 {
-		err = huma.Error404NotFound("no such Application")
+		err = errNoApplication
 	}
 	if err != nil {
 		return Application{}, err
@@ -192,8 +192,10 @@ func (s *Service) updateApplication(ctx context.Context, in *struct {
 	}
 	return nil, pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if n, err := s.saveSettings(ctx, q, in.ClientID, app.Type, &in.Body); err != nil || n == 0 { // n == 0: deleted meanwhile
+		if n, err := s.saveSettings(ctx, q, in.ClientID, app.Type, &in.Body); err != nil {
 			return err
+		} else if n == 0 { // deleted meanwhile
+			return errNoApplication
 		}
 		return auditApplication(ctx, q, "application.updated", in.ClientID)
 	})
@@ -204,6 +206,8 @@ func auditApplication(ctx context.Context, q *sqlc.Queries, event, clientID stri
 	detail, _ := json.Marshal(map[string]string{"clientId": clientID, "by": callerSub(ctx)})
 	return q.Audit(ctx, sqlc.AuditParams{Event: event, Detail: detail})
 }
+
+var errNoApplication = huma.Error404NotFound("no such Application")
 
 // errBuiltinApplication refuses to touch an Application the authentication
 // service owns.
@@ -400,7 +404,7 @@ func (s *Service) setApplicationRoles(ctx context.Context, in *setApplicationRol
 	}
 	err = s.q.SetApplicationRoles(ctx, sqlc.SetApplicationRolesParams{ClientID: in.ClientID, Api: app.DefaultAPI, Roles: in.Body.Roles, By: callerSub(ctx)})
 	if isFKViolation(err) {
-		return nil, huma.Error422UnprocessableEntity("没有这个 Role")
+		return nil, huma.Error422UnprocessableEntity(string(identity.ErrNoSuchRole))
 	}
 	return nil, err
 }

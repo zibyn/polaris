@@ -73,15 +73,15 @@ func (s *Store) Password(ctx context.Context, a Attempt, identifier, password st
 
 // Code runs check, of a code sent to identifier, from a.IP: refused while
 // that IP is locked out, and a wrong code counted toward its lockout and
-// audited as login.failed on the User it would sign in: pending, else
+// audited as login.failed on the User it would sign in: pendingSub, else
 // whoever holds identifier, if anyone.
-func (s *Store) Code(ctx context.Context, a Attempt, identifier, pending string, check func() error) error {
+func (s *Store) Code(ctx context.Context, a Attempt, identifier, pendingSub string, check func() error) error {
 	if a.ClientID == "" {
 		return errNoClientID
 	}
 	err := s.FromIP(ctx, a.IP, check)
-	if !counted(err) || pending != "" {
-		return s.loginFailed(ctx, a, pending, "code", err)
+	if !counted(err) || pendingSub != "" {
+		return s.loginFailed(ctx, a, pendingSub, "code", err)
 	}
 	u, dbErr := s.q.UserByIdentifier(ctx, identifier)
 	if dbErr != nil && !errors.Is(dbErr, pgx.ErrNoRows) {

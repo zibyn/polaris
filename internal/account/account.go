@@ -454,7 +454,7 @@ func (s *Service) reauth(ctx context.Context, in *reauthInput) (*struct{}, error
 		if err != nil {
 			return nil, fail(err)
 		}
-		return nil, s.reauthenticated(ctx, []string{"pwd"})
+		return nil, s.reauthenticated(ctx, c, []string{"pwd"})
 	}
 	amr := "sms"
 	if in.Body.Kind == "email" {
@@ -467,13 +467,12 @@ func (s *Service) reauth(ctx context.Context, in *reauthInput) (*struct{}, error
 	if err != nil {
 		return nil, fail(err)
 	}
-	return nil, s.reauthenticated(ctx, []string{amr})
+	return nil, s.reauthenticated(ctx, c, []string{amr})
 }
 
-// reauthenticated records a fresh authentication of this Session, proved as
+// reauthenticated records a fresh authentication of c's Session, proved as
 // amr: a login at the account center.
-func (s *Service) reauthenticated(ctx context.Context, amr []string) error {
-	c := callerOf(ctx)
+func (s *Service) reauthenticated(ctx context.Context, c caller, amr []string) error {
 	if err := s.q.Reauthenticate(ctx, sqlc.ReauthenticateParams{ID: c.session, UserID: c.sub, Amr: amr}); err != nil {
 		return err
 	}
@@ -492,7 +491,7 @@ func (s *Service) reauthTwoFactor(ctx context.Context, in *reauthInput) error {
 	}); err != nil {
 		return err
 	}
-	return s.reauthenticated(ctx, []string{"otp", "mfa"})
+	return s.reauthenticated(ctx, c, []string{"otp", "mfa"})
 }
 
 // reauthPasskey reauthenticates with one of the User's Passkeys, writing the
@@ -503,7 +502,7 @@ func (s *Service) reauthPasskey(ctx context.Context, response string) error {
 	if err != nil {
 		return err
 	}
-	return s.reauthenticated(ctx, passkey.AMR(in.BackupEligible))
+	return s.reauthenticated(ctx, c, passkey.AMR(in.BackupEligible))
 }
 
 type kindPath struct {
