@@ -21,7 +21,7 @@ import (
 func (s *Service) providerCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if err := r.ParseForm(); err != nil {
-		s.page(w, r, pickLang(r, ""), "", http.StatusBadRequest, "message", "请求无效")
+		s.page(w, r, "", "", http.StatusBadRequest, "message", "请求无效")
 		return
 	}
 	if r.Method == http.MethodPost {
@@ -36,7 +36,7 @@ func (s *Service) providerCallback(w http.ResponseWriter, r *http.Request) {
 	sess, err := s.session(w, r)
 	if err != nil {
 		slog.Error("provider login", "err", err)
-		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了，请稍后重试")
+		s.page(w, r, "", "", http.StatusInternalServerError, "message", "出错了，请稍后重试")
 		return
 	} else if sess != nil {
 		session = sess.ID
@@ -49,30 +49,30 @@ func (s *Service) providerCallback(w http.ResponseWriter, r *http.Request) {
 	var invalid identity.Invalid
 	switch {
 	case errors.As(err, &invalid):
-		s.page(w, r, pickLang(r, ""), "", http.StatusForbidden, "message", invalid.Error())
+		s.page(w, r, "", "", http.StatusForbidden, "message", invalid.Error())
 		return
 	case errors.Is(err, provider.ErrLogin), errors.Is(err, provider.ErrNotFound):
 		slog.Info("provider login", "provider", id, "err", err)
-		s.page(w, r, pickLang(r, ""), "", http.StatusBadRequest, "message", "外部登录未完成，请返回应用重新登录")
+		s.page(w, r, "", "", http.StatusBadRequest, "message", "外部登录未完成，请返回应用重新登录")
 		return
 	case err != nil:
 		slog.Error("provider login", "provider", id, "err", err)
-		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了，请稍后重试")
+		s.page(w, r, "", "", http.StatusInternalServerError, "message", "出错了，请稍后重试")
 		return
 	}
 	as, err := s.store.Session(ctx, f.AuthnSession)
 	if errors.Is(err, goidc.ErrNotFound) {
-		s.page(w, r, pickLang(r, ""), "", http.StatusBadRequest, "message", "登录已过期，请返回应用重新登录")
+		s.page(w, r, "", "", http.StatusBadRequest, "message", "登录已过期，请返回应用重新登录")
 		return
 	} else if err != nil {
 		slog.Error("provider login", "err", err)
-		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了，请稍后重试")
+		s.page(w, r, "", "", http.StatusInternalServerError, "message", "出错了，请稍后重试")
 		return
 	}
 	as.Store = map[string]any{storeFederated: f.Sub, storeMethod: identity.ProviderMethod(id), storeBinder: hex.EncodeToString(hash(b))}
 	if err := s.store.SaveSession(ctx, as); err != nil {
 		slog.Error("provider login", "err", err)
-		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了，请稍后重试")
+		s.page(w, r, as.UILocales, as.ClientID, http.StatusInternalServerError, "message", "出错了，请稍后重试")
 		return
 	}
 	http.Redirect(w, r, "/authorize/"+as.ID, http.StatusSeeOther)

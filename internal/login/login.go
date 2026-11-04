@@ -191,7 +191,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 		oidcop.WithLogout(oidcop.LogoutConfig{
 			Manager: store,
 			HandleFunc: func(w http.ResponseWriter, r *http.Request, ls *goidc.LogoutSession) error {
-				s.page(w, r, pickLang(r, ls.UILocales), ls.ClientID, http.StatusOK, "message", "已退出登录")
+				s.page(w, r, ls.UILocales, ls.ClientID, http.StatusOK, "message", "已退出登录")
 				return nil
 			},
 		}, oidcop.WithLogoutPolicies(goidc.NewLogoutPolicy("session",
@@ -314,7 +314,7 @@ func DeleteOldSessions(ctx context.Context, pool *pgxpool.Pool) error {
 func (s *Service) authenticate(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client) (goidc.Status, error) {
 	// A login past its first factor goes on only in its own browser.
 	if pendingOf(as) != nil && !sameBinder(r, as.Store[storeBinder]) {
-		s.page(w, r, pickLang(r, as.UILocales), c.ID, http.StatusForbidden, "message", "登录已在其他浏览器中进行，请返回应用重新登录")
+		s.page(w, r, as.UILocales, c.ID, http.StatusForbidden, "message", "登录已在其他浏览器中进行，请返回应用重新登录")
 		return goidc.StatusPending, nil
 	}
 	// Only the login form posts to the callback; the authorization request
@@ -436,7 +436,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			return fail(err)
 		}
 		as.Store = nil
-		s.page(w, r, pickLang(r, as.UILocales), c.ID, http.StatusOK, "message", "账号已注销")
+		s.page(w, r, as.UILocales, c.ID, http.StatusOK, "message", "账号已注销")
 		return goidc.StatusPending, nil
 
 	case "set-password":
@@ -730,7 +730,7 @@ func (s *Service) complete(w http.ResponseWriter, r *http.Request, as *goidc.Aut
 			return goidc.StatusFailure, goidc.NewError(goidc.ErrorCodeAccessDenied, errNoRole)
 		}
 		as.Store = nil
-		s.page(w, r, pickLang(r, as.UILocales), c.ID, http.StatusForbidden, "denied", loginPage{Client: c.Name, Action: "/authorize/" + as.ID})
+		s.page(w, r, as.UILocales, c.ID, http.StatusForbidden, "denied", loginPage{Client: c.Name, Action: "/authorize/" + as.ID})
 		return goidc.StatusPending, nil
 	}
 	grant(as, session, sub, authTime, amr)
@@ -1030,7 +1030,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		return goidc.StatusFailure, err
 	}
 	if m.none() && p.firstStep() {
-		s.page(w, r, l, c.ID, http.StatusForbidden, "message", errNoMethod)
+		s.page(w, r, as.UILocales, c.ID, http.StatusForbidden, "message", errNoMethod)
 		return goidc.StatusPending, nil
 	}
 	p.PasswordOn = m.offers(identity.MethodPassword)
@@ -1080,7 +1080,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			p.Passkey = template.JS(options)
 		}
 	}
-	s.page(w, r, l, c.ID, http.StatusOK, "login", p)
+	s.page(w, r, as.UILocales, c.ID, http.StatusOK, "login", p)
 	return goidc.StatusPending, nil
 }
 
@@ -1100,14 +1100,15 @@ func (s *Service) renderError(w http.ResponseWriter, r *http.Request, err error)
 	if errors.As(err, &oidcErr) {
 		msg = oidcErr.Description
 	}
-	s.page(w, r, pickLang(r, ""), "", http.StatusBadRequest, "message", msg)
+	s.page(w, r, "", "", http.StatusBadRequest, "message", msg)
 	return nil
 }
 
-// page renders the hosted page name in l, under the 品牌 of the
-// Application clientID ("" for the instance's).
-func (s *Service) page(w http.ResponseWriter, r *http.Request, l lang, clientID string, status int, name string, data any) {
-	page(w, l, s.brand(r.Context(), clientID), status, name, data)
+// page renders the hosted page name for a request of the Application
+// clientID with its ui_locales: in the language they and Accept-Language
+// pick, under its 品牌. Both "" for a page outside any Application's login.
+func (s *Service) page(w http.ResponseWriter, r *http.Request, uiLocales, clientID string, status int, name string, data any) {
+	page(w, pickLang(r, uiLocales), s.brand(r.Context(), clientID), status, name, data)
 }
 
 // chrome is what a hosted page shows around its form: its title and the
