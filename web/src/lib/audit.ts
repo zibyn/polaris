@@ -423,6 +423,6 @@ export const findSchema = (canReadUsers: boolean) =>
 			? query
 			: query.regex(
 					/^$|^[A-Z2-7]{26}$/i,
-					"请填写 26 位用户 ID。没有读取用户的权限，只能按 ID 查找。",
+					"请输入 26 位用户 ID。没有读取用户的权限，只能按 ID 查找。",
 				),
 	});

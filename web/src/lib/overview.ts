@@ -19,7 +19,7 @@ export const checklist = (
 	const steps = [
 		{
 			label: "配置通道",
-			hint: "下一步:配置验证码通道,用户才能收到验证码登录。",
+			hint: "下一步：配置验证码通道，用于发送登录验证码。",
 			to: "/console/settings",
 			search: { tab: "channels" },
 			permission: "config:read",
@@ -27,14 +27,14 @@ export const checklist = (
 		},
 		{
 			label: "创建应用",
-			hint: "下一步:创建应用,让你的产品接入登录。",
+			hint: "下一步：创建应用，接入登录。",
 			to: "/console/apps",
 			permission: "applications:read",
 			done: data.apps && !onlyBuiltin(data.apps),
 		},
 		{
 			label: "添加 API 资源",
-			hint: "下一步:添加 API 资源,让应用拿到访问你后端的令牌。",
+			hint: "下一步：添加 API 资源，用于签发访问后端的令牌。",
 			to: "/console/apis",
 			permission: "applications:read",
 			done: data.apis && !onlyBuiltin(data.apis),
@@ -64,7 +64,7 @@ export const checklistSummary = (steps: ReturnType<typeof checklist>) => {
 	return {
 		done,
 		total: steps.length,
-		title: `还差 ${left} 步就配置好了`,
+		title: `还差 ${left} 步完成配置`,
 		next,
 	};
 };

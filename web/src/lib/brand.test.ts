@@ -26,11 +26,11 @@ test("a light colour or one not #rrggbb doesn't save", () => {
 	assert.deepEqual(
 		errors(brandSchema.safeParse({ name: "", color: "#ffff00" })),
 		{
-			color: "请换深一些的颜色：白字放在上面要看得清，对比度要达到 4.5:1。",
+			color: "颜色过浅，与白色文字的对比度需不低于 4.5:1。",
 		},
 	);
 	assert.deepEqual(errors(brandSchema.safeParse({ name: "", color: "blue" })), {
-		color: "请填写 #rrggbb 格式的颜色，如 #0A66C2。",
+		color: "请输入 #rrggbb 格式的颜色，如 #0A66C2。",
 	});
 });
 

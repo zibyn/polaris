@@ -33,7 +33,7 @@ export const termsSchema = z
 		privacyUrl: z.string().trim(),
 		termsUrlEn: z.string().trim(),
 		privacyUrlEn: z.string().trim(),
-		termsVersion: z.string().trim().max(64, "协议版本最多 64 个字符。"),
+		termsVersion: z.string().trim().max(64, "协议版本不能超过 64 个字符。"),
 	})
 	.superRefine((t, ctx) => {
 		for (const k of [
@@ -46,14 +46,13 @@ export const termsSchema = z
 				ctx.addIssue({
 					code: "custom",
 					path: [k],
-					message: "请填写 https 开头的地址。认证服务只接受 https 链接。",
+					message: "请输入以 https 开头的地址。",
 				});
 			} else if (!t[k] && t.termsVersion && !k.endsWith("En")) {
 				ctx.addIssue({
 					code: "custom",
 					path: [k],
-					message:
-						"请填写地址。设了协议版本，用户登录时要打开用户协议和隐私政策才能同意。",
+					message: "设置协议版本时需填写此地址。",
 				});
 			}
 		}
@@ -67,7 +66,7 @@ export const numberSchema = (min: number) =>
 			.trim()
 			.refine(
 				(v) => /^\d+$/.test(v) && +v >= min,
-				`请填写不小于 ${min} 的整数。`,
+				`请输入不小于 ${min} 的整数。`,
 			),
 	});
 
@@ -89,12 +88,12 @@ export const channelSchema = (
 							ctx.addIssue({ code: "custom", message });
 						if (!v) {
 							if (!f.optional && !(f.secret && secrets[f.key])) {
-								fail(`请填写${f.label}。`);
+								fail(`请输入${f.label}。`);
 							}
 						} else if (f.type === "url" && !URL.canParse(v)) {
-							fail("请填写有效的地址。");
+							fail("请输入有效的地址。");
 						} else if (f.type === "number" && Number.isNaN(Number(v))) {
-							fail("请填写数字。");
+							fail("请输入数字。");
 						}
 					}),
 			]),
@@ -106,11 +105,11 @@ export const testSchema = (kind: ChannelSettings["kind"]) =>
 	z.object({
 		to:
 			kind === "email"
-				? z.email("请填写有效的邮箱。")
+				? z.email("请输入有效的邮箱。")
 				: z
 						.string()
 						.trim()
-						.regex(/^\+?\d{5,15}$/, "请填写手机号，如 +8613800001111。"),
+						.regex(/^\+?\d{5,15}$/, "请输入有效的手机号，如 +8613800001111。"),
 	});
 
 // smsLocked: SMS stays on while 必须绑定手机号 needs it; stopping it would
@@ -176,13 +175,13 @@ export const providerSchema = (
 		name: z
 			.string()
 			.trim()
-			.min(1, "请填写名称。")
-			.max(64, "名称最多 64 个字。"),
+			.min(1, "请输入名称。")
+			.max(64, "名称不能超过 64 个字符。"),
 		config: channelSchema(fields, secrets),
 	});
 
 // disableImpact is what disabling a Provider does to the Users bound to it.
 export const disableImpact = (p: { bound: number; onlyLoginPath: number }) =>
 	p.bound
-		? `${p.bound} 个用户已绑定，其中 ${p.onlyLoginPath} 个没有其他登录方式，停用后他们无法登录。`
-		: "还没有用户绑定。停用后登录页不再显示这个按钮。";
+		? `已有 ${p.bound} 个用户绑定，其中 ${p.onlyLoginPath} 个没有其他登录方式，停用后将无法登录。`
+		: "暂无用户绑定。";

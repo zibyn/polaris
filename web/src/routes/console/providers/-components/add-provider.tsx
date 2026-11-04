@@ -1,106 +1,97 @@
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { ChevronRightIcon } from "lucide-react";
+import { useState } from "react";
+import { Button } from "#/components/ui/button";
 import {
-	createFileRoute,
-	Link,
-	useNavigate,
-	useSearch,
-} from "@tanstack/react-router";
-import { z } from "zod";
-import { buttonVariants } from "#/components/ui/button";
-import {
-	Card,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "#/components/ui/card";
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemTitle,
+} from "#/components/ui/item";
+import { FormSheet } from "#/routes/console/-components/form-sheet";
 import { providersQuery } from "#/routes/console/providers/index";
-import { type Header, useCan } from "#/routes/console/route";
-import { ProviderForm } from "./-components/provider-form";
+import { ProviderForm } from "./provider-form";
 
-const search = z.object({
-	// a Provider type's key, picked from the catalog below
-	type: z.string().optional().catch(undefined),
-});
+// Generic protocols, for self-hosted identity services like Keycloak.
+const GENERIC = ["oidc", "oauth2"];
 
-export const Route = createFileRoute("/console/providers/new")({
-	staticData: { crumb: "添加认证源", useHeader },
-	validateSearch: search,
-	loader: ({ context: { queryClient } }) =>
-		queryClient.ensureQueryData(providersQuery),
-	component: AddProvider,
-});
-
-// useHeader titles the type catalog, or the form once a type is picked;
-// without the Permission there's no header, only the note.
-function useHeader(): Header | null {
-	const { type: key } = useSearch({ from: "/console/providers/new" });
-	// The header draws around the page's loading, so it reads the cache
-	// without suspending.
-	const type = useQuery(providersQuery).data?.types.find((t) => t.key === key);
-	const can = useCan();
-	if (!can("config:write")) {
-		return null;
-	}
-	if (!type) {
-		return {
-			title: "添加认证源",
-			description: "常见供应商开箱可用；自建的选通用 OIDC 或 OAuth2。",
-		};
-	}
-	return {
-		title: `添加${type.name}`,
-		actions: (
-			<Link
-				to="/console/providers/new"
-				search={{}}
-				className={buttonVariants({ variant: "outline" })}
-			>
-				换个类型
-			</Link>
-		),
-	};
-}
-
-// AddProvider is the type catalog (the types ship with the binary,
-// ADR 0004), then the form for the one picked.
-function AddProvider() {
-	const { type: key } = Route.useSearch();
+// AddProviderSheet is the type catalog (the types ship with the binary,
+// ADR 0004), then the form for the one picked, in a drawer over the list.
+export function AddProviderSheet({
+	open,
+	onOpenChange,
+}: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+}) {
 	const { types } = useSuspenseQuery(providersQuery).data;
-	const can = useCan();
 	const navigate = useNavigate();
+	const [key, setKey] = useState<string>();
 	const type = types.find((t) => t.key === key);
-	if (!can("config:write")) {
-		return <p className="text-sm">需要「管理员」角色才能添加认证源。</p>;
-	}
-	return type ? (
-		<ProviderForm
-			type={type}
-			onDone={(id) =>
-				navigate({ to: "/console/providers/$id", params: { id } })
-			}
-		/>
-	) : (
-		<div className="grid gap-4 sm:grid-cols-2">
-			{types.map((t) => (
-				<Link
-					key={t.key}
-					from={Route.fullPath}
-					search={{ type: t.key }}
-					className="block"
-				>
-					<Card
-						size="sm"
-						className="h-full transition-colors hover:ring-primary/40"
-					>
-						<CardHeader>
-							<CardTitle>{t.name}</CardTitle>
-							<CardDescription>
-								要填：{t.fields.map((f) => f.label).join("、")}
-							</CardDescription>
-						</CardHeader>
-					</Card>
-				</Link>
-			))}
-		</div>
+	const generic = (t: { key: string }) => GENERIC.includes(t.key);
+	const groups = [
+		["平台", types.filter((t) => !generic(t))],
+		["自建身份服务", types.filter(generic)],
+	] as const;
+	return (
+		<FormSheet
+			open={open}
+			onOpenChange={(o) => {
+				onOpenChange(o);
+				if (!o) setKey(undefined);
+			}}
+			title="添加认证源"
+		>
+			{type ? (
+				<div className="space-y-6">
+					<Item variant="muted">
+						<ItemContent>
+							<ItemTitle>{type.name}</ItemTitle>
+						</ItemContent>
+						<ItemActions>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => setKey(undefined)}
+							>
+								更换
+							</Button>
+						</ItemActions>
+					</Item>
+					<ProviderForm
+						type={type}
+						onCancel={() => onOpenChange(false)}
+						onDone={(id) =>
+							navigate({ to: "/console/providers/$id", params: { id } })
+						}
+					/>
+				</div>
+			) : (
+				<div className="space-y-5">
+					{groups.map(([title, list]) => (
+						<section key={title} className="space-y-1.5">
+							<h3 className="text-muted-foreground text-xs">{title}</h3>
+							{list.map((t) => (
+								<Item
+									key={t.key}
+									variant="outline"
+									size="sm"
+									className="hover:bg-muted"
+									render={
+										<button type="button" onClick={() => setKey(t.key)} />
+									}
+								>
+									<ItemContent>
+										<ItemTitle>{t.name}</ItemTitle>
+									</ItemContent>
+									<ChevronRightIcon className="size-4 text-muted-foreground" />
+								</Item>
+							))}
+						</section>
+					))}
+				</div>
+			)}
+		</FormSheet>
 	);
 }

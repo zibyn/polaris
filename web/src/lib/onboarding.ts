@@ -8,31 +8,31 @@ import type { Application } from "./console-api.ts";
 export const platforms = {
 	app: {
 		name: "手机 App",
-		desc: "iOS、Android 原生或跨平台 App，在 App 自己的界面里登录。",
+		desc: "iOS、Android 原生或跨平台 App，在 App 内登录。",
 		type: "public",
 		redirect: false,
 	},
 	mini: {
 		name: "小程序",
-		desc: "微信等小程序，在小程序页面里登录。",
+		desc: "微信等小程序，在小程序内登录。",
 		type: "public",
 		redirect: false,
 	},
 	spa: {
 		name: "纯前端网页",
-		desc: "React、Vue 等单页应用，没有自己的服务器。用户跳到登录页登录后回来。",
+		desc: "React、Vue 等单页应用，无服务器，跳转到登录页登录。",
 		type: "public",
 		redirect: true,
 	},
 	web: {
 		name: "有后端的网站",
-		desc: "由服务器渲染或带后端的网站。登录由你的服务器完成。",
+		desc: "服务端渲染或带后端的网站，由服务器完成登录。",
 		type: "confidential",
 		redirect: true,
 	},
 	m2m: {
 		name: "后端服务（M2M）",
-		desc: "定时任务、内部服务。没有用户登录，以自己的身份调用一个 API。",
+		desc: "定时任务、内部服务等，无用户登录，以自身身份调用一个 API。",
 		type: "m2m",
 		redirect: false,
 	},
@@ -84,7 +84,7 @@ export function snippet(
 	switch (platform) {
 		case "app":
 			return {
-				help: "在 App 里接入 KMP SDK。登录界面由你的 App 自己实现，SDK 负责发验证码、校验和换取令牌。",
+				help: "接入 KMP SDK。登录界面由 App 实现，SDK 负责发送验证码、校验和换取令牌。",
 				code: `Polaris(
   PolarisConfig(
     issuer = "${issuer}",
@@ -95,7 +95,7 @@ export function snippet(
 			};
 		case "mini":
 			return {
-				help: "小程序 SDK 还在开发中。现在可以按直连认证 API 的接口文档直接调用，登录界面由小程序自己实现。",
+				help: "小程序 SDK 开发中，可按接口文档直接调用直连认证 API，登录界面由小程序实现。",
 				code: `POST ${issuer}/v1/auth/challenge
 client_id=${clientId}
 
@@ -103,7 +103,7 @@ client_id=${clientId}
 			};
 		case "spa":
 			return {
-				help: "推荐用 oidc-client-ts。用户点登录时跳到认证服务的登录页，登录后回到你的回调地址。",
+				help: "推荐使用 oidc-client-ts。用户跳转到登录页，登录后返回回调地址。",
 				code: `new UserManager({
   authority: "${issuer}",
   client_id: "${clientId}",
@@ -112,14 +112,14 @@ client_id=${clientId}
 			};
 		case "web":
 			return {
-				help: "用你后端语言的 OIDC 客户端库，填入下面三项。client secret 只放在服务器上，不要写进前端代码。",
+				help: "使用后端语言的 OIDC 客户端库，填入以下三项。client secret 只能存放在服务器上。",
 				code: `issuer        = ${issuer}
 client_id     = ${clientId}
-client_secret = （刚才保存的那个）`,
+client_secret = （创建时保存的值）`,
 			};
 		case "m2m":
 			return {
-				help: "用 client_credentials 换令牌：client_id 和 client_secret 走 HTTP Basic 认证。令牌 10 分钟过期，没有 refresh token，过期就再换一张。",
+				help: "使用 client_credentials 换取令牌，client_id 和 client_secret 通过 HTTP Basic 认证。令牌 10 分钟后过期，无 refresh token，过期后重新换取。",
 				code: `curl -u "${clientId}:$POLARIS_CLIENT_SECRET" \\
   -d grant_type=client_credentials \\
   ${issuer}/token`,

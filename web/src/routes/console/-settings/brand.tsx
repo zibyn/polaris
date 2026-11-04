@@ -11,10 +11,11 @@ export function BrandTab() {
 	const client = useQueryClient();
 	return (
 		<BrandSection
-			intro="登录页默认显示 Polaris 和「星云」配色。设了任何一项，登录页就换成你的品牌：品牌区去掉星云，底部不再写「由 Polaris 提供安全登录」。应用可以在自己的登录标签里逐项覆盖。"
+			intro="设置任一项后，登录页品牌区不再显示星云，底部不再显示「由 Polaris 提供安全登录」。应用可在登录标签中逐项覆盖。"
 			brand={policy.brand}
 			editable={editable}
 			follows="Polaris"
+			followsColor="#7048e8"
 			logoPath="/settings/brand/logo"
 			onLogo={(logo) => {
 				// The next save sends the Logo back; it must be this one.

@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useRef } from "react";
 import { toast } from "sonner";
 import { FormField, failed, saved } from "#/components/form";
+import { Star } from "#/components/star";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { brandSchema, logoProblem } from "#/lib/brand";
@@ -17,6 +18,7 @@ export function BrandSection({
 	brand,
 	editable,
 	follows,
+	followsColor = follows,
 	logoPath,
 	onLogo,
 	save,
@@ -25,6 +27,7 @@ export function BrandSection({
 	brand?: Brand;
 	editable: boolean;
 	follows: string; // what an empty item shows instead
+	followsColor?: string; // what an empty 主色 shows, when not follows
 	logoPath: string; // the Management API path its Logo uploads to
 	onLogo: (logo: string | undefined) => Promise<unknown>; // after an upload or removal
 	save: {
@@ -80,10 +83,15 @@ export function BrandSection({
 						<img
 							src={`/brand-logos/${brand.logo}`}
 							alt="当前 Logo"
-							className="h-8 max-w-40 object-contain"
+							className="h-10 max-w-40 rounded-md border object-contain p-1"
 						/>
 					) : (
-						<span className="text-muted-foreground text-sm">{follows}</span>
+						<>
+							<span className="grid size-10 place-items-center rounded-md border bg-canvas text-primary">
+								<Star className="size-4" />
+							</span>
+							<span className="text-muted-foreground text-sm">{follows}</span>
+						</>
 					)}
 					{editable && (
 						<>
@@ -126,7 +134,7 @@ export function BrandSection({
 				</div>
 				<p className="text-[13px] text-muted-foreground">
 					PNG、WebP 或 SVG，不超过 1
-					MB。替换登录页上的星标，也用作浏览器标签页图标。
+					MB。替换登录页星标，并用作浏览器标签页图标。
 				</p>
 			</div>
 			<form.Field name="name">
@@ -134,7 +142,7 @@ export function BrandSection({
 					<FormField
 						field={field}
 						label="品牌名"
-						help="替换登录页品牌区的「Polaris」和浏览器标签页标题。表单区的「继续前往 应用名」不变。"
+						help="显示在登录页品牌区和浏览器标签页标题中。"
 					>
 						{(control) => (
 							<Input {...control} className="w-64" placeholder={follows} />
@@ -147,7 +155,7 @@ export function BrandSection({
 					<FormField
 						field={field}
 						label="主色"
-						help="按钮、链接和焦点环用它，悬停色和浅底自动推出。白字放在上面要看得清(对比度 4.5:1)。"
+						help="用于按钮和链接，需与白色文字的对比度不低于 4.5:1。"
 					>
 						{(control) => (
 							<div className="flex items-center gap-2">
@@ -163,7 +171,11 @@ export function BrandSection({
 									onChange={(e) => field.handleChange(e.target.value)}
 									className="h-9 w-12 cursor-pointer rounded-md border bg-transparent"
 								/>
-								<Input {...control} className="w-32" placeholder={follows} />
+								<Input
+									{...control}
+									className="w-32 font-mono"
+									placeholder={followsColor}
+								/>
 							</div>
 						)}
 					</FormField>

@@ -44,8 +44,8 @@ test("adding an API resource needs an identifier without spaces and a name", () 
 	assert.deepEqual(
 		fieldErrors(apiSchema.safeParse({ identifier: "", name: "" })),
 		{
-			identifier: "请填写 API 资源标识符。",
-			name: "请填写名称。",
+			identifier: "请输入 API 资源标识符。",
+			name: "请输入名称。",
 		},
 	);
 	assert.deepEqual(
@@ -81,7 +81,7 @@ test("a permission key is letters, digits and : . _ -, up to 64", () => {
 				name: "x".repeat(65),
 			}),
 		),
-		{ name: "名称最多 64 个字。" },
+		{ name: "名称不能超过 64 个字符。" },
 	);
 });
 
@@ -95,6 +95,6 @@ test("a role needs a key and a name; permissions may be empty", () => {
 		fieldErrors(
 			roleSchema.safeParse({ key: "editor", name: " ", permissions: [] }),
 		),
-		{ name: "请填写名称。" },
+		{ name: "请输入名称。" },
 	);
 });

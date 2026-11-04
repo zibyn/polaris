@@ -21,6 +21,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { z } from "zod";
 import { CopyButton } from "#/components/copy-button";
 import { FormField, failed, saved } from "#/components/form";
+import { ItemList, PropRow } from "#/components/item-list";
 import { Alert, AlertDescription } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -32,6 +33,7 @@ import {
 } from "#/components/ui/collapsible";
 import {
 	Field,
+	FieldContent,
 	FieldDescription,
 	FieldLabel,
 	FieldLegend,
@@ -40,6 +42,7 @@ import {
 } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "#/components/ui/radio-group";
 import {
 	Select,
 	SelectContent,
@@ -86,6 +89,7 @@ import { BrandSection } from "#/routes/console/-components/brand-section";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import {
 	DangerZone,
+	IdLine,
 	SaveBar,
 	Section,
 } from "#/routes/console/-components/section";
@@ -142,7 +146,7 @@ export const Route = createFileRoute("/console/apps/$clientId")({
 	},
 	notFoundComponent: () => (
 		<p className="text-sm">
-			没有这个应用，它可能已经被删除。
+			应用不存在或已被删除。
 			<Link to="/console/apps" className="underline">
 				返回应用列表
 			</Link>
@@ -220,26 +224,27 @@ function useHeader(): Header | null {
 				{app.builtin && <Badge variant="outline">内置</Badge>}
 			</>
 		),
+		ids: <IdLine label="client_id" value={app.clientId} />,
 		tabs: tabsFor(app.type),
 		details: (
 			<>
 				{!editable && (
 					<p className="text-muted-foreground text-sm">
 						{app.builtin
-							? "内置应用由认证服务自己使用，不能修改或删除。"
+							? "内置应用不能修改或删除。"
 							: "需要「管理员」角色才能修改。"}
 					</p>
 				)}
 				{app.noLoginMethod && (
 					<Alert variant="warning">
 						<AlertDescription>
-							这个应用指定的登录方式在实例里都没开，现在没有人能登录它。
+							该应用指定的登录方式在实例中均未开启，用户无法登录。
 							<Link
 								to="/console/apps/$clientId"
 								params={{ clientId }}
 								search={{ tab: "login" }}
 							>
-								去改登录方式
+								修改登录方式
 							</Link>
 						</AlertDescription>
 					</Alert>
@@ -342,26 +347,14 @@ function BasicTab({ app, editable }: TabProps) {
 				title="基本信息"
 				editable={editable}
 				form={form}
-				extra={
-					<Field>
-						<FieldLabel htmlFor="client-id">client_id</FieldLabel>
-						<div className="flex gap-2">
-							<Input
-								id="client-id"
-								readOnly
-								value={app.clientId}
-								className="font-mono"
-							/>
-							<CopyButton value={app.clientId} />
-						</div>
-						<FieldDescription>
-							应用的唯一编号。在 SDK
-							或登录请求里填它，认证服务就知道是哪个应用。
-						</FieldDescription>
-					</Field>
-				}
 				footer={editable && <SaveBar save={save} />}
 			>
+				{/* max-w-2xl: as wide as the form's fields */}
+				<div className="max-w-2xl">
+					<PropRow label="类型" hint={typeWhy[app.type]}>
+						<span className="text-sm">{typeName[app.type]}</span>
+					</PropRow>
+				</div>
 				<form.Field name="name">
 					{(field) => (
 						<FormField field={field} label="名称">
@@ -371,31 +364,24 @@ function BasicTab({ app, editable }: TabProps) {
 						</FormField>
 					)}
 				</form.Field>
-				<Field>
-					<FieldTitle>类型</FieldTitle>
-					<p className="text-sm">{typeName[app.type]}</p>
-					<FieldDescription>{typeWhy[app.type]}</FieldDescription>
-				</Field>
 			</Section>
 			{app.type !== "public" && <ClientAuthn app={app} editable={editable} />}
 			{isM2M ? (
 				<Section title="访问令牌" editable={false}>
-					<Field>
-						<FieldTitle>默认 API 资源</FieldTitle>
-						<p className="text-sm">
+					<ItemList>
+						<PropRow
+							label="默认 API 资源"
+							hint="access token 仅对该 API 有效，创建后不能更改。调用其他 API 需另建后端服务。"
+						>
 							<Link
 								to="/console/apis/$api"
 								params={{ api: app.defaultApi ?? "" }}
-								className="underline"
+								className="text-sm underline"
 							>
 								{defaultAPIName}
 							</Link>
-						</p>
-						<FieldDescription>
-							它换到的 access token 只对这个 API
-							有效，创建后不能更改。要调另一个 API，再建一个后端服务。
-						</FieldDescription>
-					</Field>
+						</PropRow>
+					</ItemList>
 				</Section>
 			) : (
 				<Section
@@ -411,8 +397,8 @@ function BasicTab({ app, editable }: TabProps) {
 							<FieldTitle>默认 API 资源</FieldTitle>
 							<Alert variant="warning">
 								<AlertDescription>
-									还没有登记 API 资源。
-									<Link to="/console/apis">去登记 API 资源</Link>
+									还没有 API 资源。
+									<Link to="/console/apis">添加 API 资源</Link>
 								</AlertDescription>
 							</Alert>
 						</Field>
@@ -422,7 +408,7 @@ function BasicTab({ app, editable }: TabProps) {
 								<FormField
 									field={field}
 									label="默认 API 资源"
-									help="用户登录后拿到的 access token 用于调用它，并带上用户在其中的角色。不选，token 里没有角色。"
+									help="用户的 access token 用于调用该 API，并包含用户在其中的角色。不选时不含角色。"
 								>
 									{({ id }) => (
 										<div className="flex items-center gap-3">
@@ -474,8 +460,8 @@ function BasicTab({ app, editable }: TabProps) {
 									label="要求用户有角色"
 									help={
 										chosenApi
-											? "开启后，用户在默认 API 资源上一个角色都没有时，不能登录这个应用，已登录的也不能再续期。"
-											: "先选默认 API 资源：检查的是用户在它上面的角色。"
+											? "开启后，在默认 API 资源上没有角色的用户无法登录该应用，已登录的无法续期。"
+											: "需先选择默认 API 资源。"
 									}
 								>
 									{({ id }) => (
@@ -512,7 +498,7 @@ const authMethods: {
 	{
 		value: "private_key_jwt",
 		label: "私钥签名",
-		help: "后端用自己的私钥签名（RS256 或 ES256），认证服务用下面登记的公钥验证。secret 不再可用。",
+		help: "后端用私钥签名（RS256 或 ES256），以下方登记的公钥验证。client secret 不再可用。",
 	},
 ];
 
@@ -549,37 +535,43 @@ function ClientAuthn({ app, editable }: TabProps) {
 	return (
 		<Section
 			title="客户端认证方式"
-			intro="后端换取令牌时怎样证明自己是这个应用。两种方式同一时刻只认一种。"
+			intro="后端换取令牌时的身份认证方式，同一时间只能使用一种。"
 			editable={editable}
 			form={form}
 			footer={editable && <SaveBar save={save} />}
 		>
-			<Field>
-				<FieldTitle>认证方式</FieldTitle>
-				{authMethods.map((m) => (
-					<Label key={m.value} className="items-start font-normal">
-						<input
-							type="radio"
-							name="token-auth-method"
-							className="mt-1 accent-primary"
-							checked={app.tokenAuthMethod === m.value}
-							disabled={
-								change.isPending || (m.value === "private_key_jwt" && keyless)
-							}
-							onChange={() => setAsked(m.value)}
-						/>
-						<span>
-							{m.label}
-							<span className="block text-muted-foreground text-sm">
-								{m.help}
-								{m.value === "private_key_jwt" &&
-									keyless &&
-									" 先登记并保存公钥，才能切换。"}
-							</span>
-						</span>
-					</Label>
-				))}
-			</Field>
+			<FieldSet>
+				<FieldLegend variant="label">认证方式</FieldLegend>
+				<RadioGroup
+					value={app.tokenAuthMethod}
+					onValueChange={(v) => setAsked(v as TokenAuthMethod)}
+					disabled={change.isPending}
+				>
+					{authMethods.map((m) => {
+						const id = `token-auth-method-${m.value}`;
+						return (
+							<Field key={m.value} orientation="horizontal">
+								<RadioGroupItem
+									id={id}
+									value={m.value}
+									disabled={m.value === "private_key_jwt" && keyless}
+								/>
+								<FieldContent>
+									<FieldLabel htmlFor={id} className="font-normal">
+										{m.label}
+									</FieldLabel>
+									<FieldDescription>
+										{m.help}
+										{m.value === "private_key_jwt" &&
+											keyless &&
+											" 需先登记并保存公钥。"}
+									</FieldDescription>
+								</FieldContent>
+							</Field>
+						);
+					})}
+				</RadioGroup>
+			</FieldSet>
 			{app.tokenAuthMethod === "client_secret_basic" && (
 				<ClientSecret app={app} editable={editable} issued={issued} />
 			)}
@@ -588,7 +580,7 @@ function ClientAuthn({ app, editable }: TabProps) {
 					<FormField
 						field={field}
 						label="应用公钥"
-						help="JWKS 格式，只放公钥：RSA（至少 2048 位）或 EC P-256，每把要有不同的 kid，最多 5 把。轮换时让新旧公钥并存一段时间。"
+						help="JWKS 格式，仅含公钥：RSA（至少 2048 位）或 EC P-256，kid 不能重复，最多 5 把。"
 					>
 						{(control) => (
 							<Textarea
@@ -615,8 +607,8 @@ function ClientAuthn({ app, editable }: TabProps) {
 				}}
 			>
 				{toKeys
-					? "当前 secret 将立即失效，还在用它的后端会换不到令牌。请先让后端改用私钥签名，再切换。"
-					: "将生成新的 secret，只显示这一次；私钥签名随即不再可用，已登记的公钥保留。"}
+					? "当前 client secret 将立即失效，请先让后端改用私钥签名。"
+					: "将生成新的 client secret，仅显示一次。私钥签名将不再可用，已登记的公钥保留。"}
 			</ConfirmDialog>
 		</Section>
 	);
@@ -636,29 +628,19 @@ function ClientSecret({
 	});
 	const shown = rotate.data?.secret ?? issued;
 	return (
-		<Field>
-			<FieldTitle>client secret</FieldTitle>
-			{shown ? (
-				<Alert variant="warning">
-					<AlertDescription>
-						新的 client secret 只显示这一次：
-						<span className="block break-all font-mono">{shown}</span>
-					</AlertDescription>
-				</Alert>
-			) : (
-				<div className="flex gap-2">
-					<Input
-						readOnly
-						aria-label="client secret"
-						value="••••••••••••••••"
-						className="font-mono"
-					/>
-					{editable && (
+		<div className="max-w-2xl">
+			<PropRow
+				label="client secret"
+				hint="后端换取令牌时使用，仅在生成时显示一次。"
+				actions={
+					!shown &&
+					editable && (
 						<ConfirmDialog
 							trigger={
 								<Button
 									type="button"
-									variant="outline"
+									variant="ghost"
+									size="sm"
 									disabled={rotate.isPending}
 								>
 									重新生成
@@ -669,16 +651,25 @@ function ClientSecret({
 							destructive={false}
 							onConfirm={() => rotate.mutate()}
 						>
-							旧的 secret
-							会立即失效，还在用它的后端会登录失败。请先准备好替换，再生成。
+							旧的 client secret 将立即失效，仍在使用它的后端将无法换取令牌。
 						</ConfirmDialog>
-					)}
-				</div>
-			)}
-			<FieldDescription>
-				你的后端换取令牌时用的密码。只在生成时显示一次，请立即保存到服务器配置里。
-			</FieldDescription>
-		</Field>
+					)
+				}
+			>
+				{shown ? (
+					<Alert variant="warning">
+						<AlertDescription>
+							新的 client secret 仅显示一次：
+							<span className="block break-all font-mono">{shown}</span>
+						</AlertDescription>
+					</Alert>
+				) : (
+					<span className="break-all font-mono text-muted-foreground text-sm">
+						••••••••••••••••
+					</span>
+				)}
+			</PropRow>
+		</div>
 	);
 }
 
@@ -696,9 +687,7 @@ function DeleteApplication({ app }: { app: Application }) {
 	});
 	return (
 		<DangerZone title="删除应用">
-			<p className="text-sm">
-				删除后，用户不能再通过这个应用登录。此操作无法撤销。
-			</p>
+			<p className="text-sm">删除后，用户无法再通过该应用登录。</p>
 			<ConfirmDialog
 				trigger={
 					<Button
@@ -713,7 +702,7 @@ function DeleteApplication({ app }: { app: Application }) {
 				action="删除应用"
 				onConfirm={() => remove.mutate()}
 			>
-				用户将不能再通过这个应用登录。此操作无法撤销。
+				用户将无法再通过该应用登录。此操作无法撤销。
 			</ConfirmDialog>
 		</DangerZone>
 	);
@@ -759,7 +748,7 @@ function LoginTab({ app, editable }: TabProps) {
 							field={field}
 							label="回调地址"
 							en="redirect URI"
-							help="登录完成后跳回应用的地址。只接受这里登记过的地址。"
+							help="登录完成后跳转回应用的地址，仅允许此处登记的地址。"
 						>
 							{(control) => (
 								<Textarea
@@ -784,13 +773,13 @@ function LoginTab({ app, editable }: TabProps) {
 									field={field}
 									label="退出后跳转地址"
 									en="post-logout redirect URI"
-									help="用户退出后回到的页面。同样只接受登记过的地址。"
+									help="用户退出登录后跳转的地址，仅允许此处登记的地址。"
 								>
 									{(control) => (
 										<Textarea
 											{...control}
 											className="font-mono"
-											placeholder="每行一个，可不填"
+											placeholder="每行一个，如 https://shop.example.com"
 										/>
 									)}
 								</FormField>
@@ -802,7 +791,7 @@ function LoginTab({ app, editable }: TabProps) {
 									field={field}
 									label="允许 App 保持登录"
 									en="签发 refresh token，每次刷新都给会话续期"
-									help="开启后，App 可在后台续期，用户不用反复登录。关闭后，大约 10 分钟就要重新登录。App 能保持登录多久，由这一项和下面的闲置时长共同决定。"
+									help="开启后，App 可在后台续期会话；关闭后约 10 分钟需重新登录。"
 								>
 									{({ id }) => (
 										<Switch
@@ -822,7 +811,7 @@ function LoginTab({ app, editable }: TabProps) {
 									<FormField
 										field={field}
 										label="闲置多久需重新登录"
-										help="用户连续这么多天没用这个应用，下次打开就要重新登录。0 表示默认（无后端 90 天，有后端 30 天）。改动只对之后新登录的会话生效。"
+										help="闲置超过该天数需重新登录。0 为默认值（无后端 90 天，有后端 30 天）。仅对之后新登录的会话生效。"
 									>
 										{(control) => (
 											<div className="flex max-w-md items-center gap-4">
@@ -860,7 +849,7 @@ function LoginTab({ app, editable }: TabProps) {
 									<FormField
 										field={field}
 										label="最长多久需重新登录"
-										help="从上次登录或重新验证身份算起，到期必须重新登录；0 表示默认值（App 180 天，浏览器 90 天）。改动只对之后新登录的会话生效。"
+										help="自上次登录或重新验证身份起算，到期需重新登录。0 为默认值（App 180 天，浏览器 90 天）。仅对之后新登录的会话生效。"
 									>
 										{(control) => (
 											<div className="flex max-w-md items-center gap-4">
@@ -952,7 +941,7 @@ function LoginMethods({ app, editable }: TabProps) {
 	return (
 		<Section
 			title="登录方式"
-			intro="默认跟随实例：设置里开着的登录方式、启用的认证源，这里都能用，以后新加的也会自动出现。指定后只能用勾选的这些，且实例也得开着；用别的方式登录过的用户进入这个应用时要重新登录。改动不影响已登录的会话。"
+			intro="默认跟随实例的登录方式和已启用的认证源。指定后仅可使用勾选且实例已开启的方式，用其他方式登录的用户进入该应用时需重新登录。"
 			editable={editable}
 			form={form}
 			footer={editable && <SaveBar save={save} />}
@@ -1034,7 +1023,7 @@ function AppBrand({ app, editable }: TabProps) {
 	const client = useQueryClient();
 	return (
 		<BrandSection
-			intro="默认跟随实例在设置里配的品牌。这里填了哪项就只换哪项，留空的继续跟随实例。"
+			intro="默认跟随实例的品牌，填写的项覆盖实例设置。"
 			brand={app.brand}
 			editable={editable}
 			follows="跟随实例"
@@ -1086,7 +1075,7 @@ function NativeApps({ app, editable }: TabProps) {
 	return (
 		<Section
 			title="原生 App 关联"
-			intro="登记 iOS 和 Android 应用后，它们就能用这个域名的通行密钥和密码自动填充。认证服务会据此自动生成关联文件，立即生效。"
+			intro="登记后，这些 iOS 和 Android 应用可使用本域名的 Passkey 和密码自动填充，保存后立即生效。"
 			editable={editable}
 			form={form}
 			footer={editable && <SaveBar save={save} />}
@@ -1097,7 +1086,7 @@ function NativeApps({ app, editable }: TabProps) {
 						field={field}
 						label="iOS App"
 						en="Team ID.Bundle ID"
-						help="在 Apple 开发者后台的 Membership 和 Identifiers 里能找到。"
+						help="见 Apple 开发者后台的 Membership 和 Identifiers 页面。"
 					>
 						{(control) => (
 							<Textarea
@@ -1115,13 +1104,13 @@ function NativeApps({ app, editable }: TabProps) {
 						field={field}
 						label="Android App"
 						en="包名 + SHA-256 签名指纹"
-						help="在 Android Studio 里用 gradlew signingReport 查签名指纹。"
+						help="可用 gradlew signingReport 查看签名指纹。"
 					>
 						{(control) => (
 							<Textarea
 								{...control}
 								className="font-mono"
-								placeholder={`每行一个，先包名后指纹（可多个，空格分隔），如 com.example.app ${fingerprintHint}`}
+								placeholder={`每行一个，包名后接指纹（多个用空格分隔），如 com.example.app ${fingerprintHint}`}
 							/>
 						)}
 					</FormField>
@@ -1148,7 +1137,7 @@ function BackchannelLogout({ app, editable }: TabProps) {
 	return (
 		<Section
 			title="退出通知"
-			intro="用户退出登录、被管理员下线、禁用或删除时，认证服务会向这个地址发送 OIDC Back-Channel Logout 通知，你的后端据此结束自己的登录状态。不需要的话留空即可。"
+			intro="用户退出登录、被下线、禁用或删除时，向该地址发送 OIDC Back-Channel Logout 通知。留空则不发送。"
 			editable={editable}
 			form={form}
 			footer={editable && <SaveBar save={save} />}
@@ -1202,7 +1191,7 @@ function WebhookTab({ app, editable }: TabProps) {
 		<Section
 			title="用户删除通知"
 			editable={editable}
-			intro="用户被管理员删除或自己注销账号时，认证服务会通知这个地址，方便你的后端同步清理这个用户的业务数据。不需要的话留空即可。"
+			intro="用户被删除或注销账号时，向该地址发送通知。留空则不发送。"
 			form={form}
 			footer={editable && <SaveBar save={save} />}
 		>
@@ -1230,7 +1219,7 @@ function WebhookTab({ app, editable }: TabProps) {
 					<FormField
 						field={field}
 						label="Webhook 密钥"
-						help="你的后端用它验证通知确实来自认证服务。填写通知地址时必须一起设置。"
+						help="用于验证通知来源。填写通知地址时必填。"
 					>
 						{(control) => (
 							<>
@@ -1243,7 +1232,7 @@ function WebhookTab({ app, editable }: TabProps) {
 									{...control}
 									type="password"
 									autoComplete="new-password"
-									placeholder="自行生成一串随机字符，可用 whsec_ 开头的格式"
+									placeholder="随机字符串，如 whsec_ 开头的格式"
 								/>
 							</>
 						)}
@@ -1284,13 +1273,13 @@ function RolesTab({ app }: { app: Application }) {
 			<Section title="角色" editable={false}>
 				<Alert>
 					<AlertDescription>
-						这个 API 资源还没有角色。
+						该 API 资源还没有角色。
 						<Link
 							to="/console/apis/$api"
 							params={{ api: app.defaultApi ?? "" }}
 							className="underline"
 						>
-							去添加角色
+							添加角色
 						</Link>
 					</AlertDescription>
 				</Alert>
@@ -1300,7 +1289,7 @@ function RolesTab({ app }: { app: Application }) {
 	return (
 		<Section
 			title="角色"
-			intro="它换到的 access token 带上这里勾选的角色与权限。"
+			intro="应用的 access token 包含勾选的角色及其权限。"
 			editable={editable}
 			form={form}
 			footer={editable && <SaveBar save={save} />}
@@ -1342,7 +1331,7 @@ function RolesTab({ app }: { app: Application }) {
 const steps = {
 	clientId: "记下 client_id",
 	secret: "保存 client secret",
-	api: "选择默认 API 资源（可以跳过）",
+	api: "选择默认 API 资源（可选）",
 	code: "接入代码",
 };
 
@@ -1391,7 +1380,7 @@ function Onboarding({
 					<CopyButton value={secret} />
 				</div>
 				<p className="text-[13px] text-muted-foreground">
-					它只显示这一次，请现在保存到你服务器的配置里。丢了只能在下面重新生成，旧的会立即失效。
+					仅显示一次，请立即保存。丢失后需重新生成，旧的将立即失效。
 				</p>
 				<Label className="font-normal">
 					<Checkbox checked={saved} onCheckedChange={setSaved} />
@@ -1401,14 +1390,14 @@ function Onboarding({
 		) : (
 			<p className="text-[13px] text-muted-foreground">
 				client secret
-				只在创建时显示一次。没保存的话，在下面「基本信息」里重新生成。
+				仅在创建时显示一次。如未保存，可在下方「客户端认证方式」中重新生成。
 			</p>
 		),
 		api: (
 			<p className="text-[13px] text-muted-foreground">
 				{app.type === "m2m"
-					? "它换到的 access token 只对这个 API 有效，创建后不能更改。"
-					: "选了以后，用户登录这个应用拿到的 access token 就能调用这个 API 资源，并带上用户在其中的角色。不调用你自己的 API 可以不选。在下面「访问令牌」里选择。"}
+					? "access token 仅对该 API 有效，创建后不能更改。"
+					: "用户的 access token 可调用该 API 资源，并包含用户在其中的角色。可在下方「访问令牌」中选择，不调用自有 API 可跳过。"}
 			</p>
 		),
 		code: (
@@ -1456,14 +1445,14 @@ function Onboarding({
 				</ol>
 				<div className="mt-4 space-y-1 text-muted-foreground text-sm">
 					<p>
-						用户能用哪些方式登录，去
+						在
 						<Link to="/console/settings" className="underline">
 							「登录方式」
 						</Link>
-						检查。
+						中查看用户可用的登录方式。
 					</p>
 					<p>
-						需要在用户注销时清理数据，就配置
+						如需在用户注销时清理数据，请配置
 						<Link
 							from={Route.fullPath}
 							search={{ tab: "webhook" }}
@@ -1481,7 +1470,7 @@ function Onboarding({
 				title="离开前保存 client secret？"
 			>
 				client secret
-				只显示这一次，离开后就再也看不到了。请先保存到服务器配置里，勾选「我已保存」后再离开。
+				仅显示一次，离开后无法再查看。请先保存，并勾选「我已保存」。
 			</ConfirmDialog>
 		</Collapsible>
 	);

@@ -14,6 +14,11 @@ import {
 	EmptyHeader,
 	EmptyTitle,
 } from "#/components/ui/empty";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "#/components/ui/tooltip";
 import { ownCount } from "#/lib/apps";
 import { type AuditEvent, api, type Overview } from "#/lib/console-api";
 import { checklist, checklistDone, checklistSummary } from "#/lib/overview";
@@ -63,15 +68,18 @@ function Home() {
 			{o.sendsLastDay >= o.dailySendLimit && (
 				<Alert variant="destructive">
 					<AlertDescription>
-						过去 24 小时已发送 {o.sendsLastDay} 条验证码,达到每日上限{" "}
-						{o.dailySendLimit},已停发。可在「通道」中调整上限。
+						过去 24 小时已发送 {o.sendsLastDay} 条验证码，达到每日上限{" "}
+						{o.dailySendLimit}，已停止发送。可在「通道」中调整上限。
 					</AlertDescription>
 				</Alert>
 			)}
 			<Checklist />
-			<section className="flex divide-x divide-border">
+			<section className="grid grid-cols-2 gap-6 sm:flex sm:gap-0 sm:divide-x sm:divide-border">
 				{stats.map(({ label, value, hint }) => (
-					<div key={label} className="flex-1 px-6 first:pl-0 last:pr-0">
+					<div
+						key={label}
+						className="sm:flex-1 sm:px-6 sm:first:pl-0 sm:last:pr-0"
+					>
 						<div className="text-[13px] text-muted-foreground">{label}</div>
 						<div className="mt-2 font-semibold text-3xl tabular-nums tracking-tight">
 							{value ?? "–"}
@@ -135,7 +143,7 @@ function Checklist() {
 	const r = 15;
 	const arc = (2 * Math.PI * r * summary.done) / summary.total;
 	return (
-		<section className="flex items-center gap-4 rounded-xl bg-primary-soft px-6 py-6">
+		<section className="flex flex-wrap items-center gap-4 rounded-xl bg-primary-soft px-6 py-6">
 			<div className="relative size-12 shrink-0">
 				<svg
 					viewBox="0 0 36 36"
@@ -167,7 +175,7 @@ function Checklist() {
 					{summary.done}/{summary.total}
 				</span>
 			</div>
-			<div className="flex-1">
+			<div className="min-w-0 flex-1 basis-48">
 				<SectionHeading title={summary.title} intro={summary.next.hint} />
 			</div>
 			<Link
@@ -177,18 +185,25 @@ function Checklist() {
 			>
 				{summary.next.label}
 			</Link>
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-label="关闭上手清单"
-				className="text-faint hover:bg-transparent"
-				onClick={() => {
-					setClosed(true);
-					rememberClosed();
-				}}
-			>
-				<X />
-			</Button>
+			<Tooltip>
+				<TooltipTrigger
+					render={
+						<Button
+							variant="ghost"
+							size="icon"
+							aria-label="关闭上手清单"
+							className="text-faint hover:bg-transparent"
+							onClick={() => {
+								setClosed(true);
+								rememberClosed();
+							}}
+						/>
+					}
+				>
+					<X />
+				</TooltipTrigger>
+				<TooltipContent>关闭上手清单</TooltipContent>
+			</Tooltip>
 		</section>
 	);
 }
@@ -200,22 +215,24 @@ function Recent() {
 	});
 	return (
 		<section>
-			<div className="flex items-baseline justify-between">
-				<h2 className="font-semibold text-[15px]">最近事件</h2>
-				<Link
-					to="/console/audit"
-					className="font-medium text-[13px] text-primary-ink"
-				>
-					全部 →
-				</Link>
-			</div>
-			<div className="mt-3">
+			<SectionHeading
+				title="最近事件"
+				actions={
+					<Link
+						to="/console/audit"
+						className="font-medium text-[13px] text-primary-ink underline-offset-2 hover:underline"
+					>
+						查看全部
+					</Link>
+				}
+			/>
+			<div className="mt-2">
 				{events.isSuccess && events.data.events.length === 0 ? (
 					<Empty className="border">
 						<EmptyHeader>
 							<EmptyTitle>最近没有事件</EmptyTitle>
 							<EmptyDescription>
-								超过审计保留期的记录已经删除。
+								超过保留期的审计记录会被删除。
 							</EmptyDescription>
 						</EmptyHeader>
 					</Empty>

@@ -47,7 +47,7 @@ test("a new email looks like one", () => {
 		fieldErrors(
 			bindSchema("email", false).safeParse({ value: "a@x", code: "" }),
 		),
-		{ value: "请输入邮箱" },
+		{ value: "请输入有效的邮箱" },
 	);
 });
 
@@ -107,7 +107,7 @@ test("with 两步验证 on, reauthentication takes a TOTP or a recovery code", (
 		fieldErrors(
 			reauthSchema("recovery", false).safeParse({ secret: "abcd-234" }),
 		),
-		{ secret: "请输入恢复码,形如 xxxx-xxxx" },
+		{ secret: "请输入恢复码，格式为 xxxx-xxxx" },
 	);
 });
 
@@ -131,7 +131,7 @@ test("coming back from a Provider says how it went", () => {
 		success: "已绑定 Google",
 	});
 	assert.deepEqual(providerReturn("?reauthenticated=google", name), {
-		success: "已验证身份,请继续操作",
+		success: "已验证身份，请继续操作",
 	});
 	assert.deepEqual(providerReturn("?error=%E5%87%BA%E9%94%99", name), {
 		error: "出错",

@@ -16,8 +16,7 @@ function useHeader(): Header | null {
 	}
 	return {
 		title: "创建用户",
-		description:
-			"建好的账号是待激活：本人能登录，但在自己设置密码之前拿不到任何令牌。",
+		description: "用户设置密码前，账号为待激活状态。",
 	};
 }
 

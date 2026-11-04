@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { encode } from "uqr";
 import { CopyButton } from "#/components/copy-button";
 import { FormError, FormField, failed, saved } from "#/components/form";
-import { ItemList } from "#/components/item-list";
+import { ItemList, PropRow } from "#/components/item-list";
 import { Star } from "#/components/star";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -131,7 +131,7 @@ function Account() {
 			<main className="flex min-h-svh flex-col items-center justify-center gap-2 bg-canvas px-4 text-center">
 				<h1 className="font-semibold text-2xl">账号已注销</h1>
 				<p className="text-muted-foreground text-sm">
-					你的数据已全部删除。同一个手机号或邮箱再次登录,将是一个新账号。
+					你的数据已全部删除。再次用同一手机号或邮箱登录将创建新账号。
 				</p>
 			</main>
 		);
@@ -177,20 +177,22 @@ function Account() {
 				<RecentLogins />
 				<Section title="数据与隐私">
 					<ItemList>
-						<Row
+						<PropRow
 							label="导出我的数据"
-							hint="登录方式、设备与会话、同意记录和与你相关的安全事件,JSON 格式"
+							actions={
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() =>
+										guard(() => exportData(user.sub).catch(failed("导出失败")))
+									}
+								>
+									导出
+								</Button>
+							}
 						>
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={() =>
-									guard(() => exportData(user.sub).catch(failed("导出失败")))
-								}
-							>
-								导出
-							</Button>
-						</Row>
+							<Muted>登录方式、设备与会话、同意记录和安全事件，JSON 格式</Muted>
+						</PropRow>
 					</ItemList>
 				</Section>
 				<DangerZone title="危险操作">
@@ -259,48 +261,63 @@ function ProfileSection({ me }: { me: Me }) {
 	return (
 		<Section title="个人资料">
 			<ItemList>
-				<Row
+				<PropRow
 					label="昵称"
-					hint={me.nickname ?? "未设置,各应用会显示你的手机号或邮箱"}
-				>
-					<Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-						修改
-					</Button>
-				</Row>
-				<Row label="头像" hint="JPEG、PNG 或 WebP,不超过 5 MB;会裁成正方形">
-					<input
-						ref={file}
-						type="file"
-						accept="image/jpeg,image/png,image/webp"
-						className="hidden"
-						onChange={(e) => {
-							const f = e.target.files?.[0];
-							e.target.value = "";
-							if (!f) return;
-							const problem = avatarProblem(f);
-							if (problem) toast.error(problem);
-							else upload.mutate(f);
-						}}
-					/>
-					{me.picture && (
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={remove.isPending}
-							onClick={() => remove.mutate()}
-						>
-							移除
+					hint={me.nickname ? undefined : "应用中显示手机号或邮箱"}
+					actions={
+						<Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+							修改
 						</Button>
-					)}
-					<Button
-						variant="outline"
+					}
+				>
+					{me.nickname ?? <Muted>未设置</Muted>}
+				</PropRow>
+				<PropRow
+					label="头像"
+					hint="JPEG、PNG 或 WebP，不超过 5 MB，裁剪为正方形"
+					actions={
+						<>
+							<input
+								ref={file}
+								type="file"
+								accept="image/jpeg,image/png,image/webp"
+								className="hidden"
+								onChange={(e) => {
+									const f = e.target.files?.[0];
+									e.target.value = "";
+									if (!f) return;
+									const problem = avatarProblem(f);
+									if (problem) toast.error(problem);
+									else upload.mutate(f);
+								}}
+							/>
+							{me.picture && (
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={remove.isPending}
+									onClick={() => remove.mutate()}
+								>
+									移除
+								</Button>
+							)}
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={upload.isPending}
+								onClick={() => file.current?.click()}
+							>
+								{me.picture ? "更换" : "上传"}
+							</Button>
+						</>
+					}
+				>
+					<UserAvatar
+						name={me.nickname ?? primaryIdentifier(me.identifiers)}
+						picture={me.picture}
 						size="sm"
-						disabled={upload.isPending}
-						onClick={() => file.current?.click()}
-					>
-						{me.picture ? "更换" : "上传"}
-					</Button>
-				</Row>
+					/>
+				</PropRow>
 			</ItemList>
 			{editing && (
 				<EditNickname
@@ -392,73 +409,84 @@ function LoginMethods({ me, guard }: { me: Me; guard: Guard }) {
 				{(["phone", "email"] as const).map((kind) => {
 					const id = me.identifiers.find((i) => i.kind === kind);
 					return (
-						<Row key={kind} label={kindName[kind]} hint={id?.value ?? "未绑定"}>
-							{id ? (
-								<>
+						<PropRow
+							key={kind}
+							label={kindName[kind]}
+							actions={
+								id ? (
+									<>
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => guard(() => setEditing(kind))}
+										>
+											更换
+										</Button>
+										<Button
+											variant="ghost"
+											size="sm"
+											disabled={unbind.isPending}
+											onClick={() => guard(() => unbind.mutate(kind))}
+										>
+											解绑
+										</Button>
+									</>
+								) : (
 									<Button
 										variant="ghost"
 										size="sm"
 										onClick={() => guard(() => setEditing(kind))}
 									>
-										更换
+										绑定
 									</Button>
-									<Button
-										variant="ghost"
-										size="sm"
-										disabled={unbind.isPending}
-										onClick={() => guard(() => unbind.mutate(kind))}
-									>
-										解绑
-									</Button>
-								</>
-							) : (
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => guard(() => setEditing(kind))}
-								>
-									绑定
-								</Button>
-							)}
-						</Row>
+								)
+							}
+						>
+							{id?.value ?? <Muted>未绑定</Muted>}
+						</PropRow>
 					);
 				})}
-				{username && (
-					<Row label="用户名" hint={username.value}>
-						{null}
-					</Row>
-				)}
+				{username && <PropRow label="用户名">{username.value}</PropRow>}
 				{me.externalIdentities.map((x) => (
-					<Row
+					<PropRow
 						key={x.provider}
 						label={x.name}
-						hint={`已绑定外部账号 · ${date(x.boundAt)}${x.enabled ? "" : " · 已停用"}`}
+						hint={`${date(x.boundAt)}${x.enabled ? "" : " · 已停用"}`}
+						actions={
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={unbindProvider.isPending}
+								onClick={() => guard(() => unbindProvider.mutate(x.provider))}
+							>
+								解绑
+							</Button>
+						}
 					>
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={unbindProvider.isPending}
-							onClick={() => guard(() => unbindProvider.mutate(x.provider))}
-						>
-							解绑
-						</Button>
-					</Row>
+						已绑定外部账号
+					</PropRow>
 				))}
 				{me.providers
 					.filter(
 						(p) => !me.externalIdentities.some((x) => x.provider === p.id),
 					)
 					.map((p) => (
-						<Row key={p.id} label={p.name} hint="未绑定外部账号">
-							<Button
-								variant="outline"
-								size="sm"
-								disabled={bindProvider.isPending}
-								onClick={() => guard(() => bindProvider.mutate(p.id))}
-							>
-								绑定
-							</Button>
-						</Row>
+						<PropRow
+							key={p.id}
+							label={p.name}
+							actions={
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={bindProvider.isPending}
+									onClick={() => guard(() => bindProvider.mutate(p.id))}
+								>
+									绑定
+								</Button>
+							}
+						>
+							<Muted>未绑定外部账号</Muted>
+						</PropRow>
 					))}
 			</ItemList>
 			{editing && (
@@ -505,7 +533,7 @@ function BindIdentifier({
 			<DialogContent>
 				<DialogTitle>绑定新{kindName[kind]}</DialogTitle>
 				<DialogDescription>
-					验证码会发到新{kindName[kind]},无需验证原来的。
+					验证码将发送到新{kindName[kind]}，无需验证原来的。
 				</DialogDescription>
 				<form
 					noValidate
@@ -584,33 +612,36 @@ function Security({ me, guard }: { me: Me; guard: Guard }) {
 		<Section title="安全" id="passkeys">
 			<ItemList>
 				{me.passwordAllowed && (
-					<Row
+					<PropRow
 						id="password"
 						label="密码"
 						hint={
-							me.hasPassword
-								? "已设置,可配合手机号、邮箱或用户名登录"
-								: "未设置;忘记密码时用验证码登录后在这里修改"
+							me.hasPassword ? "可与手机号、邮箱或用户名配合登录" : undefined
+						}
+						actions={
+							<>
+								{me.hasPassword && (
+									<Button
+										variant="ghost"
+										size="sm"
+										disabled={remove.isPending}
+										onClick={() => guard(() => remove.mutate())}
+									>
+										删除
+									</Button>
+								)}
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => guard(() => setEditing(true))}
+								>
+									{me.hasPassword ? "修改" : "设置"}
+								</Button>
+							</>
 						}
 					>
-						{me.hasPassword && (
-							<Button
-								variant="ghost"
-								size="sm"
-								disabled={remove.isPending}
-								onClick={() => guard(() => remove.mutate())}
-							>
-								删除
-							</Button>
-						)}
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => guard(() => setEditing(true))}
-						>
-							{me.hasPassword ? "修改" : "设置"}
-						</Button>
-					</Row>
+						{me.hasPassword ? "已设置" : <Muted>未设置</Muted>}
+					</PropRow>
 				)}
 				{me.passkeyLogin && <Passkeys guard={guard} />}
 				<TwoFactor me={me} guard={guard} />
@@ -651,38 +682,48 @@ function Passkeys({ guard }: { guard: Guard }) {
 	});
 	return (
 		<>
-			{passkeys.map((p) => (
-				<Row
+			{passkeys.map((p, i) => (
+				<PropRow
 					key={p.id}
-					label={p.name}
+					label={i === 0 && "Passkey"}
 					hint={`添加于 ${date(p.createdAt)} · ${
 						p.lastUsedAt ? `最后使用 ${date(p.lastUsedAt)}` : "尚未使用"
 					}`}
+					actions={
+						<>
+							<Button variant="ghost" size="sm" onClick={() => setRenaming(p)}>
+								重命名
+							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={remove.isPending}
+								onClick={() => guard(() => setDeleting(p))}
+							>
+								删除
+							</Button>
+						</>
+					}
 				>
-					<Button variant="ghost" size="sm" onClick={() => setRenaming(p)}>
-						重命名
-					</Button>
-					<Button
-						variant="ghost"
-						size="sm"
-						disabled={remove.isPending}
-						onClick={() => guard(() => setDeleting(p))}
-					>
-						删除
-					</Button>
-				</Row>
+					<span className="block truncate">{p.name}</span>
+				</PropRow>
 			))}
 			{passkeySupported && (
-				<Row label="Passkey" hint="在设备或密码管理器里各存一把,登录免验证码">
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={add.isPending}
-						onClick={() => guard(() => add.mutate())}
-					>
-						添加 Passkey
-					</Button>
-				</Row>
+				<PropRow
+					label={passkeys.length === 0 && "Passkey"}
+					actions={
+						<Button
+							variant="ghost"
+							size="sm"
+							disabled={add.isPending}
+							onClick={() => guard(() => add.mutate())}
+						>
+							添加 Passkey
+						</Button>
+					}
+				>
+					<Muted>保存在设备或密码管理器中，登录无需验证码</Muted>
+				</PropRow>
 			)}
 			{renaming && (
 				<RenamePasskey passkey={renaming} onClose={() => setRenaming(null)} />
@@ -690,14 +731,14 @@ function Passkeys({ guard }: { guard: Guard }) {
 			<ConfirmDialog
 				open={deleting !== null}
 				onOpenChange={(open) => !open && setDeleting(null)}
-				title="删除 Passkey?"
+				title="删除 Passkey？"
 				action="删除"
 				onConfirm={() => {
 					if (deleting) remove.mutate(deleting.id);
 					setDeleting(null);
 				}}
 			>
-				删除后这把 Passkey 不能再用来登录;丢了设备时在这里删掉它。
+				删除后无法再用该 Passkey 登录。此操作无法撤销。
 			</ConfirmDialog>
 		</>
 	);
@@ -788,44 +829,47 @@ function TwoFactor({ me, guard }: { me: Me; guard: Guard }) {
 	const { enabled, recoveryCodesLeft } = me.twoFactor;
 	return (
 		<>
-			<Row
+			<PropRow
 				label="两步验证"
 				hint={
 					enabled
-						? `已开启 · 剩余 ${recoveryCodesLeft} 个恢复码`
-						: "未开启;开启后用验证码或密码登录时,还要输入验证器中的 6 位数字"
+						? `剩余 ${recoveryCodesLeft} 个恢复码`
+						: "开启后，验证码或密码登录需额外输入验证器中的 6 位数字"
+				}
+				actions={
+					enabled ? (
+						<>
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={regenerate.isPending}
+								onClick={() => guard(() => regenerate.mutate())}
+							>
+								重新生成恢复码
+							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={disable.isPending}
+								onClick={() => guard(() => setDisabling(true))}
+							>
+								关闭
+							</Button>
+						</>
+					) : (
+						<Button
+							variant="ghost"
+							size="sm"
+							disabled={begin.isPending}
+							onClick={() => guard(() => begin.mutate())}
+						>
+							开启
+						</Button>
+					)
 				}
 			>
-				{enabled ? (
-					<>
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={regenerate.isPending}
-							onClick={() => guard(() => regenerate.mutate())}
-						>
-							重新生成恢复码
-						</Button>
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={disable.isPending}
-							onClick={() => guard(() => setDisabling(true))}
-						>
-							关闭
-						</Button>
-					</>
-				) : (
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={begin.isPending}
-						onClick={() => guard(() => begin.mutate())}
-					>
-						开启
-					</Button>
-				)}
-			</Row>
+				{enabled ? "已开启" : <Muted>未开启</Muted>}
+			</PropRow>
 			{begin.data && (
 				<EnableTwoFactor
 					setup={begin.data}
@@ -840,11 +884,11 @@ function TwoFactor({ me, guard }: { me: Me; guard: Guard }) {
 			<ConfirmDialog
 				open={disabling}
 				onOpenChange={setDisabling}
-				title="关闭两步验证?"
+				title="关闭两步验证？"
 				action="关闭两步验证"
 				onConfirm={() => disable.mutate()}
 			>
-				验证器里的条目和全部恢复码都会作废,之后登录只需验证码或密码。其他设备不会下线。
+				验证器中的条目和所有恢复码将失效，其他设备不会下线。
 			</ConfirmDialog>
 		</>
 	);
@@ -884,7 +928,7 @@ function EnableTwoFactor({
 			<DialogContent>
 				<DialogTitle>开启两步验证</DialogTitle>
 				<DialogDescription>
-					用验证器 App 扫描二维码;密码管理器等不能扫码时,复制密钥手动添加。
+					用验证器 App 扫描二维码，或复制密钥手动添加。
 				</DialogDescription>
 				<QRCode value={setup.uri} className="mx-auto size-44" />
 				<div className="flex items-center gap-2">
@@ -964,8 +1008,8 @@ function RecoveryCodes({
 			<DialogContent>
 				<DialogTitle>保存恢复码</DialogTitle>
 				<DialogDescription>
-					丢了验证器时,每个恢复码可代替一次 6
-					位数字,用过即作废。它们只显示这一次,请存到安全的地方。
+					无法使用验证器时，每个恢复码可代替一次 6
+					位数字，用后失效。恢复码只显示一次，请妥善保存。
 				</DialogDescription>
 				<ul className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-4 text-center font-mono">
 					{codes.map((c) => (
@@ -1075,10 +1119,9 @@ function Sessions() {
 		<Section
 			title="设备与会话"
 			id="sessions"
-			intro="不限设备数,可逐个下线或一次下线其他设备;已结束的保留 30 天"
-		>
-			{others.length > 0 && (
-				<div className="mb-3 flex justify-end">
+			intro="登录过的设备和会话，已结束的保留 30 天"
+			actions={
+				others.length > 0 && (
 					<ConfirmDialog
 						trigger={
 							<Button
@@ -1093,40 +1136,43 @@ function Sessions() {
 						action="下线其他设备"
 						onConfirm={() => endOthers.mutate()}
 					>
-						其他设备上的会话立即结束，需要重新登录；本设备不受影响。
+						其他设备需重新登录，本设备不受影响。
 					</ConfirmDialog>
-				</div>
-			)}
+				)
+			}
+		>
 			<ItemList>
 				{sessions.map((s) => (
-					<Row
-						key={s.id}
-						label={
-							<span className="flex items-center gap-2">
+					<Item key={s.id} size="sm">
+						<ItemContent className="min-w-0">
+							<ItemTitle className="flex-wrap gap-y-1 font-normal">
 								{deviceLabel(s.userAgent)} · {s.application}
 								{s.current && <Badge>本设备</Badge>}
 								{!s.active && <Badge variant="secondary">已结束</Badge>}
-							</span>
-						}
-						hint={[
-							s.ip,
-							`登录于 ${date(s.authTime)}`,
-							`最近活动 ${date(s.lastSeenAt)}`,
-						]
-							.filter(Boolean)
-							.join(" · ")}
-					>
+							</ItemTitle>
+							<ItemDescription className="text-[13px]">
+								{[
+									s.ip,
+									`登录于 ${date(s.authTime)}`,
+									`最近活动 ${date(s.lastSeenAt)}`,
+								]
+									.filter(Boolean)
+									.join(" · ")}
+							</ItemDescription>
+						</ItemContent>
 						{s.active && !s.current && (
-							<Button
-								variant="ghost"
-								size="sm"
-								disabled={end.isPending}
-								onClick={() => end.mutate(s.id)}
-							>
-								下线
-							</Button>
+							<ItemActions>
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={end.isPending}
+									onClick={() => end.mutate(s.id)}
+								>
+									下线
+								</Button>
+							</ItemActions>
 						)}
-					</Row>
+					</Item>
 				))}
 			</ItemList>
 		</Section>
@@ -1143,7 +1189,7 @@ function RecentLogins() {
 			intro={
 				failedCount > 0
 					? `过去 30 天有 ${failedCount} 次登录失败`
-					: "过去 30 天的登录,最多 50 条"
+					: "过去 30 天的登录，最多显示 50 条"
 			}
 		>
 			{logins.length === 0 ? (
@@ -1153,11 +1199,13 @@ function RecentLogins() {
 					{logins.map((l, i) => {
 						const line = loginLine(l);
 						return (
-							<Row
+							<Item
 								// biome-ignore lint/suspicious/noArrayIndexKey: events carry no id; the list is never reordered
 								key={i}
-								label={
-									<span className="flex items-center gap-2">
+								size="sm"
+							>
+								<ItemContent className="min-w-0">
+									<ItemTitle className="flex-wrap gap-y-1 font-normal">
 										{line.what} · {l.application}
 										<Badge
 											variant={
@@ -1166,18 +1214,18 @@ function RecentLogins() {
 										>
 											{line.result}
 										</Badge>
-									</span>
-								}
-								hint={`${date(l.at)} · ${line.device}`}
-							>
-								{null}
-							</Row>
+									</ItemTitle>
+									<ItemDescription className="text-[13px]">
+										{`${date(l.at)} · ${line.device}`}
+									</ItemDescription>
+								</ItemContent>
+							</Item>
 						);
 					})}
 				</ItemList>
 			)}
 			<p className="mt-3 text-[13px] text-muted-foreground">
-				有不认识的登录?
+				发现异常登录？
 				<a className="underline" href="#password">
 					修改密码
 				</a>
@@ -1217,20 +1265,25 @@ function DeleteAccount({
 	);
 	return (
 		<>
-			<Row label="注销账号" hint="立即生效,不可恢复">
-				<Button
-					variant="destructive"
-					size="sm"
-					onClick={() => guard(() => setOpen(true))}
-				>
-					注销
-				</Button>
-			</Row>
+			<PropRow
+				label="注销账号"
+				actions={
+					<Button
+						variant="destructive"
+						size="sm"
+						onClick={() => guard(() => setOpen(true))}
+					>
+						注销
+					</Button>
+				}
+			>
+				<Muted>立即生效，无法撤销</Muted>
+			</PropRow>
 			<Dialog open={open} onOpenChange={setOpen}>
 				<DialogContent>
 					<DialogTitle>注销账号</DialogTitle>
 					<DialogDescription>
-						立即生效,没有冷静期:所有登录方式、设备和数据都会被删除,各应用会收到通知。此操作不可恢复。
+						所有登录方式、设备和数据将立即删除，并通知各应用。此操作无法撤销。
 					</DialogDescription>
 					<form
 						noValidate
@@ -1363,7 +1416,7 @@ function Reauth({
 			<DialogContent>
 				<DialogTitle>请重新验证身份</DialogTitle>
 				<DialogDescription>
-					换绑、解绑、两步验证、导出和注销,须在 10 分钟内验证过身份。
+					换绑、解绑、两步验证、导出和注销前需验证身份，10 分钟内有效。
 				</DialogDescription>
 				{choices.length > 1 && (
 					<div className="flex flex-wrap gap-2">
@@ -1380,11 +1433,11 @@ function Reauth({
 					</div>
 				)}
 				{current === undefined ? (
-					viaProvider.length === 0 && <p>没有可用的验证方式,请联系管理员。</p>
+					viaProvider.length === 0 && <p>没有可用的验证方式，请联系管理员。</p>
 				) : byPasskey ? (
 					<div className="space-y-3">
 						<p className="text-muted-foreground">
-							用这台设备或密码管理器里的 Passkey 验证一下。
+							使用本设备或密码管理器中的 Passkey 验证。
 						</p>
 						<FormError error={error} />
 						<Button
@@ -1488,28 +1541,7 @@ function choiceLabel(m: ReauthChoice): string {
 	}
 }
 
-function Row({
-	id,
-	label,
-	hint,
-	children,
-}: {
-	id?: string;
-	label: React.ReactNode;
-	hint?: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<Item id={id}>
-			<ItemContent className="min-w-0">
-				<ItemTitle className="font-normal">{label}</ItemTitle>
-				{hint && (
-					<ItemDescription className="truncate text-[13px]">
-						{hint}
-					</ItemDescription>
-				)}
-			</ItemContent>
-			<ItemActions className="shrink-0 gap-1">{children}</ItemActions>
-		</Item>
-	);
+// Muted is secondary text: a value not there yet, or what a row does.
+function Muted({ children }: { children: React.ReactNode }) {
+	return <span className="text-muted-foreground">{children}</span>;
 }

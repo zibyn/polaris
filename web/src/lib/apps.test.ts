@@ -50,7 +50,7 @@ test("creating an Application needs a name and, on the web, callback URLs", () =
 				defaultApi: "",
 			}),
 		),
-		{ name: "请填写名称。", redirectUris: "请填写回调地址。" },
+		{ name: "请输入名称。", redirectUris: "请输入回调地址。" },
 	);
 	assert.deepEqual(
 		fieldErrors(
@@ -112,7 +112,7 @@ test("a webhook URL needs a key, new or already set", () => {
 			webhookSchema(false).safeParse({ webhookUrl, webhookSecret: "" }),
 		),
 		{
-			webhookSecret: "请设置 Webhook 密钥。填写通知地址后，必须同时设置密钥。",
+			webhookSecret: "填写通知地址时必须设置 Webhook 密钥。",
 		},
 	);
 	assert.equal(
@@ -139,7 +139,7 @@ test("the webhook goes to an http(s) URL", () => {
 				webhookSecret: "",
 			}),
 		),
-		{ webhookUrl: "请填写 http 或 https 开头的地址。" },
+		{ webhookUrl: "请输入 http 或 https 开头的地址。" },
 	);
 });
 
@@ -149,10 +149,10 @@ test("the back-channel logout URI is an http(s) URL without #, or empty", () => 
 	assert.deepEqual(check(""), {});
 	assert.deepEqual(check("https://shop.example.com/logout"), {});
 	assert.deepEqual(check("shop.example.com/logout"), {
-		backchannelLogoutUri: "请填写 http 或 https 开头的地址。",
+		backchannelLogoutUri: "请输入 http 或 https 开头的地址。",
 	});
 	assert.deepEqual(check("https://shop.example.com/logout#x"), {
-		backchannelLogoutUri: "地址不能带 #。",
+		backchannelLogoutUri: "地址不能包含 #。",
 	});
 });
 
@@ -169,13 +169,13 @@ test("sign-in redirects are URLs and idle days a whole number up to a year", () 
 	assert.equal(loginSchema.safeParse({ ...ok, idleDays: "0" }).success, true);
 	for (const idleDays of ["1.5", "366", "abc"]) {
 		assert.deepEqual(fieldErrors(loginSchema.safeParse({ ...ok, idleDays })), {
-			idleDays: "请填写 0 到 365 之间的整数，0 表示默认值。",
+			idleDays: "请输入 0 到 365 之间的整数。",
 		});
 	}
 	assert.equal(loginSchema.safeParse({ ...ok, maxDays: "180" }).success, true);
 	for (const maxDays of ["1.5", "366", "abc"]) {
 		assert.deepEqual(fieldErrors(loginSchema.safeParse({ ...ok, maxDays })), {
-			maxDays: "请填写 0 到 365 之间的整数，0 表示默认值。",
+			maxDays: "请输入 0 到 365 之间的整数。",
 		});
 	}
 	assert.deepEqual(
@@ -234,7 +234,7 @@ test("the JWKS textarea takes a JSON object with a keys array", () => {
 	assert.equal(jwksSchema.safeParse({ jwks: '{"keys": []}' }).success, true);
 	for (const jwks of ["", "{", "[]", '{"keys": {}}', "{}"]) {
 		assert.deepEqual(fieldErrors(jwksSchema.safeParse({ jwks })), {
-			jwks: '请填写 JWKS，形如 {"keys": [...]}。',
+			jwks: '请输入 JWKS，形如 {"keys": [...]}。',
 		});
 	}
 });

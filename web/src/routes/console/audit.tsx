@@ -10,16 +10,29 @@ import {
 	stripSearchParams,
 	useNavigate,
 } from "@tanstack/react-router";
+import { format } from "date-fns";
+import { zhCN } from "date-fns/locale";
+import { CalendarIcon, Cog } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { z } from "zod";
 import { failed } from "#/components/form";
 import { ItemList } from "#/components/item-list";
-import { Star } from "#/components/star";
 import { Avatar, AvatarFallback } from "#/components/ui/avatar";
 import { Button } from "#/components/ui/button";
+import { Calendar } from "#/components/ui/calendar";
 import { Field, FieldError, FieldLabel } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
-import { Item, ItemContent, ItemMedia } from "#/components/ui/item";
+import {
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemMedia,
+} from "#/components/ui/item";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "#/components/ui/popover";
 import {
 	Select,
 	SelectContent,
@@ -185,25 +198,24 @@ function Audit() {
 					disabled={finding}
 					onFind={find}
 				/>
-				<Input
-					type="date"
-					className="w-40"
-					aria-label="起始日期"
-					value={since}
-					onChange={(e) => set("since", e.target.value)}
-				/>
-				<Input
-					type="date"
-					className="w-40"
-					aria-label="截止日期"
-					value={until}
-					onChange={(e) => set("until", e.target.value)}
-				/>
+				<div className="flex items-center gap-2">
+					<DatePicker
+						label="开始日期"
+						value={since}
+						onChange={(v) => set("since", v)}
+					/>
+					<span className="text-[13px] text-muted-foreground">至</span>
+					<DatePicker
+						label="结束日期"
+						value={until}
+						onChange={(v) => set("until", v)}
+					/>
+				</div>
 			</div>
 			<Separator />
 			{choices && (
 				<div className="space-y-2 rounded-xl bg-primary-soft px-4 py-3 text-sm">
-					<p>找到 {choices.length} 个用户，选一个查看记录：</p>
+					<p>找到 {choices.length} 个用户，请选择要查看的用户：</p>
 					<ul className="flex flex-wrap gap-2">
 						{choices.map((u) => (
 							<li key={u.sub}>
@@ -298,6 +310,53 @@ function Sentence({ parts }: { parts: Part[] }) {
 	});
 }
 
+// DatePicker picks a local yyyy-mm-dd, "" when none; picking the chosen
+// day again clears it.
+function DatePicker({
+	label,
+	value,
+	onChange,
+}: {
+	label: string;
+	value: string;
+	onChange: (v: string) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const selected = value ? new Date(`${value}T00:00`) : undefined;
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger
+				render={
+					<Button
+						variant="outline"
+						aria-label={label}
+						className="w-36 justify-start font-normal tabular-nums"
+					/>
+				}
+			>
+				<CalendarIcon data-icon="inline-start" />
+				{selected ? (
+					format(selected, "yyyy/M/d")
+				) : (
+					<span className="text-muted-foreground">{label}</span>
+				)}
+			</PopoverTrigger>
+			<PopoverContent className="w-auto p-0" align="start">
+				<Calendar
+					mode="single"
+					locale={zhCN}
+					selected={selected}
+					defaultMonth={selected}
+					onSelect={(d) => {
+						onChange(d ? format(d, "yyyy-MM-dd") : "");
+						setOpen(false);
+					}}
+				/>
+			</PopoverContent>
+		</Popover>
+	);
+}
+
 // FindUser is the box that filters by a User; it looks them up on Enter.
 function FindUser({
 	q,
@@ -319,7 +378,7 @@ function FindUser({
 	return (
 		<form
 			noValidate
-			className="flex-1"
+			className="min-w-56 flex-1"
 			onSubmit={(e) => {
 				e.preventDefault();
 				form.handleSubmit();
@@ -368,8 +427,8 @@ export function EventTable({
 		<Table>
 			<TableHeader>
 				<TableRow>
-					<TableHead>时间</TableHead>
-					<TableHead>操作人</TableHead>
+					<TableHead className="w-24 sm:w-44">时间</TableHead>
+					<TableHead className="w-20 sm:w-40">操作人</TableHead>
 					<TableHead>事件描述</TableHead>
 				</TableRow>
 			</TableHeader>
@@ -378,10 +437,10 @@ export function EventTable({
 					const { parts, title } = describe(ev, names);
 					return (
 						<TableRow key={ev.id}>
-							<TableCell className="whitespace-nowrap text-faint text-xs">
+							<TableCell className="whitespace-normal text-muted-foreground text-xs tabular-nums sm:whitespace-nowrap">
 								{date(ev.at)}
 							</TableCell>
-							<TableCell className="whitespace-nowrap">
+							<TableCell className="max-w-40 truncate">
 								<Sentence parts={actor(ev, names)} />
 							</TableCell>
 							<TableCell className="whitespace-normal" title={title}>
@@ -423,7 +482,8 @@ function useNames() {
 }
 
 // EventList is the overview's recent events: one line each, who did it
-// and what, then when.
+// and what, then when. The system has no name to show: its icon stands
+// in, and the sentence names its own subject (用户 a 用密码登录了 …).
 export function EventList({ events }: { events: AuditEvent[] }) {
 	const { names, naming } = useNames();
 	return (
@@ -432,30 +492,45 @@ export function EventList({ events }: { events: AuditEvent[] }) {
 				const { parts, title } = describe(ev, names);
 				const who = actor(ev, names);
 				const [first] = who;
+				const system = !doneBy(ev);
 				return (
-					<Item key={ev.id}>
+					<Item key={ev.id} size="sm" className="py-2">
 						<ItemMedia>
-							{!doneBy(ev) ? (
+							{system ? (
 								<Avatar size="sm">
 									<AvatarFallback className="bg-canvas text-faint">
-										<Star className="size-3" />
+										<Cog className="size-3.5" />
 									</AvatarFallback>
 								</Avatar>
 							) : (
 								<UserAvatar
-									name={typeof first === "string" ? undefined : first.text}
+									name={
+										doneBy(ev) === ev.sub
+											? ev.user // 用户本人
+											: typeof first === "string"
+												? undefined
+												: first.text
+									}
 								/>
 							)}
 						</ItemMedia>
-						<ItemContent className="min-w-0" title={title}>
-							<p>
-								<span className="font-medium">
-									<Sentence parts={who} />
-								</span>{" "}
+						<ItemContent className="min-w-0">
+							<p title={title}>
+								{system ? (
+									<span className="sr-only">系统：</span>
+								) : (
+									<>
+										<span className="font-medium">
+											<Sentence parts={who} />
+										</span>{" "}
+									</>
+								)}
 								<Sentence parts={parts} />
 							</p>
 						</ItemContent>
-						<span className="shrink-0 text-faint text-xs">{date(ev.at)}</span>
+						<ItemActions className="text-faint text-xs tabular-nums">
+							{date(ev.at)}
+						</ItemActions>
 					</Item>
 				);
 			})}

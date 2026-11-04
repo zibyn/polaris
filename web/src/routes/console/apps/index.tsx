@@ -1,7 +1,8 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { createColumnHelper } from "@tanstack/react-table";
 import { useMemo } from "react";
+import { z } from "zod";
 import { DataTable, type features } from "#/components/data-table";
 import { Badge } from "#/components/ui/badge";
 import { buttonVariants } from "#/components/ui/button";
@@ -16,9 +17,12 @@ import { onlyBuiltin, typeName } from "#/lib/apps";
 import { type Application, api } from "#/lib/console-api";
 import { apisQuery } from "#/routes/console/apis/index";
 import { type Header, useCan } from "#/routes/console/route";
+import { CreateAppSheet } from "./-components/create-app";
 
 export const Route = createFileRoute("/console/apps/")({
 	staticData: { useHeader },
+	// create opens 创建应用 in a drawer over the list
+	validateSearch: z.object({ create: z.boolean().optional().catch(undefined) }),
 	loader: ({ context: { queryClient } }) =>
 		Promise.all([
 			queryClient.ensureQueryData(applicationsQuery),
@@ -38,7 +42,11 @@ export const applicationsQuery = {
 function useCreate(applications?: Application[]) {
 	const can = useCan();
 	const create = can("applications:write") && (
-		<Link to="/console/apps/new" className={buttonVariants()}>
+		<Link
+			to="/console/apps"
+			search={{ create: true }}
+			className={buttonVariants()}
+		>
 			创建应用
 		</Link>
 	);
@@ -60,6 +68,8 @@ function Applications() {
 	const { applications } = useSuspenseQuery(applicationsQuery).data;
 	const { apis } = useSuspenseQuery(apisQuery).data;
 	const { create, empty } = useCreate(applications);
+	const creating = !!Route.useSearch().create;
+	const navigate = useNavigate({ from: Route.fullPath });
 	const columns = useMemo(() => {
 		const apiName = (identifier?: string) =>
 			apis.find((a) => a.identifier === identifier)?.name ?? identifier;
@@ -107,9 +117,9 @@ function Applications() {
 			{empty && (
 				<Empty className="border">
 					<EmptyHeader>
-						<EmptyTitle>还没有接入你的应用</EmptyTitle>
+						<EmptyTitle>还没有应用</EmptyTitle>
 						<EmptyDescription>
-							你的 App、网站或小程序要先在这里创建，才能让用户用认证服务登录。
+							App、网站或小程序需先在此创建，用户才能登录。
 						</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
@@ -129,6 +139,10 @@ function Applications() {
 					empty="没有匹配的应用"
 				/>
 			)}
+			<CreateAppSheet
+				open={creating}
+				onOpenChange={(open) => !open && navigate({ search: {} })}
+			/>
 		</div>
 	);
 }

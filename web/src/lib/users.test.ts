@@ -66,7 +66,7 @@ test("an invite needs no password at all", () => {
 	assert.deepEqual(
 		createUserSchema.safeParse({ identifier: " ", way: "invite", password: "" })
 			.error?.issues[0].message,
-		"请填写登录标识。",
+		"请输入登录标识。",
 	);
 });
 
@@ -78,7 +78,7 @@ test("creating a User needs an Identifier", () => {
 			way: "password",
 			password: "password1",
 		}).error?.issues[0].message,
-		"请填写登录标识。",
+		"请输入登录标识。",
 	);
 });
 

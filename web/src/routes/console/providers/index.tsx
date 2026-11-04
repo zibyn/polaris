@@ -5,9 +5,10 @@ import {
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { createColumnHelper } from "@tanstack/react-table";
 import { useMemo } from "react";
+import { z } from "zod";
 import { DataTable, type features } from "#/components/data-table";
 import { failed } from "#/components/form";
 import { Badge } from "#/components/ui/badge";
@@ -23,9 +24,12 @@ import { api, type ProviderInfo, type ProviderType } from "#/lib/console-api";
 import { disableImpact } from "#/lib/login";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { type Header, useCan } from "#/routes/console/route";
+import { AddProviderSheet } from "./-components/add-provider";
 
 export const Route = createFileRoute("/console/providers/")({
 	staticData: { useHeader },
+	// add opens 添加认证源 in a drawer over the list
+	validateSearch: z.object({ add: z.boolean().optional().catch(undefined) }),
 	loader: ({ context: { queryClient } }) =>
 		queryClient.ensureQueryData(providersQuery),
 	component: Providers,
@@ -42,7 +46,11 @@ export const providersQuery = queryOptions({
 function useAdd(providers?: ProviderInfo[]) {
 	const can = useCan();
 	const add = can("config:write") && (
-		<Link to="/console/providers/new" className={buttonVariants()}>
+		<Link
+			to="/console/providers"
+			search={{ add: true }}
+			className={buttonVariants()}
+		>
 			添加认证源
 		</Link>
 	);
@@ -57,7 +65,7 @@ function useHeader(): Header | null {
 	return {
 		title: "认证源",
 		description:
-			"用户可以在登录页用这些账号登录，比如 Google 或公司自建的 Keycloak。第一次用它登录的用户会自动注册。",
+			"用户可在登录页使用外部账号登录，如 Google 或自建的 Keycloak。",
 		actions: !empty && add,
 	};
 }
@@ -68,6 +76,8 @@ function Providers() {
 	const { types, providers } = useSuspenseQuery(providersQuery).data;
 	const editable = useCan()("config:write");
 	const { add, empty } = useAdd(providers);
+	const adding = !!Route.useSearch().add;
+	const navigate = useNavigate({ from: Route.fullPath });
 	const columns = useMemo(
 		() => [
 			helper.accessor("name", {
@@ -130,10 +140,9 @@ function Providers() {
 			{empty && (
 				<Empty className="border">
 					<EmptyHeader>
-						<EmptyTitle>还没有添加认证源</EmptyTitle>
+						<EmptyTitle>还没有认证源</EmptyTitle>
 						<EmptyDescription>
-							加上 Google、GitHub
-							这些认证源，用户就能用它们登录；不加的话，用户只能用密码或验证码。
+							添加后，用户可使用 Google、GitHub 等账号登录。
 						</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
@@ -153,6 +162,10 @@ function Providers() {
 					empty="没有匹配的认证源"
 				/>
 			)}
+			<AddProviderSheet
+				open={adding}
+				onOpenChange={(open) => !open && navigate({ search: {} })}
+			/>
 		</div>
 	);
 }
@@ -239,8 +252,8 @@ function ProviderActions({ provider: p }: { provider: ProviderInfo }) {
 						})
 					}
 				>
-					登录页不再显示这个按钮，它的设置一并删除。之后要用得重新添加，回调 URL
-					不变。
+					认证源配置将被删除，此操作无法撤销。以相同 Provider ID
+					重新添加时，回调 URL 不变。
 				</ConfirmDialog>
 			)}
 		</div>
