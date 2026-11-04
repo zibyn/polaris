@@ -44,11 +44,24 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "#/components/ui/dropdown-menu";
+import {
+	Sidebar,
+	SidebarContent,
+	SidebarFooter,
+	SidebarGroup,
+	SidebarHeader,
+	SidebarInset,
+	SidebarMenu,
+	SidebarMenuButton,
+	SidebarMenuItem,
+	SidebarProvider,
+	SidebarTrigger,
+	useSidebar,
+} from "#/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import { UserAvatar } from "#/components/user-avatar";
 import { APIError, api, logout, type Me } from "#/lib/console-api";
 import { navGroups, needsTwoFactor } from "#/lib/nav";
-import { Panel } from "#/routes/console/-components/panel";
 
 export const meQuery = queryOptions({
 	queryKey: ["me"],
@@ -76,7 +89,7 @@ export const Route = createFileRoute("/console")({
 				<TwoFactorFirst />
 			) : props.error instanceof APIError && props.error.status === 403 ? (
 				<div className="space-y-4 text-center">
-					<p>你不是管理员,无法使用管理端</p>
+					<p>当前账号不是管理员，无法使用管理端</p>
 					<Button size="sm" onClick={logout}>
 						退出登录
 					</Button>
@@ -96,12 +109,11 @@ function TwoFactorFirst() {
 		<Alert>
 			<AlertTitle>需要先开启两步验证或添加 Passkey</AlertTitle>
 			<AlertDescription>
-				这个实例要求管理员开启两步验证或添加
-				Passkey。在账号中心完成后，回来就能继续使用管理端。
+				管理员须开启两步验证或添加 Passkey，在账号中心完成设置后即可使用管理端。
 			</AlertDescription>
 			<AlertAction>
 				<Button size="sm" render={<Link to="/account" />}>
-					去账号中心
+					前往账号中心
 				</Button>
 			</AlertAction>
 		</Alert>
@@ -134,6 +146,9 @@ export type Header = {
 	badges?: ReactNode;
 	actions?: ReactNode;
 	description?: ReactNode;
+	// ids is a detail page's identifiers (IdLine), the values admins copy
+	// into code and config, right under the title.
+	ids?: ReactNode;
 	details?: ReactNode;
 	tabs?: readonly (readonly [string, string])[];
 };
@@ -241,10 +256,8 @@ export function useCan() {
 }
 
 function Console() {
-	const me = useMe();
 	const leaf = useMatches({ select: (m) => m[m.length - 1] });
 	const locked = useTwoFactorLock();
-	const groups = navGroups(me.permissions);
 	if (locked) {
 		return (
 			<FullPage>
@@ -253,10 +266,40 @@ function Console() {
 		);
 	}
 	return (
-		<div className="flex min-h-svh bg-canvas p-2 text-sm">
-			<aside className="sticky top-2 flex h-[calc(100svh-1rem)] w-60 shrink-0 flex-col p-4">
-				{/* Room to switch to other products later; not clickable yet. */}
-				<div className="flex items-center gap-3 px-2 py-2">
+		<SidebarProvider className="bg-sidebar text-sm">
+			<Nav />
+			<SidebarInset className="min-w-0 md:peer-data-[variant=inset]:rounded-2xl md:peer-data-[variant=inset]:shadow-xs md:peer-data-[variant=inset]:ring-1 md:peer-data-[variant=inset]:ring-border">
+				{/* Below md the sidebar is a drawer behind this trigger. */}
+				<div className="flex items-center gap-2 border-b px-4 py-2 md:hidden">
+					<SidebarTrigger aria-label="菜单" />
+					<span className="font-semibold">Polaris</span>
+				</div>
+				<div className="p-6 sm:p-8 xl:p-14">
+					{/* Lists use the whole panel; form fields stop at a readable width. */}
+					<div className="space-y-6 [&_[data-slot=field]]:max-w-2xl">
+						<Crumbs />
+						<Page
+							key={leaf.routeId}
+							useHeader={leaf.staticData.useHeader ?? noHeader}
+						/>
+					</div>
+				</div>
+			</SidebarInset>
+		</SidebarProvider>
+	);
+}
+
+// Nav is the console's sidebar: the mark (room to switch to other
+// products later, not clickable yet), the groups, and the signed-in
+// admin's menu. Below md it opens as a drawer.
+function Nav() {
+	const me = useMe();
+	const { setOpenMobile } = useSidebar();
+	const pathname = useLocation({ select: (l) => l.pathname });
+	return (
+		<Sidebar variant="inset" collapsible="offcanvas">
+			<SidebarHeader>
+				<div className="flex items-center gap-3 p-2">
 					<span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
 						<Star className="size-4" />
 					</span>
@@ -265,50 +308,48 @@ function Console() {
 						<span className="block text-muted-foreground text-xs">Auth</span>
 					</span>
 				</div>
-				<nav className="mt-6 space-y-1">
-					{groups.map((g) => (
-						<Link
-							key={g.label}
-							to={g.to}
-							activeOptions={{ exact: g.to === "/console" }}
-							className="flex items-center rounded-lg px-3 py-2"
-							inactiveProps={{
-								className: "text-muted-foreground hover:text-foreground",
-							}}
-							activeProps={{
-								className: "bg-card font-medium shadow-xs ring-1 ring-border",
-							}}
-						>
-							{g.label}
-						</Link>
-					))}
-				</nav>
-				<DropdownMenu>
-					<DropdownMenuTrigger className="mt-auto flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-card">
-						<UserAvatar name={me.identifier} />
-						<span className="truncate" title={me.identifier}>
-							{me.identifier}
-						</span>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent side="top">
-						<DropdownMenuItem render={<Link to="/account" />}>
-							账号中心
-						</DropdownMenuItem>
-						<DropdownMenuItem onClick={logout}>退出登录</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
-			</aside>
-			<Panel className="min-w-0 flex-1 p-6 sm:p-8 xl:p-14">
-				{/* Lists use the whole panel; form fields stop at a readable width. */}
-				<div className="space-y-6 [&_[data-slot=field]]:max-w-2xl">
-					<Crumbs />
-					<Page
-						key={leaf.routeId}
-						useHeader={leaf.staticData.useHeader ?? noHeader}
-					/>
-				</div>
-			</Panel>
-		</div>
+			</SidebarHeader>
+			<SidebarContent>
+				<SidebarGroup>
+					<SidebarMenu>
+						{navGroups(me.permissions).map((g) => (
+							<SidebarMenuItem key={g.label}>
+								<SidebarMenuButton
+									isActive={
+										g.to === "/console"
+											? pathname === "/console" || pathname === "/console/"
+											: pathname.startsWith(g.to)
+									}
+									render={
+										<Link to={g.to} onClick={() => setOpenMobile(false)} />
+									}
+								>
+									{g.label}
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+						))}
+					</SidebarMenu>
+				</SidebarGroup>
+			</SidebarContent>
+			<SidebarFooter>
+				<SidebarMenu>
+					<SidebarMenuItem>
+						<DropdownMenu>
+							<DropdownMenuTrigger render={<SidebarMenuButton size="lg" />}>
+								<UserAvatar name={me.identifier} />
+								<span title={me.identifier}>{me.identifier}</span>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent side="top">
+								<DropdownMenuItem render={<Link to="/account" />}>
+									账号中心
+								</DropdownMenuItem>
+								<DropdownMenuItem onClick={logout}>退出登录</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</SidebarMenuItem>
+				</SidebarMenu>
+			</SidebarFooter>
+		</Sidebar>
 	);
 }
 
@@ -320,6 +361,7 @@ function PageHeader({
 	badges,
 	actions,
 	description,
+	ids,
 	details,
 	tabs,
 }: Header) {
@@ -332,11 +374,18 @@ function PageHeader({
 					</h1>
 					{badges}
 					{actions && (
-						<div className="ml-auto flex items-center gap-2">{actions}</div>
+						<div className="ml-auto flex flex-wrap items-center gap-2">
+							{actions}
+						</div>
 					)}
 				</div>
+				{ids && (
+					<div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-1">
+						{ids}
+					</div>
+				)}
 				{description && (
-					<p className="mt-1 text-muted-foreground">{description}</p>
+					<p className="mt-2 text-muted-foreground">{description}</p>
 				)}
 			</div>
 			{details}

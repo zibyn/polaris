@@ -66,7 +66,7 @@ export const wayName: Record<WayIn, string> = {
 // take an invite (email only, and only with an email Channel configured).
 export const createUserSchema = z
 	.object({
-		identifier: z.string().trim().min(1, "请填写登录标识。"),
+		identifier: z.string().trim().min(1, "请输入登录标识。"),
 		way: z.enum(waysIn),
 		password: z.string(),
 	})

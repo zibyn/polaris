@@ -19,15 +19,15 @@ export function contrastOnWhite(hex: string): number {
 // most 64 characters, and a primary colour as #rrggbb that white text reads
 // on at 4.5:1 (WCAG AA). Both may be empty.
 export const brandSchema = z.object({
-	name: z.string().trim().max(64, "品牌名最多 64 个字符。"),
+	name: z.string().trim().max(64, "品牌名不能超过 64 个字符。"),
 	color: z
 		.string()
 		.trim()
 		.refine((c) => c === "" || /^#[0-9a-fA-F]{6}$/.test(c), {
-			message: "请填写 #rrggbb 格式的颜色，如 #0A66C2。",
+			message: "请输入 #rrggbb 格式的颜色，如 #0A66C2。",
 		})
 		.refine((c) => !/^#[0-9a-fA-F]{6}$/.test(c) || contrastOnWhite(c) >= 4.5, {
-			message: "请换深一些的颜色：白字放在上面要看得清，对比度要达到 4.5:1。",
+			message: "颜色过浅，与白色文字的对比度需不低于 4.5:1。",
 		}),
 });
 

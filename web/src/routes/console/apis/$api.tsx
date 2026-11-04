@@ -55,7 +55,7 @@ import {
 } from "#/lib/console-api";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { FormSheet } from "#/routes/console/-components/form-sheet";
-import { DangerZone } from "#/routes/console/-components/section";
+import { DangerZone, IdLine } from "#/routes/console/-components/section";
 import { apisQuery } from "#/routes/console/apis/index";
 import { applicationsQuery } from "#/routes/console/apps/index";
 import { type Header, useCan } from "#/routes/console/route";
@@ -83,7 +83,7 @@ export const Route = createFileRoute("/console/apis/$api")({
 	},
 	notFoundComponent: () => (
 		<p className="text-sm">
-			没有这个 API 资源，它可能已经被删除。
+			API 资源不存在或已被删除。
 			<Link to="/console/apis" className="underline">
 				返回 API 资源列表
 			</Link>
@@ -140,24 +140,14 @@ function useHeader(): Header | null {
 		title: def.name,
 		badges: def.builtin && <Badge variant="secondary">内置</Badge>,
 		tabs,
-		details: (
-			<dl className="grid gap-1 text-sm sm:grid-cols-[10rem_1fr]">
-				<dt className="text-muted-foreground">API 资源标识符</dt>
-				<dd>
-					<span className="font-mono">{def.identifier}</span>
-					<p className="text-[13px] text-muted-foreground">
-						你的后端校验令牌时认的名字，即 access token 的 aud。
-					</p>
-				</dd>
-				<dt className="text-muted-foreground">用作默认 API 资源</dt>
-				<dd>
-					{defaulting.length ? (
-						<AppLinks apps={defaulting} />
-					) : (
-						<span className="text-muted-foreground">没有应用</span>
-					)}
-				</dd>
-			</dl>
+		ids: (
+			<>
+				<IdLine label="标识符" value={def.identifier} />
+				<span className="flex flex-wrap gap-x-2 text-[13px] text-muted-foreground">
+					用作默认 API 资源
+					{defaulting.length ? <AppLinks apps={defaulting} /> : "没有应用"}
+				</span>
+			</>
 		),
 	};
 }
@@ -231,16 +221,14 @@ function Permissions({ def }: { def: APIDef }) {
 		<div className="space-y-3">
 			{def.permissions.length === 0 && def.builtin && (
 				<p className="text-muted-foreground text-sm">
-					内置 API 资源的权限由认证服务定义，不能添加。
+					内置 API 资源不能添加权限。
 				</p>
 			)}
 			{def.permissions.length === 0 && !def.builtin && (
 				<Empty className="border">
 					<EmptyHeader>
 						<EmptyTitle>还没有权限</EmptyTitle>
-						<EmptyDescription>
-							权限是你的后端检查的最小单位，比如“导出订单”。先定义权限，再把它们组合成角色。
-						</EmptyDescription>
+						<EmptyDescription>先定义权限，再组合成角色。</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>{add}</EmptyContent>
 				</Empty>
@@ -275,8 +263,8 @@ function Permissions({ def }: { def: APIDef }) {
 										onConfirm={() => remove.mutate(p.key)}
 									>
 										{n
-											? `它会从 ${n} 个角色中移除，持有这些角色的用户随即失去这项权限。此操作无法撤销。`
-											: "没有角色用到它。此操作无法撤销。"}
+											? `该权限将从 ${n} 个角色中移除，持有这些角色的用户将失去该权限。此操作无法撤销。`
+											: "没有角色使用该权限。此操作无法撤销。"}
 									</ConfirmDialog>
 								</ItemActions>
 							)}
@@ -289,7 +277,7 @@ function Permissions({ def }: { def: APIDef }) {
 				open={adding}
 				onOpenChange={setAdding}
 				title="添加权限"
-				description="权限是你的后端检查的最小单位，比如“导出订单”。先定义权限，再把它们组合成角色。"
+				description="定义 API 资源的权限，再组合成角色。"
 			>
 				<PermissionForm save={put} onDone={() => setAdding(false)} />
 			</FormSheet>
@@ -386,9 +374,8 @@ function Roles({
 			{noDefaultApps && (
 				<Alert variant="warning">
 					<AlertDescription>
-						还没有应用以它为默认 API
-						资源，给用户分配的角色不会出现在任何令牌里。{" "}
-						<Link to="/console/apps">去「应用」</Link>
+						没有应用以它为默认 API 资源，分配的角色不会出现在令牌中。{" "}
+						<Link to="/console/apps">前往「应用」</Link>
 					</AlertDescription>
 				</Alert>
 			)}
@@ -397,7 +384,7 @@ function Roles({
 					<EmptyHeader>
 						<EmptyTitle>还没有角色</EmptyTitle>
 						<EmptyDescription>
-							角色是一组权限，分给用户后，他们登录拿到的令牌里就带着这些权限。
+							将权限组合成角色，再分配给用户。
 						</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>{add}</EmptyContent>
@@ -423,7 +410,7 @@ function Roles({
 						? "添加角色"
 						: `编辑角色「${editing.name}」`
 				}
-				description="角色是一组权限，分给用户后，他们登录拿到的令牌里就带着这些权限。"
+				description="分配给用户后，角色的权限会写入其令牌。"
 			>
 				{editing !== null && (
 					<RoleForm
@@ -441,7 +428,7 @@ function Roles({
 const holders = (role: RoleDef): string[] =>
 	[
 		role.users ? `${role.users} 个用户` : "",
-		role.applications ? `${role.applications} 个 Application` : "",
+		role.applications ? `${role.applications} 个应用` : "",
 	].filter(Boolean);
 
 // RoleRow shows a Role; 编辑 opens it in the drawer. Built-in Roles stay as
@@ -505,7 +492,7 @@ function RoleRow({
 					>
 						{role.users} 个用户
 					</Link>
-					{role.applications > 0 && ` · ${role.applications} 个 Application`}
+					{role.applications > 0 && ` · ${role.applications} 个应用`}
 				</ItemDescription>
 			</ItemContent>
 			{editable && (
@@ -513,7 +500,7 @@ function RoleRow({
 					{canMark && (
 						<Label
 							className="text-muted-foreground text-xs font-normal"
-							title="新用户创建时自动获得它"
+							title="新用户自动获得此角色"
 						>
 							<Checkbox
 								checked={role.default}
@@ -537,8 +524,8 @@ function RoleRow({
 						onConfirm={() => remove.mutate(held.length > 0)}
 					>
 						{held.length
-							? `它仍分配给 ${held.join("、")}，删除后这些持有者随即失去它。此操作无法撤销。`
-							: "没有用户或 Application 持有它。此操作无法撤销。"}
+							? `该角色仍分配给 ${held.join("、")}，删除后将一并收回。此操作无法撤销。`
+							: "没有用户或应用持有该角色。此操作无法撤销。"}
 					</ConfirmDialog>
 				</ItemActions>
 			)}
@@ -625,7 +612,7 @@ function RoleForm({
 						<FieldLegend variant="label">权限</FieldLegend>
 						{def.permissions.length === 0 ? (
 							<p className="text-muted-foreground text-[13px]">
-								这个 API 资源还没有权限，先到「权限」标签定义。
+								该 API 资源还没有权限，请先在「权限」标签页中添加。
 							</p>
 						) : (
 							<div className="flex max-h-64 flex-wrap gap-x-4 gap-y-2 overflow-y-auto">
@@ -689,12 +676,12 @@ function DeleteAPI({
 		<DangerZone title="删除 API 资源">
 			{defaulting.length ? (
 				<div className="space-y-1 text-sm">
-					<p>先在这些应用里改掉默认 API 资源：</p>
+					<p>以下应用将其用作默认 API 资源，请先修改：</p>
 					<AppLinks apps={defaulting} />
 				</div>
 			) : (
 				<p className="text-sm">
-					它的权限、角色和所有角色分配都会一起删除。此操作无法撤销。
+					其权限、角色及角色分配将一并删除。此操作无法撤销。
 				</p>
 			)}
 			<ConfirmDialog
@@ -710,7 +697,7 @@ function DeleteAPI({
 				action="删除 API 资源"
 				onConfirm={() => remove.mutate()}
 			>
-				它的权限、角色和所有角色分配都会一起删除，用户随即失去这些角色。此操作无法撤销。
+				其权限、角色及角色分配将一并删除，用户将失去这些角色。此操作无法撤销。
 			</ConfirmDialog>
 		</DangerZone>
 	);

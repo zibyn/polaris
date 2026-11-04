@@ -22,10 +22,8 @@ import { Route as ConsoleApisIndexRouteImport } from './routes/console/apis/inde
 import { Route as ConsoleApisApiRouteImport } from './routes/console/apis/$api'
 import { Route as ConsoleAppsIndexRouteImport } from './routes/console/apps/index'
 import { Route as ConsoleAppsClientIdRouteImport } from './routes/console/apps/$clientId'
-import { Route as ConsoleAppsNewRouteImport } from './routes/console/apps/new'
 import { Route as ConsoleProvidersIndexRouteImport } from './routes/console/providers/index'
 import { Route as ConsoleProvidersIdRouteImport } from './routes/console/providers/$id'
-import { Route as ConsoleProvidersNewRouteImport } from './routes/console/providers/new'
 import { Route as ConsoleUsersIndexRouteImport } from './routes/console/users/index'
 import { Route as ConsoleUsersSubRouteImport } from './routes/console/users/$sub'
 import { Route as ConsoleUsersNewRouteImport } from './routes/console/users/new'
@@ -95,11 +93,6 @@ const ConsoleAppsClientIdRoute = ConsoleAppsClientIdRouteImport.update({
   path: '/apps/$clientId',
   getParentRoute: () => ConsoleRouteRoute,
 } as any)
-const ConsoleAppsNewRoute = ConsoleAppsNewRouteImport.update({
-  id: '/apps/new',
-  path: '/apps/new',
-  getParentRoute: () => ConsoleRouteRoute,
-} as any)
 const ConsoleProvidersIndexRoute = ConsoleProvidersIndexRouteImport.update({
   id: '/providers/',
   path: '/providers/',
@@ -108,11 +101,6 @@ const ConsoleProvidersIndexRoute = ConsoleProvidersIndexRouteImport.update({
 const ConsoleProvidersIdRoute = ConsoleProvidersIdRouteImport.update({
   id: '/providers/$id',
   path: '/providers/$id',
-  getParentRoute: () => ConsoleRouteRoute,
-} as any)
-const ConsoleProvidersNewRoute = ConsoleProvidersNewRouteImport.update({
-  id: '/providers/new',
-  path: '/providers/new',
   getParentRoute: () => ConsoleRouteRoute,
 } as any)
 const ConsoleUsersIndexRoute = ConsoleUsersIndexRouteImport.update({
@@ -143,9 +131,7 @@ export interface FileRoutesByFullPath {
   '/console/': typeof ConsoleIndexRoute
   '/console/apis/$api': typeof ConsoleApisApiRoute
   '/console/apps/$clientId': typeof ConsoleAppsClientIdRoute
-  '/console/apps/new': typeof ConsoleAppsNewRoute
   '/console/providers/$id': typeof ConsoleProvidersIdRoute
-  '/console/providers/new': typeof ConsoleProvidersNewRoute
   '/console/users/$sub': typeof ConsoleUsersSubRoute
   '/console/users/new': typeof ConsoleUsersNewRoute
   '/console/apis/': typeof ConsoleApisIndexRoute
@@ -163,9 +149,7 @@ export interface FileRoutesByTo {
   '/console': typeof ConsoleIndexRoute
   '/console/apis/$api': typeof ConsoleApisApiRoute
   '/console/apps/$clientId': typeof ConsoleAppsClientIdRoute
-  '/console/apps/new': typeof ConsoleAppsNewRoute
   '/console/providers/$id': typeof ConsoleProvidersIdRoute
-  '/console/providers/new': typeof ConsoleProvidersNewRoute
   '/console/users/$sub': typeof ConsoleUsersSubRoute
   '/console/users/new': typeof ConsoleUsersNewRoute
   '/console/apis': typeof ConsoleApisIndexRoute
@@ -186,9 +170,7 @@ export interface FileRoutesById {
   '/console/': typeof ConsoleIndexRoute
   '/console/apis/$api': typeof ConsoleApisApiRoute
   '/console/apps/$clientId': typeof ConsoleAppsClientIdRoute
-  '/console/apps/new': typeof ConsoleAppsNewRoute
   '/console/providers/$id': typeof ConsoleProvidersIdRoute
-  '/console/providers/new': typeof ConsoleProvidersNewRoute
   '/console/users/$sub': typeof ConsoleUsersSubRoute
   '/console/users/new': typeof ConsoleUsersNewRoute
   '/console/apis/': typeof ConsoleApisIndexRoute
@@ -210,9 +192,7 @@ export interface FileRouteTypes {
     | '/console/'
     | '/console/apis/$api'
     | '/console/apps/$clientId'
-    | '/console/apps/new'
     | '/console/providers/$id'
-    | '/console/providers/new'
     | '/console/users/$sub'
     | '/console/users/new'
     | '/console/apis/'
@@ -230,9 +210,7 @@ export interface FileRouteTypes {
     | '/console'
     | '/console/apis/$api'
     | '/console/apps/$clientId'
-    | '/console/apps/new'
     | '/console/providers/$id'
-    | '/console/providers/new'
     | '/console/users/$sub'
     | '/console/users/new'
     | '/console/apis'
@@ -252,9 +230,7 @@ export interface FileRouteTypes {
     | '/console/'
     | '/console/apis/$api'
     | '/console/apps/$clientId'
-    | '/console/apps/new'
     | '/console/providers/$id'
-    | '/console/providers/new'
     | '/console/users/$sub'
     | '/console/users/new'
     | '/console/apis/'
@@ -364,13 +340,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConsoleAppsClientIdRouteImport
       parentRoute: typeof ConsoleRouteRoute
     }
-    '/console/apps/new': {
-      id: '/console/apps/new'
-      path: '/apps/new'
-      fullPath: '/console/apps/new'
-      preLoaderRoute: typeof ConsoleAppsNewRouteImport
-      parentRoute: typeof ConsoleRouteRoute
-    }
     '/console/providers/': {
       id: '/console/providers/'
       path: '/providers'
@@ -383,13 +352,6 @@ declare module '@tanstack/react-router' {
       path: '/providers/$id'
       fullPath: '/console/providers/$id'
       preLoaderRoute: typeof ConsoleProvidersIdRouteImport
-      parentRoute: typeof ConsoleRouteRoute
-    }
-    '/console/providers/new': {
-      id: '/console/providers/new'
-      path: '/providers/new'
-      fullPath: '/console/providers/new'
-      preLoaderRoute: typeof ConsoleProvidersNewRouteImport
       parentRoute: typeof ConsoleRouteRoute
     }
     '/console/users/': {
@@ -434,9 +396,7 @@ interface ConsoleRouteRouteChildren {
   ConsoleIndexRoute: typeof ConsoleIndexRoute
   ConsoleApisApiRoute: typeof ConsoleApisApiRoute
   ConsoleAppsClientIdRoute: typeof ConsoleAppsClientIdRoute
-  ConsoleAppsNewRoute: typeof ConsoleAppsNewRoute
   ConsoleProvidersIdRoute: typeof ConsoleProvidersIdRoute
-  ConsoleProvidersNewRoute: typeof ConsoleProvidersNewRoute
   ConsoleUsersSubRoute: typeof ConsoleUsersSubRoute
   ConsoleUsersNewRoute: typeof ConsoleUsersNewRoute
   ConsoleApisIndexRoute: typeof ConsoleApisIndexRoute
@@ -451,9 +411,7 @@ const ConsoleRouteRouteChildren: ConsoleRouteRouteChildren = {
   ConsoleIndexRoute: ConsoleIndexRoute,
   ConsoleApisApiRoute: ConsoleApisApiRoute,
   ConsoleAppsClientIdRoute: ConsoleAppsClientIdRoute,
-  ConsoleAppsNewRoute: ConsoleAppsNewRoute,
   ConsoleProvidersIdRoute: ConsoleProvidersIdRoute,
-  ConsoleProvidersNewRoute: ConsoleProvidersNewRoute,
   ConsoleUsersSubRoute: ConsoleUsersSubRoute,
   ConsoleUsersNewRoute: ConsoleUsersNewRoute,
   ConsoleApisIndexRoute: ConsoleApisIndexRoute,

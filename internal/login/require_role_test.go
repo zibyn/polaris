@@ -27,7 +27,7 @@ func TestRequireRoleTurnsAwayUsersWithoutRoles(t *testing.T) {
 	// browser stays signed in.
 	_, page := e.authorize("")
 	resp, page := e.submit(page, "owner", "password1")
-	if resp.StatusCode != 403 || !strings.Contains(page, "你没有使用 Test RP 的权限,请联系管理员") || !strings.Contains(page, "切换账号") {
+	if resp.StatusCode != 403 || !strings.Contains(page, "你没有 Test RP 的使用权限，请联系管理员") || !strings.Contains(page, "切换账号") {
 		t.Fatalf("hosted: %d %s", resp.StatusCode, page)
 	}
 	// Still signed in: the next authorization is a silent login, turned

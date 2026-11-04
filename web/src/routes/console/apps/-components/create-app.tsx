@@ -4,18 +4,21 @@ import {
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
-import {
-	createFileRoute,
-	Link,
-	useNavigate,
-	useSearch,
-} from "@tanstack/react-router";
-import { z } from "zod";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ChevronRightIcon } from "lucide-react";
+import { useState } from "react";
 import { FormError, FormField } from "#/components/form";
 import { Alert, AlertDescription } from "#/components/ui/alert";
-import { Button, buttonVariants } from "#/components/ui/button";
+import { Button } from "#/components/ui/button";
 import { FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import {
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemDescription,
+	ItemTitle,
+} from "#/components/ui/item";
 import {
 	Select,
 	SelectContent,
@@ -33,84 +36,86 @@ import {
 	platformKeys,
 	platforms,
 } from "#/lib/onboarding";
+import { FormSheet } from "#/routes/console/-components/form-sheet";
 import { apisQuery } from "#/routes/console/apis/index";
 import { applicationsQuery } from "#/routes/console/apps/index";
-import { type Header, useCan } from "#/routes/console/route";
 
-const search = z.object({
-	platform: z.enum(platformKeys).optional().catch(undefined),
-});
+// Grouped by type, since the type is the part that can't change later.
+const types = [...new Set(platformKeys.map((k) => platforms[k].type))];
 
-export const Route = createFileRoute("/console/apps/new")({
-	staticData: { crumb: "创建应用", useHeader },
-	validateSearch: search,
-	loader: ({ context: { queryClient } }) =>
-		queryClient.ensureQueryData(apisQuery),
-	component: CreateApplication,
-});
-
-// useHeader titles the platform choice, or the form once one is picked;
-// without the Permission there's no header, only the note.
-function useHeader(): Header | null {
-	const { platform } = useSearch({ from: "/console/apps/new" });
-	const can = useCan();
-	if (!can("applications:write")) {
-		return null;
-	}
-	if (!platform) {
-		return {
-			title: "创建应用",
-			description:
-				"你的用户在哪里登录？选一个最接近的，认证服务会按它准备好设置。",
-		};
-	}
-	const p = platforms[platform];
-	return {
-		title: `创建${p.name}`,
-		description: `${typeName[p.type]}。类型创建后不能更改。`,
-		actions: (
-			<Link
-				to="/console/apps/new"
-				search={{}}
-				className={buttonVariants({ variant: "outline" })}
-			>
-				换个平台
-			</Link>
-		),
-	};
-}
-
-// CreateApplication asks where users sign in, then only the name and, for
+// CreateAppSheet asks where users sign in, then only the name and, for
 // the web, the callback address. Everything else waits for the
 // Application's page.
-function CreateApplication() {
-	const { platform } = Route.useSearch();
-	const can = useCan();
+export function CreateAppSheet({
+	open,
+	onOpenChange,
+}: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+}) {
+	const [platform, setPlatform] = useState<Platform>();
+	const p = platform && platforms[platform];
 	return (
-		<div className="max-w-3xl space-y-6">
-			{!can("applications:write") ? (
-				<p className="text-sm">需要「管理员」角色才能创建应用。</p>
-			) : platform ? (
-				<CreateForm platform={platform} />
+		<FormSheet
+			open={open}
+			onOpenChange={(o) => {
+				onOpenChange(o);
+				if (!o) setPlatform(undefined);
+			}}
+			title="创建应用"
+			description={
+				p
+					? `${typeName[p.type]}。类型创建后不能更改。`
+					: "选择最接近的平台，将按平台预设配置。"
+			}
+		>
+			{p ? (
+				<div className="space-y-6">
+					<Item variant="muted">
+						<ItemContent>
+							<ItemTitle>{p.name}</ItemTitle>
+							<ItemDescription>{p.desc}</ItemDescription>
+						</ItemContent>
+						<ItemActions>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => setPlatform(undefined)}
+							>
+								更换
+							</Button>
+						</ItemActions>
+					</Item>
+					<CreateForm platform={platform} />
+				</div>
 			) : (
-				<div className="grid gap-4 sm:grid-cols-2">
-					{platformKeys.map((k) => (
-						<Link
-							key={k}
-							from={Route.fullPath}
-							search={{ platform: k }}
-							className="space-y-1 rounded-xl border p-6 hover:border-primary"
-						>
-							<p className="font-semibold text-[15px]">{platforms[k].name}</p>
-							<p className="text-muted-foreground">{platforms[k].desc}</p>
-							<p className="pt-2 text-[13px] text-faint">
-								{typeName[platforms[k].type]}
-							</p>
-						</Link>
+				<div className="space-y-5">
+					{types.map((t) => (
+						<section key={t} className="space-y-1.5">
+							<h3 className="text-muted-foreground text-xs">{typeName[t]}</h3>
+							{platformKeys
+								.filter((k) => platforms[k].type === t)
+								.map((k) => (
+									<Item
+										key={k}
+										variant="outline"
+										className="hover:bg-muted"
+										render={
+											<button type="button" onClick={() => setPlatform(k)} />
+										}
+									>
+										<ItemContent>
+											<ItemTitle>{platforms[k].name}</ItemTitle>
+											<ItemDescription>{platforms[k].desc}</ItemDescription>
+										</ItemContent>
+										<ChevronRightIcon className="size-4 text-muted-foreground" />
+									</Item>
+								))}
+						</section>
 					))}
 				</div>
 			)}
-		</div>
+		</FormSheet>
 	);
 }
 
@@ -183,7 +188,7 @@ function CreateForm({ platform }: { platform: Platform }) {
 								field={field}
 								label="回调地址"
 								en="redirect URI"
-								help="登录完成后跳回应用的地址。只接受这里登记过的地址。"
+								help="登录完成后跳转回应用的地址，仅允许此处登记的地址。"
 							>
 								{(control) => (
 									<Textarea
@@ -199,8 +204,8 @@ function CreateForm({ platform }: { platform: Platform }) {
 				{needsAPI && registered.length === 0 && (
 					<Alert variant="warning">
 						<AlertDescription>
-							还没有登记 API 资源，后端服务没有能调用的 API。
-							<Link to="/console/apis">去登记 API 资源</Link>
+							还没有 API 资源，后端服务需要选择一个默认 API 资源。
+							<Link to="/console/apis">添加 API 资源</Link>
 						</AlertDescription>
 					</Alert>
 				)}
@@ -210,7 +215,7 @@ function CreateForm({ platform }: { platform: Platform }) {
 							<FormField
 								field={field}
 								label="默认 API 资源"
-								help="它换到的 access token 只对这个 API 有效，创建后不能更改。要调另一个 API，再建一个后端服务。"
+								help="access token 仅对该 API 有效，创建后不能更改。调用其他 API 需另建后端服务。"
 							>
 								{({ id }) => (
 									<Select

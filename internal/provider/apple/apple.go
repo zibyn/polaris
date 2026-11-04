@@ -41,8 +41,8 @@ func init() {
 			{Field: channel.Field{Key: "key_id", Label: "Key ID", Type: "text"}},
 			{Field: channel.Field{Key: "private_key", Label: "私钥(.p8)", Type: "text", Secret: true,
 				Help: "粘贴 .p8 文件的全部内容"}},
-			{Field: channel.Field{Key: "services_id", Label: "Services ID", Type: "text", Help: "Web 登录用"}},
-			{Field: channel.Field{Key: "bundle_id", Label: "Bundle ID", Type: "text", Optional: true, Help: "iOS App 登录用"}},
+			{Field: channel.Field{Key: "services_id", Label: "Services ID", Type: "text", Help: "用于 Web 登录"}},
+			{Field: channel.Field{Key: "bundle_id", Label: "Bundle ID", Type: "text", Optional: true, Help: "用于 iOS App 登录"}},
 		},
 		New: func(c map[string]string) (provider.Redirect, error) {
 			key, err := parseP8(c["private_key"])

@@ -79,7 +79,7 @@ export function oidcClient({
 		const flow = JSON.parse(sessionStorage.getItem(flowKey) ?? "null");
 		sessionStorage.removeItem(flowKey);
 		if (!flow || params.get("state") !== flow.state) {
-			throw new Error("登录已过期,请重试");
+			throw new Error("登录已过期，请重试");
 		}
 		const error = params.get("error");
 		if (error) {
@@ -96,7 +96,7 @@ export function oidcClient({
 			}),
 		});
 		if (!res.ok) {
-			throw new Error("登录失败,请重试");
+			throw new Error("登录失败，请重试");
 		}
 		const tok = await res.json();
 		sessionStorage.setItem(

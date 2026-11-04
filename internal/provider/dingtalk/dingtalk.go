@@ -40,7 +40,7 @@ func init() {
 		// developer organization's apps.
 		Fields: []provider.ConfigField{
 			{Field: channel.Field{Key: "client_id", Label: "Client ID(AppKey)", Type: "text",
-				Help: "企业内部应用的 AppKey。应用要开通 Contact.User.Read(通讯录个人信息读权限),并把上面的回调地址登记为重定向 URL;只有本组织成员能登录"}},
+				Help: "企业内部应用的 AppKey。应用需开通 Contact.User.Read 权限，并将回调 URL 添加为重定向 URL。仅本组织成员可登录"}},
 			{Field: channel.Field{Key: "client_secret", Label: "Client Secret(AppSecret)", Type: "text", Secret: true}},
 		},
 		New: func(c map[string]string) (provider.Redirect, error) {

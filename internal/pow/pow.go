@@ -20,7 +20,7 @@ import (
 	"github.com/zibyn/polaris/internal/identity"
 )
 
-const ErrUnsolved identity.Invalid = "人机验证未通过,请重试"
+const ErrUnsolved identity.Invalid = "人机验证未通过，请重试"
 
 // ponytail: fixed difficulty, about a second in a phone browser; raise
 // cost or the counter range if bots keep up.

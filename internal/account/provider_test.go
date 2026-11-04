@@ -269,7 +269,7 @@ func TestBindRefusesAnotherUsersExternalIdentity(t *testing.T) {
 	}
 
 	alice := e.signIn("ALICE", 0)
-	if q := e.redirect(alice, "/v1/account/providers/google/bind"); q.Get("error") != "这个外部账号已绑定其他账号,请先在那边解绑或注销" {
+	if q := e.redirect(alice, "/v1/account/providers/google/bind"); q.Get("error") != "该外部账号已绑定其他账号，请先解除绑定" {
 		t.Errorf("Alice binds Bob's: %v", q)
 	}
 	if got := e.bound(alice); len(got.ExternalIdentities) != 0 {

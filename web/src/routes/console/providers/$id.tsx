@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Badge } from "#/components/ui/badge";
+import { IdLine } from "#/routes/console/-components/section";
 import { providersQuery } from "#/routes/console/providers/index";
 import { type Header, useCan } from "#/routes/console/route";
 import { ProviderForm } from "./-components/provider-form";
@@ -21,7 +22,7 @@ export const Route = createFileRoute("/console/providers/$id")({
 	},
 	notFoundComponent: () => (
 		<p className="text-sm">
-			没有这个认证源，它可能已经被删除。
+			认证源不存在或已被删除。
 			<Link to="/console/providers" className="underline">
 				返回认证源列表
 			</Link>
@@ -64,6 +65,14 @@ function useHeader(): Header | null {
 				)}
 			</>
 		),
+		ids: (
+			<>
+				<IdLine label="Provider ID" value={p.id} />
+				<span title={p.callbackUrl} className="flex min-w-0 max-w-full">
+					<IdLine label="回调 URL" value={p.callbackUrl} />
+				</span>
+			</>
+		),
 		details: !editable && (
 			<p className="text-muted-foreground text-sm">
 				需要「管理员」角色才能修改。
@@ -83,9 +92,7 @@ function ProviderPage() {
 	}
 	const type = types.find((t) => t.key === p.type);
 	if (!type) {
-		return (
-			<p className="text-sm">这个认证源的类型已不可用，不能再编辑它的配置。</p>
-		);
+		return <p className="text-sm">该认证源的类型已不可用，无法编辑配置。</p>;
 	}
 	// key: a saved secret changes the placeholders, so the form remounts.
 	return (

@@ -54,8 +54,7 @@ test("a terms version needs both URLs", () => {
 			}),
 		),
 		{
-			privacyUrl:
-				"请填写地址。设了协议版本，用户登录时要打开用户协议和隐私政策才能同意。",
+			privacyUrl: "设置协议版本时需填写此地址。",
 		},
 	);
 });
@@ -72,8 +71,8 @@ test("a terms URL must be https", () => {
 			}),
 		),
 		{
-			termsUrl: "请填写 https 开头的地址。认证服务只接受 https 链接。",
-			termsUrlEn: "请填写 https 开头的地址。认证服务只接受 https 链接。",
+			termsUrl: "请输入以 https 开头的地址。",
+			termsUrlEn: "请输入以 https 开头的地址。",
 		},
 	);
 });
@@ -106,7 +105,7 @@ test("a policy number is a whole number from its minimum up", () => {
 	assert.equal(numberSchema(1).safeParse({ value: "30" }).success, true);
 	for (const value of ["", "0", "1.5", "-3", "abc"]) {
 		assert.deepEqual(fieldErrors(numberSchema(1).safeParse({ value })), {
-			value: "请填写不小于 1 的整数。",
+			value: "请输入不小于 1 的整数。",
 		});
 	}
 });
@@ -147,9 +146,9 @@ test("a channel needs its required fields, in their format", () => {
 			}),
 		),
 		{
-			endpoint: "请填写有效的地址。",
-			port: "请填写数字。",
-			secret: "请填写密钥。",
+			endpoint: "请输入有效的地址。",
+			port: "请输入数字。",
+			secret: "请输入密钥。",
 		},
 	);
 	assert.deepEqual(
@@ -161,7 +160,7 @@ test("a channel needs its required fields, in their format", () => {
 				secret: "s",
 			}),
 		),
-		{ endpoint: "请填写接口地址。", port: "请填写端口。" },
+		{ endpoint: "请输入接口地址。", port: "请输入端口。" },
 	);
 });
 
@@ -183,14 +182,14 @@ test("a test code goes to an email or a phone number", () => {
 		true,
 	);
 	assert.deepEqual(fieldErrors(testSchema("email").safeParse({ to: "you" })), {
-		to: "请填写有效的邮箱。",
+		to: "请输入有效的邮箱。",
 	});
 	assert.equal(
 		testSchema("phone").safeParse({ to: "+8613800001111" }).success,
 		true,
 	);
 	assert.deepEqual(fieldErrors(testSchema("phone").safeParse({ to: "" })), {
-		to: "请填写手机号，如 +8613800001111。",
+		to: "请输入有效的手机号，如 +8613800001111。",
 	});
 });
 
@@ -308,9 +307,9 @@ test("a new Provider needs an ID in the callback URL's form, a name and its fiel
 		),
 		{
 			id: "Provider ID 只能用小写字母、数字和 -，以字母或数字开头，最多 32 位。",
-			name: "请填写名称。",
-			"config.issuer": "请填写有效的地址。",
-			"config.client_secret": "请填写Client secret。",
+			name: "请输入名称。",
+			"config.issuer": "请输入有效的地址。",
+			"config.client_secret": "请输入Client secret。",
 		},
 	);
 	assert.deepEqual(
@@ -345,10 +344,7 @@ test("editing a Provider keeps its ID and a secret already set", () => {
 test("disabling a Provider says whom it locks out", () => {
 	assert.equal(
 		disableImpact({ bound: 12, onlyLoginPath: 3 }),
-		"12 个用户已绑定，其中 3 个没有其他登录方式，停用后他们无法登录。",
+		"已有 12 个用户绑定，其中 3 个没有其他登录方式，停用后将无法登录。",
 	);
-	assert.equal(
-		disableImpact({ bound: 0, onlyLoginPath: 0 }),
-		"还没有用户绑定。停用后登录页不再显示这个按钮。",
-	);
+	assert.equal(disableImpact({ bound: 0, onlyLoginPath: 0 }), "暂无用户绑定。");
 });

@@ -36,7 +36,7 @@ func (s *Service) providerCallback(w http.ResponseWriter, r *http.Request) {
 	sess, err := s.session(w, r)
 	if err != nil {
 		slog.Error("provider login", "err", err)
-		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了,请稍后重试")
+		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了，请稍后重试")
 		return
 	} else if sess != nil {
 		session = sess.ID
@@ -53,26 +53,26 @@ func (s *Service) providerCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, provider.ErrLogin), errors.Is(err, provider.ErrNotFound):
 		slog.Info("provider login", "provider", id, "err", err)
-		s.page(w, r, pickLang(r, ""), "", http.StatusBadRequest, "message", "外部登录没有完成,请返回应用重新登录")
+		s.page(w, r, pickLang(r, ""), "", http.StatusBadRequest, "message", "外部登录未完成，请返回应用重新登录")
 		return
 	case err != nil:
 		slog.Error("provider login", "provider", id, "err", err)
-		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了,请稍后重试")
+		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了，请稍后重试")
 		return
 	}
 	as, err := s.store.Session(ctx, f.AuthnSession)
 	if errors.Is(err, goidc.ErrNotFound) {
-		s.page(w, r, pickLang(r, ""), "", http.StatusBadRequest, "message", "登录已过期,请返回应用重新登录")
+		s.page(w, r, pickLang(r, ""), "", http.StatusBadRequest, "message", "登录已过期，请返回应用重新登录")
 		return
 	} else if err != nil {
 		slog.Error("provider login", "err", err)
-		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了,请稍后重试")
+		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了，请稍后重试")
 		return
 	}
 	as.Store = map[string]any{storeFederated: f.Sub, storeMethod: providerMethod(id), storeBinder: hex.EncodeToString(hash(b))}
 	if err := s.store.SaveSession(ctx, as); err != nil {
 		slog.Error("provider login", "err", err)
-		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了,请稍后重试")
+		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了，请稍后重试")
 		return
 	}
 	http.Redirect(w, r, "/authorize/"+as.ID, http.StatusSeeOther)
@@ -92,7 +92,7 @@ func backToAccount(w http.ResponseWriter, r *http.Request, id, done string, err 
 		q = url.Values{"error": {"没有完成,请重试"}}
 	case err != nil:
 		slog.Error("provider redirect from the account center", "provider", id, "err", err)
-		q = url.Values{"error": {"出错了,请稍后重试"}}
+		q = url.Values{"error": {"出错了，请稍后重试"}}
 	}
 	http.Redirect(w, r, "/account?"+q.Encode(), http.StatusSeeOther)
 }

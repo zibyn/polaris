@@ -52,7 +52,7 @@ func register(key, name string, e *Endpoints) {
 		Key: key, Name: name,
 		Fields: []provider.ConfigField{
 			{Field: channel.Field{Key: "client_id", Label: "App ID", Type: "text",
-				Help: "企业自建应用的 App ID。只有本租户、在应用可用范围内的成员能登录(范围外报 20010)"}},
+				Help: "企业自建应用的 App ID。仅本租户且在应用可用范围内的成员可登录，否则报错 20010"}},
 			{Field: channel.Field{Key: "client_secret", Label: "App Secret", Type: "text", Secret: true}},
 		},
 		New: func(c map[string]string) (provider.Redirect, error) {

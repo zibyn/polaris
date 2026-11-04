@@ -46,7 +46,7 @@ const (
 	ErrUsername         Invalid = "用户名须为 3–32 位字母、数字或 . _ -"
 	ErrPasswordTooShort Invalid = "密码至少 8 位"
 	ErrBadCredentials   Invalid = "用户名或密码错误"
-	ErrDisabled         Invalid = "已被管理员禁用,无法登录"
+	ErrDisabled         Invalid = "账号已禁用，无法登录"
 	// ErrRegistrationClosed: 开放注册 is off and no User holds the
 	// Identifier or External Identity (ADR 0021).
 	ErrRegistrationClosed Invalid = "本实例未开放注册"
@@ -208,7 +208,7 @@ func CheckUsername(s string) (string, error) {
 const (
 	ErrIdentifier      Invalid = "请输入 +86 手机号或邮箱"
 	ErrPhone           Invalid = "请输入 +86 手机号"
-	ErrIdentifierTaken Invalid = "这个手机号或邮箱已属于另一个 User"
+	ErrIdentifierTaken Invalid = "该手机号或邮箱已被其他用户使用"
 )
 
 var (

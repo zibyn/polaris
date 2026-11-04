@@ -21,10 +21,10 @@ export const typeName: Record<Application["type"], string> = {
 
 export const typeWhy: Record<Application["type"], string> = {
 	public:
-		"适合 App、小程序和纯前端网页。没有 client secret，登录时靠 PKCE 防止授权码被截走。类型创建后不能更改。",
+		"适用于 App、小程序和纯前端网页，无 client secret，使用 PKCE 登录。类型创建后不能更改。",
 	confidential:
-		"适合有自己服务器的网站。后端用 client secret 证明自己的身份。类型创建后不能更改。",
-	m2m: "没有用户登录，以自己的身份调用 API。用自己的 client secret 换令牌，令牌只对它选定的那个 API 有效。类型和默认 API 创建后都不能更改。",
+		"适用于有服务器的网站，后端使用 client secret 或私钥签名认证。类型创建后不能更改。",
+	m2m: "无用户登录，以自身身份调用默认 API 资源。类型和默认 API 资源创建后都不能更改。",
 };
 
 // accountAPI is the built-in API the account center calls; no Application
@@ -40,8 +40,8 @@ export const m2mAPIs = <T extends { identifier: string }>(apis: T[]): T[] =>
 export const appName = z
 	.string()
 	.trim()
-	.min(1, "请填写名称。")
-	.max(64, "名称最多 64 个字。");
+	.min(1, "请输入名称。")
+	.max(64, "名称不能超过 64 个字符。");
 
 // basicSchema checks the 基本信息 section.
 export const basicSchema = z.object({ name: appName });
@@ -61,7 +61,7 @@ export const createSchema = (redirect: boolean, needsAPI = false) =>
 	z.object({
 		name: appName,
 		redirectUris: redirect
-			? uriLines.refine((v) => lines(v).length > 0, "请填写回调地址。")
+			? uriLines.refine((v) => lines(v).length > 0, "请输入回调地址。")
 			: z.string(),
 		defaultApi: z
 			.string()
@@ -74,7 +74,7 @@ export const httpURL = z
 	.trim()
 	.refine(
 		(v) => !v || /^https?:$/.test(URL.parse(v)?.protocol ?? ""),
-		"请填写 http 或 https 开头的地址。",
+		"请输入 http 或 https 开头的地址。",
 	);
 
 // backchannelSchema checks the 退出通知 section; a URI with # is refused
@@ -82,7 +82,7 @@ export const httpURL = z
 export const backchannelSchema = z.object({
 	backchannelLogoutUri: httpURL.refine(
 		(v) => !v.includes("#"),
-		"地址不能带 #。",
+		"地址不能包含 #。",
 	),
 });
 
@@ -91,7 +91,7 @@ const days = z
 	.trim()
 	.refine(
 		(v) => !v || (/^\d+$/.test(v) && +v >= 0 && +v <= 365),
-		"请填写 0 到 365 之间的整数，0 表示默认值。",
+		"请输入 0 到 365 之间的整数。",
 	);
 
 // loginSchema checks the 登录 tab; 0 or an empty idleDays / maxDays means
@@ -111,7 +111,7 @@ export const webhookSchema = (secretSet: boolean) =>
 		.object({ webhookUrl: httpURL, webhookSecret: z.string() })
 		.refine((w) => !w.webhookUrl || w.webhookSecret || secretSet, {
 			path: ["webhookSecret"],
-			message: "请设置 Webhook 密钥。填写通知地址后，必须同时设置密钥。",
+			message: "填写通知地址时必须设置 Webhook 密钥。",
 		});
 
 // jwksText is the registered Application 公钥 in the JWKS textarea.
@@ -127,7 +127,7 @@ export const jwksSchema = z.object({
 		} catch {
 			return false;
 		}
-	}, '请填写 JWKS，形如 {"keys": [...]}。'),
+	}, '请输入 JWKS，形如 {"keys": [...]}。'),
 });
 
 // The 原生 App 关联 formats, as the server's validate() checks them too.

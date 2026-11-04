@@ -30,7 +30,7 @@ export const Route = createFileRoute("/console/apis/")({
 		useHeader: () => ({
 			title: "API 资源",
 			description:
-				"在这里登记你的后端服务，再为它定义权限和角色。用户登录某个应用后，拿到的令牌只带这个应用默认 API 资源上的角色和权限。",
+				"登记后端服务并定义其权限和角色。应用签发的令牌只包含其默认 API 资源上的角色和权限。",
 		}),
 	},
 	loader: ({ context }) => context.queryClient.ensureQueryData(apisQuery),
@@ -96,9 +96,9 @@ function APIs() {
 			{empty && (
 				<Empty className="border">
 					<EmptyHeader>
-						<EmptyTitle>还没有你自己的 API 资源</EmptyTitle>
+						<EmptyTitle>还没有自定义 API 资源</EmptyTitle>
 						<EmptyDescription>
-							如果你的后端要校验用户能做什么，在这里登记它，再定义权限和角色。只用登录、不需要权限控制的话，可以不建。
+							后端需要权限控制时添加。仅使用登录可不添加。
 						</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
@@ -123,7 +123,7 @@ function APIs() {
 				open={creating}
 				onOpenChange={setCreating}
 				title="添加 API 资源"
-				description="API 资源标识符是你的后端校验令牌时认的名字，即 access token 的 aud。登记后不能更改。"
+				description="API 资源标识符即 access token 的 aud，添加后不能修改。"
 			>
 				<CreateForm />
 			</FormSheet>

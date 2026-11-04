@@ -1,10 +1,11 @@
 import {
 	createFileRoute,
-	Link,
 	stripSearchParams,
+	useNavigate,
 	useSearch,
 } from "@tanstack/react-router";
 import { z } from "zod";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import { BrandTab } from "./-settings/brand";
 import { ChannelsTab, channelsQuery } from "./-settings/channels";
 import { LoginTab } from "./-settings/login";
@@ -34,7 +35,7 @@ const categories = [
 	{
 		tab: "channels",
 		label: "验证码通道",
-		hint: "短信、邮件的服务商与发送上限",
+		hint: "短信、邮件供应商与发送上限",
 	},
 	{
 		tab: "security",
@@ -47,7 +48,7 @@ export const Route = createFileRoute("/console/settings")({
 	staticData: {
 		useHeader: () => ({
 			title: "设置",
-			description: "用户怎么登录、验证码从哪发出去，以及实例本身的安全。",
+			description: "登录方式、品牌、验证码通道和安全设置。",
 		}),
 	},
 	validateSearch: search,
@@ -62,43 +63,47 @@ export const Route = createFileRoute("/console/settings")({
 });
 
 // Settings picks one category from a rail on the left, so the areas
-// stay in view instead of turning into tabs that hide each other.
+// stay in view instead of turning into tabs that hide each other. The
+// rail scrolls sideways below lg, where it sits on top.
 function Settings() {
 	const { tab } = useSearch({ from: "/console/settings" });
+	const navigate = useNavigate();
 	return (
-		<div className="grid gap-8 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-12">
-			<nav
+		<Tabs
+			orientation="vertical"
+			value={tab}
+			onValueChange={(v) => navigate({ to: ".", search: { tab: v } })}
+			className="grid gap-8 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-12"
+		>
+			<TabsList
 				aria-label="设置分类"
-				className="-mx-1 flex gap-1 overflow-x-auto pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:pb-0"
+				className="-mx-1 w-auto items-stretch justify-start gap-1 overflow-x-auto rounded-none bg-transparent p-0 pb-1 max-lg:flex-row! lg:mx-0 lg:overflow-visible lg:pb-0"
 			>
-				{categories.map((c) => {
-					const active = c.tab === tab;
-					return (
-						<Link
-							key={c.tab}
-							to="/console/settings"
-							search={{ tab: c.tab }}
-							aria-current={active ? "page" : undefined}
-							className={
-								active
-									? "shrink-0 rounded-lg bg-card px-3 py-2 font-medium shadow-xs ring-1 ring-border lg:block"
-									: "shrink-0 rounded-lg px-3 py-2 text-muted-foreground hover:text-foreground lg:block"
-							}
-						>
-							<span className="block whitespace-nowrap">{c.label}</span>
-							<span className="hidden text-[13px] font-normal text-muted-foreground lg:block">
-								{c.hint}
-							</span>
-						</Link>
-					);
-				})}
-			</nav>
-			<div className="max-w-3xl min-w-0">
-				{tab === "login" && <LoginTab />}
-				{tab === "brand" && <BrandTab />}
-				{tab === "channels" && <ChannelsTab />}
-				{tab === "security" && <SecurityTab />}
-			</div>
-		</div>
+				{categories.map((c) => (
+					<TabsTrigger
+						key={c.tab}
+						value={c.tab}
+						className="h-auto flex-none shrink-0 flex-col items-start gap-0 rounded-lg border-0 px-3 py-2 font-normal text-muted-foreground text-sm not-data-active:hover:bg-muted hover:text-foreground data-active:hover:text-primary-ink max-lg:w-auto! data-active:bg-primary-soft data-active:font-medium data-active:text-primary-ink group-data-[variant=default]/tabs-list:data-active:shadow-none dark:data-active:bg-primary-soft dark:data-active:text-primary-ink"
+					>
+						<span className="block whitespace-nowrap">{c.label}</span>
+						<span className="mt-0.5 hidden w-full truncate text-left font-normal text-muted-foreground text-xs lg:block">
+							{c.hint}
+						</span>
+					</TabsTrigger>
+				))}
+			</TabsList>
+			<TabsContent value="login" className="max-w-3xl min-w-0">
+				<LoginTab />
+			</TabsContent>
+			<TabsContent value="brand" className="max-w-3xl min-w-0">
+				<BrandTab />
+			</TabsContent>
+			<TabsContent value="channels" className="max-w-3xl min-w-0">
+				<ChannelsTab />
+			</TabsContent>
+			<TabsContent value="security" className="max-w-3xl min-w-0">
+				<SecurityTab />
+			</TabsContent>
+		</Tabs>
 	);
 }

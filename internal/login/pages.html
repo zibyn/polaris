@@ -22,6 +22,8 @@
 {{end}}.brand img { height: 24px; max-width: 160px; object-fit: contain; }
 main > img.logo { display: block; height: 32px; max-width: 200px; object-fit: contain; }
 {{end}}* { box-sizing: border-box; }
+/* The forms are display: grid, which would otherwise show a hidden one. */
+[hidden] { display: none !important; }
 ::selection { background: var(--primary-soft); color: var(--ink); }
 body { margin: 0; min-height: 100svh; display: grid; grid-template-columns: 1fr 1fr; }
 .brand { position: relative; overflow: hidden; background: var(--primary-soft); padding: 48px; }
@@ -63,7 +65,8 @@ button:not(:disabled):active { transform: translateY(1px); }
 button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 button:hover { background: var(--primary-hover); }
 a { color: var(--primary-ink); }
-form > a { font-size: 13px; justify-self: start; }
+form > a { font-size: 13px; justify-self: start; text-decoration: none; }
+form > a:hover { text-decoration: underline; }
 /* 重新获取 is a text action under the primary button; it waits out the
    60-second per-Identifier send limit instead of inviting a refused click. */
 form > button.resend { justify-self: start; padding: 0; background: transparent; color: var(--primary-ink); font-size: 13px; font-weight: 400; }
@@ -86,11 +89,14 @@ label.agree { display: flex; align-items: flex-start; gap: 8px; font-size: 12px;
 label.agree a { text-decoration: none; }
 label.agree input { margin: 3px 0 0; accent-color: var(--primary); }
 altcha-widget { --altcha-border-radius: 8px; --altcha-color-border: var(--line); --altcha-max-width: 100%; }
-/* Provider buttons: secondary to the form above; the generic types are
+/* 或 parts the form from the other ways in: the Passkey button, then the
+   Provider buttons, all full width and secondary; the generic types are
    text-only. */
-form.providers { margin-top: 12px; gap: 8px; }
-/* The Passkey button sits between the code form and the Provider buttons. */
-button#passkey-login { margin-top: 12px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
+.or { display: flex; align-items: center; gap: 12px; margin: 24px 0 16px; font-size: 12px; color: var(--faint); }
+.or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+form.providers { margin-top: 8px; gap: 8px; }
+.or + form.providers { margin-top: 0; }
+button#passkey-login { display: block; width: 100%; background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
 button#passkey-login:hover { background: var(--canvas); }
 form.providers button { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
 form.providers button:hover { background: var(--canvas); }
@@ -206,7 +212,7 @@ addEventListener("DOMContentLoaded", () => {
 
 {{define "login"}}
 {{if .SetPassword}}<h1>{{t "设置密码"}}</h1>
-<p>{{t "这个账号由管理员创建。请设置一个只有你知道的密码,然后就能继续登录。"}}</p>
+<p>{{t "账号由管理员创建，请设置密码后继续。"}}</p>
 {{with .Error}}<p class="error" role="alert">{{msg .}}</p>{{end}}
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="set-password">
@@ -221,21 +227,21 @@ addEventListener("DOMContentLoaded", () => {
 </form>
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="delete-pending">
-  <a href="#" onclick="this.closest('form').requestSubmit();return false">{{t "注销这个账号"}}</a>
+  <a href="#" onclick="this.closest('form').requestSubmit();return false">{{t "注销账号"}}</a>
 </form>
 {{else if .TOTP}}<h1>{{t "两步验证"}}</h1>
 {{with .Error}}<p class="error" role="alert">{{msg .}}</p>{{end}}
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="totp">
   {{if .Recovery}}
-  <p>{{t "输入一个未用过的恢复码,每个恢复码只能用一次。"}}</p>
+  <p>{{t "每个恢复码只能使用一次。"}}</p>
   <label>{{t "恢复码"}}
     <input name="recovery_code" autocomplete="off" autocapitalize="none" spellcheck="false" required autofocus>
   </label>
   <button>{{t "登录"}}</button>
   <a href="{{.Action}}">{{t "使用验证器"}}</a>
   {{else}}
-  <p>{{t "打开验证器 App,输入其中显示的 6 位验证码。"}}</p>
+  <p>{{t "输入验证器 App 中的 6 位验证码。"}}</p>
   <label>{{t "验证码"}}
     <input name="totp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autofocus>
   </label>
@@ -244,7 +250,7 @@ addEventListener("DOMContentLoaded", () => {
   {{end}}
 </form>
 {{else if .Consent}}<h1>{{if .Terms.TermsVersion}}{{t "协议已更新"}}{{else}}{{t "继续登录"}}{{end}}</h1>
-{{if .Terms.TermsVersion}}<p>{{t "继续之前,请阅读并同意新版协议。"}}</p>{{end}}
+{{if .Terms.TermsVersion}}<p>{{t "请阅读并同意新版协议。"}}</p>{{end}}
 {{with .Error}}<p class="error" role="alert">{{msg .}}</p>{{end}}
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="consent">
@@ -253,7 +259,7 @@ addEventListener("DOMContentLoaded", () => {
 </form>
 {{else}}
 {{if .Bind}}<h1>{{t "绑定手机号"}}</h1>
-<p>{{t "继续之前,请先绑定一个手机号。"}}</p>
+<p>{{t "请绑定手机号后继续。"}}</p>
 {{else}}<h1>{{t "登录"}}</h1>
 {{with .Client}}<p>{{t "继续前往 "}}<b>{{.}}</b></p>{{end}}
 {{end}}
@@ -263,7 +269,7 @@ addEventListener("DOMContentLoaded", () => {
   <input type="hidden" name="identifier" value="{{.Identifier}}">
   {{template "agreed" .}}
   <div class="who"><span>{{.Identifier}}</span><a href="{{.Action}}">{{if .Bind}}{{t "更换手机号"}}{{else}}{{t "更换账号"}}{{end}}</a></div>
-  <p>{{t "验证码已发送,5 分钟内有效。"}}</p>
+  <p>{{t "验证码已发送，5 分钟内有效。"}}</p>
   <label>{{t "验证码"}}
     <input name="code" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autofocus>
   </label>
@@ -343,6 +349,8 @@ addEventListener("submit", e => {
 }, true);
 </script>{{end}}
 {{end}}
+{{$providers := and .Providers (not .CodeSent) (not (and .Username (not .PasswordForm)))}}
+{{if or .Passkey $providers}}<p class="or"{{if not $providers}} hidden{{end}}>{{t "或"}}</p>{{end}}
 {{with .Passkey}}
 <button type="button" id="passkey-login" hidden>{{t "使用 Passkey 登录"}}</button>
 <form method="post" action="{{$.Action}}" id="passkey-form" hidden>
@@ -385,7 +393,7 @@ const post = cred => {
 addEventListener("DOMContentLoaded", () => {
   const button = document.getElementById("passkey-login");
   if (window.PublicKeyCredential) { // the button only where a ceremony can run
-    button.hidden = false;
+    button.hidden = button.previousElementSibling.hidden = false; // and 或 before it
     button.onclick = () => get("optional").then(post, () => {});
   }
   try { // browsers without conditional UI just never resolve it
@@ -394,7 +402,7 @@ addEventListener("DOMContentLoaded", () => {
 });
 </script>
 {{end}}
-{{if and .Providers (not .CodeSent) (not (and .Username (not .PasswordForm)))}}<form method="post" action="{{.Action}}" class="providers">
+{{if $providers}}<form method="post" action="{{.Action}}" class="providers">
   <input type="hidden" name="op" value="provider">
   {{range .Providers}}{{if eq .Type "apple"}}<button name="provider" value="{{.ID}}" class="apple"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>{{t "通过 Apple 登录"}}</button>{{else if eq .Type "google"}}<button name="provider" value="{{.ID}}" class="google"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24s.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>{{t "使用 Google 账号登录"}}</button>
   {{else if eq .Type "microsoft"}}<button name="provider" value="{{.ID}}" class="microsoft"><svg viewBox="0 0 19 19" aria-hidden="true"><rect width="9" height="9" fill="#f25022"/><rect x="10" width="9" height="9" fill="#7fba00"/><rect y="10" width="9" height="9" fill="#00a4ef"/><rect x="10" y="10" width="9" height="9" fill="#ffb900"/></svg>{{t "使用 Microsoft 登录"}}</button>
@@ -432,7 +440,7 @@ addEventListener("DOMContentLoaded", () => {
 
 {{define "invite"}}
 <h1>{{t "设置密码"}}</h1>
-<p>{{t "点开这个链接,就说明这个邮箱是你的。设一个只有你知道的密码,就能直接使用。"}}</p>
+<p>{{t "设置密码后即可使用账号。"}}</p>
 {{with .Error}}<p class="error" role="alert">{{msg .}}</p>{{end}}
 <form method="post" action="/invite">
   <input type="hidden" name="token" value="{{.Token}}">
@@ -452,7 +460,7 @@ addEventListener("DOMContentLoaded", () => {
 {{end}}
 
 {{define "denied"}}
-<p>{{printf (t "你没有使用 %s 的权限,请联系管理员") .Client}}</p>
+<p>{{printf (t "你没有 %s 的使用权限，请联系管理员") .Client}}</p>
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="switch-account">
   <button>{{t "切换账号"}}</button>
@@ -461,7 +469,7 @@ addEventListener("DOMContentLoaded", () => {
 
 {{define "logout"}}
 <h1>{{t "退出登录"}}</h1>
-<p>{{printf (t "要退出 %s 吗?使用它登录的应用也会随之退出。") .Name}}</p>
+<p>{{printf (t "退出 %s？通过它登录的应用也会退出。") .Name}}</p>
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="logout" value="1">
   <button>{{t "退出"}}</button>

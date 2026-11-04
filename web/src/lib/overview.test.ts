@@ -87,10 +87,10 @@ test("the summary counts what's done and points at the first step left", () => {
 	);
 	assert.equal(s?.done, 2);
 	assert.equal(s?.total, 3);
-	assert.equal(s?.title, "还差 1 步就配置好了");
+	assert.equal(s?.title, "还差 1 步完成配置");
 	assert.equal(s?.next.label, "创建应用");
 	assert.equal(s?.next.to, "/console/apps");
-	assert.match(s?.next.hint ?? "", /^下一步:/);
+	assert.match(s?.next.hint ?? "", /^下一步：/);
 });
 
 test("a finished or loading checklist has no summary", () => {

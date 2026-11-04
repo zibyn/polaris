@@ -116,7 +116,7 @@ func TestNoLoginMethodLeft(t *testing.T) {
 	e.only(clientID, "passkey")
 	setPasskeyLogin(t, e, false)
 
-	if resp, page := e.authorize(""); resp.StatusCode != 403 || !strings.Contains(page, "该应用当前没有可用的登录方式") {
+	if resp, page := e.authorize(""); resp.StatusCode != 403 || !strings.Contains(page, "该应用没有可用的登录方式") {
 		t.Errorf("login page: %d %s", resp.StatusCode, page)
 	}
 	if got := e.challenge(url.Values{"username": {"owner"}, "password": {"password1"}, "altcha": {e.solve()}}); got.Status != 403 || got.Error != "no_login_method" {

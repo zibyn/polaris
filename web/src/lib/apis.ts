@@ -20,16 +20,16 @@ export const rolesWith = (
 const name = z
 	.string()
 	.trim()
-	.min(1, "请填写名称。")
-	.max(64, "名称最多 64 个字。");
+	.min(1, "请输入名称。")
+	.max(64, "名称不能超过 64 个字符。");
 
 // apiSchema checks 添加 API 资源.
 export const apiSchema = z.object({
 	identifier: z
 		.string()
 		.trim()
-		.min(1, "请填写 API 资源标识符。")
-		.max(200, "API 资源标识符最多 200 个字符。")
+		.min(1, "请输入 API 资源标识符。")
+		.max(200, "API 资源标识符不能超过 200 个字符。")
 		.regex(/^\S*$/, "API 资源标识符不能包含空格。"),
 	name,
 });

@@ -1,6 +1,5 @@
 import { revalidateLogic, useForm } from "@tanstack/react-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { CopyButton } from "#/components/copy-button";
 import { FormError, FormField, saved } from "#/components/form";
 import { Button } from "#/components/ui/button";
@@ -14,17 +13,20 @@ import { date } from "#/routes/console/users/index";
 // ProviderForm edits a Provider of type, or adds one without current. The
 // ID and the type's immutable fields (the issuer) are set only when adding;
 // a secret already set shows empty and stays unless retyped. onDone gets
-// the saved Provider's ID, when the caller has somewhere to go.
+// the saved Provider's ID, when the caller has somewhere to go. Editing,
+// the ID and 回调 URL sit in the page header instead.
 export function ProviderForm({
 	type,
 	current,
 	editable = true,
 	onDone,
+	onCancel,
 }: {
 	type: ProviderType;
 	current?: ProviderInfo;
 	editable?: boolean;
 	onDone?: (id: string) => void;
+	onCancel?: () => void; // shown while adding, to close the drawer
 }) {
 	const client = useQueryClient();
 	const fields = type.fields;
@@ -53,7 +55,7 @@ export function ProviderForm({
 	});
 	const form = useForm({
 		defaultValues: {
-			id: current?.id ?? "",
+			id: current?.id ?? type.key,
 			name: current?.name ?? "",
 			config: Object.fromEntries(
 				fields.map((f) => [
@@ -85,43 +87,45 @@ export function ProviderForm({
 			}}
 		>
 			<FieldGroup className="gap-4">
-				<form.Field name="id">
-					{(field) => (
-						<FormField
-							field={field}
-							label="Provider ID"
-							help="出现在回调 URL 里，添加后不能修改。"
-						>
-							{(control) => (
-								<Input
-									{...control}
-									className="w-64 font-mono"
-									disabled={!!current || !editable}
-									placeholder="google"
-								/>
-							)}
-						</FormField>
-					)}
-				</form.Field>
-				<form.Subscribe selector={(s) => s.values.id}>
-					{(id) => {
-						const url =
-							current?.callbackUrl ??
-							`${location.origin}/login/providers/${id.trim() || "{Provider ID}"}/callback`;
-						return (
-							<Field>
-								<FieldLabel>回调 URL</FieldLabel>
-								<div className="flex flex-wrap items-center gap-2">
-									<span className="break-all font-mono text-sm">{url}</span>
-									<CopyButton value={url} />
-								</div>
-								<p className="text-[13px] text-muted-foreground">
-									填进上游的后台，作为允许的重定向地址。
-								</p>
-							</Field>
-						);
-					}}
-				</form.Subscribe>
+				{!current && (
+					<form.Field name="id">
+						{(field) => (
+							<FormField
+								field={field}
+								label="Provider ID"
+								help="用于回调 URL，添加后不可修改。"
+							>
+								{(control) => (
+									<Input
+										{...control}
+										className="w-64 font-mono"
+										disabled={!editable}
+										placeholder={type.key}
+									/>
+								)}
+							</FormField>
+						)}
+					</form.Field>
+				)}
+				{!current && (
+					<form.Subscribe selector={(s) => s.values.id}>
+						{(id) => {
+							const url = `${location.origin}/login/providers/${id.trim() || "{Provider ID}"}/callback`;
+							return (
+								<Field>
+									<FieldLabel>回调 URL</FieldLabel>
+									<div className="flex flex-wrap items-center gap-2">
+										<span className="break-all font-mono text-sm">{url}</span>
+										<CopyButton value={url} />
+									</div>
+									<p className="text-[13px] text-muted-foreground">
+										在认证源后台中添加为回调地址。
+									</p>
+								</Field>
+							);
+						}}
+					</form.Subscribe>
+				)}
 				<form.Field name="name">
 					{(field) => (
 						<FormField
@@ -134,7 +138,7 @@ export function ProviderForm({
 									{...control}
 									className="w-64"
 									disabled={!editable}
-									placeholder="Google"
+									placeholder={type.name}
 								/>
 							)}
 						</FormField>
@@ -151,7 +155,7 @@ export function ProviderForm({
 									en={f.optional ? "选填" : undefined}
 									help={
 										f.immutable
-											? `${f.help ? `${f.help}。` : ""}添加后不能修改。`
+											? `${f.help ? `${f.help}。` : ""}添加后不可修改。`
 											: f.help
 									}
 								>
@@ -181,12 +185,8 @@ export function ProviderForm({
 						{current ? "保存" : "添加认证源"}
 					</Button>
 				)}
-				{!current && (
-					<Button
-						type="button"
-						variant="outline"
-						render={<Link to="/console/providers" />}
-					>
+				{onCancel && (
+					<Button type="button" variant="outline" onClick={onCancel}>
 						取消
 					</Button>
 				)}

@@ -12,8 +12,8 @@ const phone = z
 const email = z
 	.string()
 	.trim()
-	.max(254, "请输入邮箱")
-	.regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/, "请输入邮箱");
+	.max(254, "请输入有效的邮箱")
+	.regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/, "请输入有效的邮箱");
 
 const code = z
 	.string()
@@ -41,7 +41,7 @@ const recoveryCode = z
 	.string()
 	.refine(
 		(v) => /^[a-z2-7]{8}$/i.test(v.replace(/[\s-]/g, "")),
-		"请输入恢复码,形如 xxxx-xxxx",
+		"请输入恢复码，格式为 xxxx-xxxx",
 	);
 
 // reauthMethods is, per way of reauthenticating, how its secret is checked,
@@ -178,7 +178,7 @@ export const providerReturn = (
 	const bound = q.get("bound");
 	if (error !== null) return { error };
 	if (bound !== null) return { success: `已绑定 ${name(bound)}` };
-	if (q.has("reauthenticated")) return { success: "已验证身份,请继续操作" };
+	if (q.has("reauthenticated")) return { success: "已验证身份，请继续操作" };
 	return null;
 };
 

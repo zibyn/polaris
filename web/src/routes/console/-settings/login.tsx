@@ -2,6 +2,7 @@ import { revalidateLogic, useForm } from "@tanstack/react-form";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { FormField } from "#/components/form";
+import { ItemList, PropRow } from "#/components/item-list";
 import { Alert, AlertDescription } from "#/components/ui/alert";
 import { Input } from "#/components/ui/input";
 import { Switch } from "#/components/ui/switch";
@@ -61,7 +62,7 @@ function AdminsNeedTwoFactor({ current, editable }: SectionProps) {
 					<FormField
 						field={field}
 						label="管理员必须启用两步验证或 Passkey"
-						help="管理员账号被盗会暴露整个实例。开启后，既没开启两步验证也没有 Passkey 的管理员不能使用管理端，要先去账号中心开启或添加，也不能让两者一样都不剩。你自己要先满足其中一项。"
+						help="开启后，未启用两步验证且没有 Passkey 的管理员无法使用管理端。"
 					>
 						{({ id }) => (
 							<Switch
@@ -82,25 +83,33 @@ type SectionProps = { current: Policy; editable: boolean };
 
 function CodeLogin({ channels }: { channels: ChannelSettings[] }) {
 	return (
-		<section>
-			<h2 className="font-semibold text-[15px]">验证码登录</h2>
-			<div className="mt-4 space-y-3">
+		<Section title="验证码登录">
+			<ItemList>
 				{codeKinds.map((k) =>
 					hasChannel(channels, k.kind) ? (
-						<p key={k.kind} className="text-sm">
-							用户可以用{k.label}收验证码登录。
-						</p>
+						<PropRow key={k.kind} label={k.label}>
+							<span className="text-sm">用户可用{k.label}验证码登录。</span>
+						</PropRow>
 					) : (
-						<Alert key={k.kind} variant="warning">
-							<AlertDescription>
-								没有启用{k.channel}通道，用户不能用{k.label}收验证码登录。{" "}
-								<ChannelsLink />
-							</AlertDescription>
-						</Alert>
+						<PropRow
+							key={k.kind}
+							label={k.label}
+							actions={
+								<ChannelsLink>
+									<span className="font-medium text-[13px] text-primary-ink underline-offset-2 hover:underline">
+										设置验证码通道
+									</span>
+								</ChannelsLink>
+							}
+						>
+							<span className="text-sm text-warning-foreground">
+								未启用{k.channel}通道，用户无法使用{k.label}验证码登录。
+							</span>
+						</PropRow>
 					),
 				)}
-			</div>
-		</section>
+			</ItemList>
+		</Section>
 	);
 }
 
@@ -122,7 +131,7 @@ function OpenRegistration({ current, editable }: SectionProps) {
 					<FormField
 						field={field}
 						label="开放注册"
-						help="陌生人用手机号、邮箱或外部账号第一次登录时，自动成为新用户。关闭后不再给没注册过的手机号或邮箱发验证码，没绑定过的外部账号也登录不了；已有用户照常登录，管理员仍可创建用户、发注册邀请。关闭后，登录页的提示会透露某个手机号或邮箱是否已注册。"
+						help="开启后，未注册的手机号、邮箱或外部账号首次登录时自动注册。关闭后，登录页会提示手机号或邮箱是否已注册。"
 					>
 						{({ id }) => (
 							<Switch
@@ -157,7 +166,7 @@ function PasswordLogin({ current, editable }: SectionProps) {
 					<FormField
 						field={field}
 						label="允许密码登录"
-						help="用户可以用手机号、邮箱或用户名加密码登录。关闭后，已经设置的密码会保留，但不能用来登录。"
+						help="开启后，用户可用手机号、邮箱或用户名加密码登录。关闭后已设置的密码保留。"
 					>
 						{({ id }) => (
 							<>
@@ -172,7 +181,7 @@ function PasswordLogin({ current, editable }: SectionProps) {
 								{passwordLocksOut(field.state.value) && (
 									<Alert variant="warning">
 										<AlertDescription>
-											只用用户名登录的用户将无法登录，账号中心也不能设置密码。
+											仅有用户名的用户将无法登录，也无法在账号中心设置密码。
 										</AlertDescription>
 									</Alert>
 								)}
@@ -205,7 +214,7 @@ function PasskeyLogin({ current, editable }: SectionProps) {
 					<FormField
 						field={field}
 						label="允许 Passkey 登录"
-						help="用户可以在设备或密码管理器里各存一把 Passkey，登录时不用等验证码。关闭后所有 Passkey 入口都会消失，已添加的 Passkey 会保留，重新打开后照常可用。"
+						help="开启后，用户可用 Passkey 登录。关闭后已添加的 Passkey 保留。"
 					>
 						{({ id }) => (
 							<Switch
@@ -248,7 +257,7 @@ function RequirePhone({
 					<FormField
 						field={field}
 						label="必须绑定手机号"
-						help="让每个用户都有手机号，方便找回账号和发通知。开启后，没有手机号的用户要先绑定才能登录。"
+						help="开启后，没有手机号的用户需先绑定手机号才能登录。"
 					>
 						{({ id }) => (
 							<>
@@ -262,8 +271,8 @@ function RequirePhone({
 								{!sms && (
 									<Alert variant="warning">
 										<AlertDescription>
-											先启用短信通道。没有短信通道，用户收不到绑定手机号的验证码。{" "}
-											<ChannelsLink>去启用短信通道</ChannelsLink>
+											需先启用短信通道，否则用户收不到绑定手机号的验证码。{" "}
+											<ChannelsLink>启用短信通道</ChannelsLink>
 										</AlertDescription>
 									</Alert>
 								)}
@@ -280,7 +289,7 @@ function RequirePhone({
 				destructive={false}
 				onConfirm={() => save.mutate({ requirePhone: true })}
 			>
-				没有手机号的用户下次登录时要先绑定才能继续。
+				没有手机号的用户下次登录时需先绑定手机号。
 			</ConfirmDialog>
 		</Section>
 	);
@@ -352,7 +361,7 @@ function Terms({ current, editable }: SectionProps) {
 					<FormField
 						field={field}
 						label="英文用户协议地址"
-						help="英文登录页用它。留空就用上面的中文地址。"
+						help="用于英文登录页，留空则使用中文地址。"
 					>
 						{(control) => (
 							<Input
@@ -369,7 +378,7 @@ function Terms({ current, editable }: SectionProps) {
 					<FormField
 						field={field}
 						label="英文隐私政策地址"
-						help="英文登录页用它。留空就用上面的中文地址。"
+						help="用于英文登录页，留空则使用中文地址。"
 					>
 						{(control) => (
 							<Input
@@ -386,7 +395,7 @@ function Terms({ current, editable }: SectionProps) {
 					<FormField
 						field={field}
 						label="协议版本"
-						help="用户登录时要勾选同意这一版协议。留空就不要求同意。"
+						help="用户登录时需同意该版本协议，留空则不要求。"
 					>
 						{(control) => (
 							<Input {...control} className="w-48" placeholder="如 2026-10" />
@@ -402,8 +411,8 @@ function Terms({ current, editable }: SectionProps) {
 				destructive={false}
 				onConfirm={() => pending && save.mutate(pending)}
 			>
-				所有用户下次登录都要重新同意。中英文协议算同一版。接了直连认证 API 的
-				App 要带上新版本号。
+				所有用户下次登录时需重新同意，中英文协议共用此版本。使用直连认证 API
+				的应用需传入新版本号。
 			</ConfirmDialog>
 		</Section>
 	);

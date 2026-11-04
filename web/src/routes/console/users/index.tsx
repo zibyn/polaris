@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
+import { Alert, AlertDescription } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import {
@@ -216,9 +217,9 @@ function Users() {
 			{empty && (
 				<Empty className="border">
 					<EmptyHeader>
-						<EmptyTitle>还没有用户注册</EmptyTitle>
+						<EmptyTitle>还没有用户</EmptyTitle>
 						<EmptyDescription>
-							用户在你的应用里第一次登录时会自动注册，之后出现在这里；你也可以直接建一个。
+							用户注册或由管理员创建后显示在这里。
 						</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
@@ -230,84 +231,91 @@ function Users() {
 					</EmptyContent>
 				</Empty>
 			)}
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>用户</TableHead>
-						<TableHead>登录标识</TableHead>
-						<TableHead>角色</TableHead>
-						<TableHead>注册时间</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{rows.map((u) => (
-						<TableRow
-							key={u.sub}
-							className="cursor-pointer hover:bg-muted/50"
-							onClick={() =>
-								navigate({
-									to: "/console/users/$sub",
-									params: { sub: u.sub },
-								})
-							}
-						>
-							<TableCell>
-								<span className="flex items-center gap-3 font-medium">
-									<UserAvatar name={primaryIdentifier(u.identifiers)} />
-									{/* The row click is the mouse's way in; the name is the
-									    keyboard's, and the only thing a screen reader hears. */}
-									<Link
-										to="/console/users/$sub"
-										params={{ sub: u.sub }}
-										className="rounded-sm hover:underline"
-										onClick={(e) => e.stopPropagation()}
-									>
-										{userName(u)}
-									</Link>
-									{u.disabledAt && <Badge variant="destructive">已禁用</Badge>}
-									{u.pending && <Badge variant="warning">待激活</Badge>}
-								</span>
-							</TableCell>
-							<TableCell className="text-muted-foreground">
-								{u.identifiers.map((i) => i.value).join(" · ") || "—"}
-							</TableCell>
-							<TableCell>
-								<span className="flex flex-wrap gap-1">
-									{u.roles.map((r) => (
-										<Badge key={roleKey(r)} variant="secondary">
-											{r.name}
-										</Badge>
-									))}
-								</span>
-							</TableCell>
-							<TableCell className="text-muted-foreground">
-								{date(u.createdAt)}
-							</TableCell>
-						</TableRow>
-					))}
-					{rows.length === 0 && !empty && (
+			{/* The empty state stands in for the table: only admins in it. */}
+			{!empty && (
+				<Table>
+					<TableHeader>
 						<TableRow>
-							<TableCell
-								colSpan={4}
-								className="text-center text-muted-foreground"
-							>
-								<span className="inline-flex items-center gap-2">
-									没有符合条件的用户
-									<Button
-										size="sm"
-										variant="outline"
-										onClick={() => navigate({ search: {} })}
-									>
-										清除筛选
-									</Button>
-								</span>
-							</TableCell>
+							<TableHead>用户</TableHead>
+							<TableHead>登录标识</TableHead>
+							<TableHead>角色</TableHead>
+							<TableHead>注册时间</TableHead>
 						</TableRow>
-					)}
-				</TableBody>
-			</Table>
+					</TableHeader>
+					<TableBody>
+						{rows.map((u) => (
+							<TableRow
+								key={u.sub}
+								className="cursor-pointer hover:bg-muted/50"
+								onClick={() =>
+									navigate({
+										to: "/console/users/$sub",
+										params: { sub: u.sub },
+									})
+								}
+							>
+								<TableCell>
+									<span className="flex items-center gap-3 font-medium">
+										<UserAvatar name={primaryIdentifier(u.identifiers)} />
+										{/* The row click is the mouse's way in; the name is the
+									    keyboard's, and the only thing a screen reader hears. */}
+										<Link
+											to="/console/users/$sub"
+											params={{ sub: u.sub }}
+											className="rounded-sm hover:underline"
+											onClick={(e) => e.stopPropagation()}
+										>
+											{userName(u)}
+										</Link>
+										{u.disabledAt && (
+											<Badge variant="destructive">已禁用</Badge>
+										)}
+										{u.pending && <Badge variant="warning">待激活</Badge>}
+									</span>
+								</TableCell>
+								<TableCell className="text-muted-foreground">
+									{u.identifiers.map((i) => i.value).join(" · ") || "—"}
+								</TableCell>
+								<TableCell>
+									<span className="flex flex-wrap gap-1">
+										{u.roles.map((r) => (
+											<Badge key={roleKey(r)} variant="secondary">
+												{r.name}
+											</Badge>
+										))}
+									</span>
+								</TableCell>
+								<TableCell className="text-muted-foreground">
+									{date(u.createdAt)}
+								</TableCell>
+							</TableRow>
+						))}
+						{rows.length === 0 && (
+							<TableRow>
+								<TableCell
+									colSpan={4}
+									className="text-center text-muted-foreground"
+								>
+									<span className="inline-flex items-center gap-2">
+										没有符合条件的用户
+										<Button
+											size="sm"
+											variant="outline"
+											onClick={() => navigate({ search: {} })}
+										>
+											清除筛选
+										</Button>
+									</span>
+								</TableCell>
+							</TableRow>
+						)}
+					</TableBody>
+				</Table>
+			)}
 			{users.isFetchNextPageError && (
-				<p className="text-destructive text-sm">{users.error?.message}</p>
+				<Alert variant="destructive">
+					<AlertDescription>{users.error?.message}</AlertDescription>
+				</Alert>
 			)}
 			{users.hasNextPage && (
 				<Button

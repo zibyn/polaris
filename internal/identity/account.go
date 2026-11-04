@@ -141,7 +141,7 @@ func (s *Store) ReplaceIdentifier(ctx context.Context, sub, kind, value, by stri
 	return err
 }
 
-const ErrLastOwner Invalid = "你是最后一个所有者,不能注销"
+const ErrLastOwner Invalid = "你是最后一位所有者，无法注销"
 
 // guardOwners runs change in a transaction that fails with ErrLastOwner if
 // it takes the instance from having a usable owner to having none. Only an
@@ -217,7 +217,7 @@ func (s *Store) SetRoles(ctx context.Context, sub, api string, roles []string, b
 
 // ErrNotPending is a password write that only a 待激活 User may make, on an
 // account that is not 待激活 any more.
-const ErrNotPending Invalid = "该账号已经激活,请重新登录"
+const ErrNotPending Invalid = "账号已激活，请重新登录"
 
 // SetPasswordIfPending replaces a 待激活 User's password with their own and
 // activates the account (ADR 0016).

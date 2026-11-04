@@ -19,10 +19,8 @@ import { PasswordLoginNotice, usePasswordLoginOff } from "./password-login";
 
 // wayHelp is what each way in is, said under the choice.
 const wayHelp: Record<WayIn, string> = {
-	password:
-		"当面或另找渠道把临时密码交给本人，对方第一次登录时必须先改成自己的密码。",
-	invite:
-		"认证服务往这个邮箱发一条 7 天有效的一次性链接，本人点开自己设密码，密码不经过你手上。",
+	password: "用户首次登录时需修改密码。",
+	invite: "向该邮箱发送设置密码链接，7 天内有效。",
 };
 
 // CreateUserForm opens one 待激活 account for an admin to hand over
@@ -64,16 +62,12 @@ export function CreateUserForm() {
 			}}
 		>
 			{off && (
-				<PasswordLoginNotice detail="关闭时建出来的账号没有可用的登录方式，本人进不来。" />
+				<PasswordLoginNotice detail="密码登录关闭时，新建账号无法登录。" />
 			)}
 			<FieldSet disabled={off} className="gap-6">
 				<form.Field name="way">
 					{(field) => (
-						<FormField
-							field={field}
-							label="怎么把账号交给本人"
-							help={wayHelp[way]}
-						>
+						<FormField field={field} label="激活方式" help={wayHelp[way]}>
 							{({ id, "aria-invalid": invalid }) => (
 								<Select
 									value={field.state.value}
@@ -105,8 +99,8 @@ export function CreateUserForm() {
 							label="登录标识"
 							help={
 								way === "invite"
-									? "邀请只发到邮箱，所以这里要填邮箱地址。填的邮箱直接算已验证，不发验证邮件、也不消耗验证码条数。"
-									: "手机号、邮箱或用户名。这里填的邮箱和手机号直接算已验证，认证服务不会给本人发验证邮件，也不消耗验证码条数。"
+									? "仅支持邮箱，视为已验证。"
+									: "手机号、邮箱或用户名。邮箱和手机号视为已验证。"
 							}
 						>
 							{(control) => (
@@ -161,7 +155,7 @@ export function CreateUserSheet({
 			open={open}
 			onOpenChange={onOpenChange}
 			title="创建用户"
-			description="建好的账号是待激活：本人能登录，但在自己设置密码之前拿不到任何令牌。"
+			description="用户设置密码前，账号为待激活状态。"
 		>
 			<CreateUserForm />
 		</FormSheet>

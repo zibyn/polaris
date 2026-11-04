@@ -622,7 +622,7 @@ test("without users:read the user box only takes a user ID", () => {
 	assert.equal(
 		findSchema(false).safeParse({ q: "alice@example.com" }).error?.issues[0]
 			.message,
-		"请填写 26 位用户 ID。没有读取用户的权限，只能按 ID 查找。",
+		"请输入 26 位用户 ID。没有读取用户的权限，只能按 ID 查找。",
 	);
 	assert.equal(
 		findSchema(true).safeParse({ q: "alice@example.com" }).success,

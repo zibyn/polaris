@@ -25,10 +25,10 @@ import (
 
 const (
 	ErrNoChannel  identity.Invalid = "暂不支持向这类手机号或邮箱发送验证码"
-	ErrTooSoon    identity.Invalid = "发送太频繁,请 60 秒后再试"
-	ErrTooMany    identity.Invalid = "发送次数过多,请稍后再试"
-	ErrDailyCap   identity.Invalid = "今日发送量已达上限,请明天再试"
-	ErrSendFailed identity.Invalid = "验证码发送失败,请稍后再试"
+	ErrTooSoon    identity.Invalid = "发送过于频繁，请 60 秒后重试"
+	ErrTooMany    identity.Invalid = "发送次数过多，请稍后重试"
+	ErrDailyCap   identity.Invalid = "今日发送量已达上限，请明天重试"
+	ErrSendFailed identity.Invalid = "验证码发送失败，请稍后重试"
 	ErrWrongCode                   = identity.ErrWrongCode
 	// 注册邀请: 它只发邮件, 也只受实例每日上限约束 —— 按标识符、按 IP 的
 	// 发码限流是防人刷码的, 而邀请是管理员主动发的, 一次就一条。
