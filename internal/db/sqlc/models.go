@@ -295,6 +295,8 @@ type Setting struct {
 	AdminsNeedTwoFactor bool
 	PasskeyLogin        bool
 	OpenRegistration    bool
+	TermsUrlEn          string
+	PrivacyUrlEn        string
 }
 
 type SigningKey struct {

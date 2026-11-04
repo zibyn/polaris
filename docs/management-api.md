@@ -115,6 +115,10 @@ curl -X DELETE "$ISSUER/v1/management/users/$SUB/invite" -H "Authorization: Bear
 - 读出来的 Application 多一个只读的 `noLoginMethod`:为 `true` 时它指定的方式在实例里一个都没开,现在没人能登录它。
 - 改设置不吊销已有的 Session 和 refresh token,只影响之后的登录与单点登录判断。
 
+## 英文协议链接
+
+`PUT /settings` 的 `termsUrlEn`、`privacyUrlEn` 可选,须为 https。英文托管页优先链到它们,没填就用 `termsUrl`、`privacyUrl`。`termsVersion` 只有一个,中英文协议算同一版,换语言不会要求重新同意。`PUT /settings` 整体替换:改别的字段时要把它们原样带回。
+
 ## 各接口所需 Permission
 
 | Permission | 接口 |

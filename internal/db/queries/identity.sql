@@ -86,7 +86,7 @@ SELECT (s.require_phone AND NOT EXISTS (SELECT 1 FROM identifiers i WHERE i.user
 FROM settings s;
 
 -- name: Terms :one
-SELECT terms_url, privacy_url, terms_version FROM settings;
+SELECT terms_url, privacy_url, terms_version, terms_url_en, privacy_url_en FROM settings;
 
 -- name: NeedsConsent :one
 -- The instance has terms and the User has not agreed to this version.

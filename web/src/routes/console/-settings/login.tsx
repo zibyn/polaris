@@ -293,6 +293,8 @@ function Terms({ current, editable }: SectionProps) {
 		defaultValues: {
 			termsUrl: current.termsUrl,
 			privacyUrl: current.privacyUrl,
+			termsUrlEn: current.termsUrlEn ?? "",
+			privacyUrlEn: current.privacyUrlEn ?? "",
 			termsVersion: current.termsVersion,
 		},
 		validationLogic: revalidateLogic(),
@@ -301,6 +303,8 @@ function Terms({ current, editable }: SectionProps) {
 			const t = {
 				termsUrl: value.termsUrl.trim(),
 				privacyUrl: value.privacyUrl.trim(),
+				termsUrlEn: value.termsUrlEn.trim(),
+				privacyUrlEn: value.privacyUrlEn.trim(),
 				termsVersion: value.termsVersion.trim(),
 			};
 			if (asksTermsVersion(current.termsVersion, t.termsVersion)) {
@@ -343,6 +347,40 @@ function Terms({ current, editable }: SectionProps) {
 					</FormField>
 				)}
 			</form.Field>
+			<form.Field name="termsUrlEn">
+				{(field) => (
+					<FormField
+						field={field}
+						label="英文用户协议地址"
+						help="英文登录页用它。留空就用上面的中文地址。"
+					>
+						{(control) => (
+							<Input
+								{...control}
+								type="url"
+								placeholder="https://example.com/en/terms"
+							/>
+						)}
+					</FormField>
+				)}
+			</form.Field>
+			<form.Field name="privacyUrlEn">
+				{(field) => (
+					<FormField
+						field={field}
+						label="英文隐私政策地址"
+						help="英文登录页用它。留空就用上面的中文地址。"
+					>
+						{(control) => (
+							<Input
+								{...control}
+								type="url"
+								placeholder="https://example.com/en/privacy"
+							/>
+						)}
+					</FormField>
+				)}
+			</form.Field>
 			<form.Field name="termsVersion">
 				{(field) => (
 					<FormField
@@ -364,7 +402,8 @@ function Terms({ current, editable }: SectionProps) {
 				destructive={false}
 				onConfirm={() => pending && save.mutate(pending)}
 			>
-				所有用户下次登录都要重新同意。接了直连认证 API 的 App 要带上新版本号。
+				所有用户下次登录都要重新同意。中英文协议算同一版。接了直连认证 API 的
+				App 要带上新版本号。
 			</ConfirmDialog>
 		</Section>
 	);

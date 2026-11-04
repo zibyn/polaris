@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登录 · Polaris</title>
+<style>
+ 
+:root {
+  --primary: #7048e8; --primary-hover: #5f37d6; --primary-soft: #f5f0ff; --primary-ink: #6236d9; --primary-foreground: #fff;
+  --star: #f0609e; --nebula: #b197fc; --canvas: #f7f4fa; --panel: #fff;
+  --ink: #211b2c; --muted: #6e677d; --faint: #a8a1b6; --line: #efebf4; --danger: #d33;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  font: 14px/1.5 Inter, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--ink); background: var(--panel); color-scheme: light; -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+::selection { background: var(--primary-soft); color: var(--ink); }
+body { margin: 0; min-height: 100svh; display: grid; grid-template-columns: 1fr 1fr; }
+.brand { position: relative; overflow: hidden; background: var(--primary-soft); padding: 48px; }
+ 
+.brand .glow { transform-box: fill-box; transform-origin: center; animation: settle 1.4s var(--ease-out) both; }
+.brand .glow + .glow { animation-delay: .18s; }
+@keyframes settle { from { opacity: 0; transform: scale(1.07); } }
+.brand > div { position: relative; display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; }
+.brand .sky { position: absolute; inset: 0; width: 100%; height: 100%; }
+.star { fill: var(--star); width: 24px; height: 24px; }
+.form { display: grid; place-items: center; padding: 56px 32px; }
+ 
+main { width: 100%; max-width: 340px; animation: rise .42s var(--ease-out) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+main > .star { width: 32px; height: 32px; }
+h1 { margin: 24px 0 0; font-size: 24px; font-weight: 600; letter-spacing: -.01em; }
+h1 + p { margin-top: 4px; }
+p { color: var(--muted); margin: 16px 0; }
+form p { margin: 0; }
+p b { color: var(--ink); font-weight: 500; }
+form { display: grid; gap: 16px; margin-top: 32px; }
+label { display: grid; gap: 4px; font-size: 13px; font-weight: 500; }
+input, button { font: inherit; font-size: 14px; color: inherit; border-radius: 8px; }
+input:not([type=checkbox]) {
+  padding: 9px 12px; border: 1px solid var(--line); outline: none; background: var(--panel);
+  transition: border-color .15s, box-shadow .2s var(--ease-out);
+}
+input:not([type=checkbox]):focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent); }
+ 
+input:-webkit-autofill { -webkit-box-shadow: 0 0 0 100px var(--panel) inset; -webkit-text-fill-color: var(--ink); }
+ 
+input[name=code], input[name=totp] { letter-spacing: .3em; font-variant-numeric: tabular-nums; }
+button {
+  cursor: pointer; padding: 10px 12px; font-weight: 500; border: 0; background: var(--primary); color: var(--primary-foreground);
+  transition: background-color .15s, color .15s, border-color .15s, transform .1s;
+}
+button:not(:disabled):active { transform: translateY(1px); }
+button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+button:hover { background: var(--primary-hover); }
+a { color: var(--primary-ink); }
+form > a { font-size: 13px; justify-self: start; }
+ 
+form > button.resend { justify-self: start; padding: 0; background: transparent; color: var(--primary-ink); font-size: 13px; font-weight: 400; }
+form > button.resend:hover { background: transparent; text-decoration: underline; }
+form > button.resend:disabled { color: var(--faint); text-decoration: none; cursor: default; }
+.wait { color: var(--faint); font-variant-numeric: tabular-nums; }
+ 
+.field-group { display: grid; gap: 4px; font-size: 13px; font-weight: 500; }
+.field { position: relative; display: block; }
+.field input { width: 100%; padding-inline-end: 56px; }
+.field button.reveal { position: absolute; inset-block: 2px; inset-inline-end: 2px; min-height: 0; padding: 0 8px; border-radius: 6px; background: transparent; color: var(--primary-ink); font-size: 12px; font-weight: 500; }
+.field button.reveal:hover { background: var(--primary-soft); }
+.field button.reveal:focus-visible { outline-offset: -2px; }
+.who { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px; background: var(--canvas); overflow-wrap: anywhere; }
+.who a { font-size: 13px; flex: none; }
+.error { color: var(--danger); font-size: 13px; }
+label.agree { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; font-weight: 400; color: var(--muted); }
+label.agree a { text-decoration: none; }
+label.agree input { margin: 3px 0 0; accent-color: var(--primary); }
+altcha-widget { --altcha-border-radius: 8px; --altcha-color-border: var(--line); --altcha-max-width: 100%; }
+ 
+form.providers { margin-top: 12px; gap: 8px; }
+ 
+button#passkey-login { margin-top: 12px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
+button#passkey-login:hover { background: var(--canvas); }
+form.providers button { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
+form.providers button:hover { background: var(--canvas); }
+ 
+form.providers button.apple, form.providers button.google, form.providers button.microsoft, form.providers button.github, form.providers button.dingtalk, form.providers button.wecom, form.providers button.feishu { display: flex; align-items: center; justify-content: center; gap: 8px; }
+form.providers button.google svg, form.providers button.microsoft svg, form.providers button.github svg, form.providers button.dingtalk svg, form.providers button.wecom svg, form.providers button.feishu svg { width: 18px; height: 18px; flex: none; }
+ 
+form.providers button.apple, form.providers button.apple:hover { gap: 6px; background: #000; color: #fff; border-color: #000; }
+form.providers button.apple svg { width: 15px; height: 15px; fill: currentColor; margin-top: -2px; }
+ 
+form.providers button.google { border-color: #747775; color: #1f1f1f; gap: 10px; }
+ 
+form.providers button.microsoft { border-color: #8c8c8c; color: #5e5e5e; }
+form.providers button.google:hover, form.providers button.microsoft:hover, form.providers button.github:hover, form.providers button.dingtalk:hover, form.providers button.wecom:hover, form.providers button.feishu:hover { background: var(--panel); }
+ 
+form.providers button.github svg { fill: #181717; }
+ 
+ 
+button.pending { display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: progress; }
+button.pending::after { content: ""; flex: none; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(1turn); } }
+.by { margin-top: 40px; text-align: center; font-size: 12px; color: var(--faint); }
+@media (max-width: 767px) {
+  body { grid-template-columns: 1fr; }
+  .brand { display: none; }
+  .form { padding: 40px 16px; }
+   
+  input:not([type=checkbox]) { font-size: 16px; }
+   
+  input:not([type=checkbox]), button { min-height: 44px; }
+}
+ 
+@media (prefers-reduced-motion: reduce) {
+  main, .brand .glow { animation: none; }
+  *, *::before, *::after { transition-duration: .01ms !important; }
+}
+</style>
+<script>
+
+
+
+addEventListener("submit", e => {
+  const form = e.target;
+  if (form.tagName !== "FORM" || form.querySelector("altcha-widget")) return;
+  form.classList.add("pending");
+  const button = e.submitter || form.querySelector("button:not([type=button])");
+  if (button) button.classList.add("pending");
+}, true);
+
+addEventListener("pageshow", () => {
+  for (const form of document.querySelectorAll("form.pending")) {
+    form.classList.remove("pending");
+    for (const button of form.querySelectorAll("button.pending")) button.classList.remove("pending");
+  }
+});
+
+
+addEventListener("click", e => {
+  const button = e.target.closest("button.reveal");
+  if (!button) return;
+  const input = button.parentElement.querySelector("input");
+  if (!input) return;
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  button.textContent = show ? "隐藏" : "显示";
+  button.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
+});
+
+
+addEventListener("DOMContentLoaded", () => {
+  for (const input of document.querySelectorAll('input[maxlength="6"][inputmode="numeric"]')) {
+    input.addEventListener("input", () => {
+      if (input.value.length !== 6) return;
+      const form = input.form;
+      form.requestSubmit(form.querySelector('button[value="verify"]') || form.querySelector("button:not([formnovalidate])"));
+    });
+  }
+});
+</script>
+</head>
+<body>
+<div class="brand" aria-hidden="true">
+<svg class="sky"><defs><radialGradient id="nebula1"><stop offset="0" style="stop-color: var(--nebula)" stop-opacity=".55"/><stop offset="1" style="stop-color: var(--nebula)" stop-opacity="0"/></radialGradient><radialGradient id="nebula2"><stop offset="0" style="stop-color: var(--star)" stop-opacity=".35"/><stop offset="1" style="stop-color: var(--star)" stop-opacity="0"/></radialGradient></defs>
+<ellipse class="glow" cx="35%" cy="40%" rx="55%" ry="32%" fill="url(#nebula1)"/><ellipse class="glow" cx="68%" cy="64%" rx="42%" ry="26%" fill="url(#nebula2)"/>
+<g fill="var(--star)"><circle cx="65.8%" cy="77.8%" r="0.30" opacity="0.33"/><circle cx="9.5%" cy="23.5%" r="0.65" opacity="0.38"/><circle cx="67.3%" cy="91.8%" r="0.37" opacity="0.47"/><circle cx="17.3%" cy="26.7%" r="0.30" opacity="0.49"/><circle cx="3.8%" cy="91.7%" r="0.35" opacity="0.35"/><circle cx="43.4%" cy="94.5%" r="0.30" opacity="0.49"/><circle cx="63.5%" cy="46.0%" r="0.31" opacity="0.32"/><circle cx="50.6%" cy="55.2%" r="0.30" opacity="0.56"/><circle cx="23.7%" cy="68.0%" r="0.34" opacity="0.49"/><circle cx="78.2%" cy="95.5%" r="0.31" opacity="0.57"/><circle cx="91.3%" cy="61.3%" r="0.32" opacity="0.55"/><circle cx="36.3%" cy="15.8%" r="0.32" opacity="0.39"/><circle cx="18.2%" cy="83.2%" r="0.36" opacity="0.37"/><circle cx="37.5%" cy="79.6%" r="0.31" opacity="0.57"/><circle cx="48.8%" cy="54.6%" r="0.40" opacity="0.34"/><circle cx="52.3%" cy="58.1%" r="0.47" opacity="0.47"/><circle cx="47.0%" cy="33.1%" r="1.28" opacity="0.40"/><circle cx="36.9%" cy="50.4%" r="0.78" opacity="0.61"/><circle cx="56.9%" cy="64.9%" r="0.37" opacity="0.35"/><circle cx="25.0%" cy="80.8%" r="0.72" opacity="0.58"/><circle cx="62.7%" cy="7.9%" r="0.30" opacity="0.40"/><circle cx="14.8%" cy="68.1%" r="0.35" opacity="0.48"/><circle cx="44.3%" cy="16.6%" r="1.49" opacity="0.44"/><circle cx="56.6%" cy="95.6%" r="0.82" opacity="0.30"/><circle cx="20.8%" cy="34.7%" r="0.30" opacity="0.23"/><circle cx="34.0%" cy="43.6%" r="0.69" opacity="0.60"/><circle cx="85.8%" cy="1.2%" r="0.84" opacity="0.27"/><circle cx="49.2%" cy="77.7%" r="0.66" opacity="0.53"/><circle cx="45.4%" cy="12.4%" r="0.85" opacity="0.29"/><circle cx="6.4%" cy="57.4%" r="0.91" opacity="0.49"/><circle cx="37.3%" cy="1.5%" r="0.41" opacity="0.23"/><circle cx="54.9%" cy="68.9%" r="0.30" opacity="0.29"/><circle cx="58.8%" cy="43.5%" r="1.19" opacity="0.32"/><circle cx="40.7%" cy="92.9%" r="0.81" opacity="0.62"/><circle cx="73.8%" cy="93.6%" r="0.45" opacity="0.30"/><circle cx="77.7%" cy="78.1%" r="1.33" opacity="0.53"/><circle cx="4.4%" cy="70.9%" r="1.22" opacity="0.57"/><circle cx="44.3%" cy="32.0%" r="0.32" opacity="0.56"/><circle cx="99.9%" cy="59.6%" r="0.60" opacity="0.27"/><circle cx="25.6%" cy="10.8%" r="0.61" opacity="0.21"/><circle cx="38.2%" cy="94.7%" r="0.32" opacity="0.21"/><circle cx="50.8%" cy="13.2%" r="0.30" opacity="0.52"/><circle cx="5.2%" cy="65.6%" r="0.78" opacity="0.39"/><circle cx="81.1%" cy="35.5%" r="0.42" opacity="0.57"/><circle cx="67.6%" cy="91.6%" r="0.32" opacity="0.32"/><circle cx="26.2%" cy="4.5%" r="0.80" opacity="0.50"/><circle cx="7.6%" cy="39.8%" r="0.32" opacity="0.45"/><circle cx="30.4%" cy="35.6%" r="0.32" opacity="0.44"/><circle cx="8.8%" cy="77.9%" r="0.30" opacity="0.34"/><circle cx="16.4%" cy="19.7%" r="0.82" opacity="0.26"/><circle cx="51.1%" cy="93.6%" r="0.41" opacity="0.55"/><circle cx="44.7%" cy="68.7%" r="0.32" opacity="0.46"/><circle cx="7.0%" cy="88.4%" r="0.47" opacity="0.37"/><circle cx="64.9%" cy="34.6%" r="0.31" opacity="0.46"/><circle cx="53.3%" cy="70.9%" r="0.30" opacity="0.24"/><circle cx="62.5%" cy="31.7%" r="0.40" opacity="0.35"/><circle cx="44.5%" cy="33.8%" r="0.52" opacity="0.38"/><circle cx="58.3%" cy="32.9%" r="1.49" opacity="0.40"/><circle cx="69.6%" cy="25.2%" r="0.75" opacity="0.63"/><circle cx="23.0%" cy="57.9%" r="0.30" opacity="0.46"/><circle cx="19.9%" cy="33.8%" r="0.38" opacity="0.21"/><circle cx="5.8%" cy="99.6%" r="0.98" opacity="0.55"/><circle cx="8.2%" cy="0.3%" r="0.30" opacity="0.20"/><circle cx="63.7%" cy="59.6%" r="1.08" opacity="0.24"/><circle cx="40.3%" cy="2.6%" r="0.38" opacity="0.28"/><circle cx="14.4%" cy="47.3%" r="0.49" opacity="0.38"/><circle cx="14.8%" cy="6.9%" r="0.96" opacity="0.23"/><circle cx="94.4%" cy="76.1%" r="0.38" opacity="0.53"/><circle cx="34.6%" cy="46.1%" r="1.33" opacity="0.39"/><circle cx="91.9%" cy="11.2%" r="1.13" opacity="0.38"/><circle cx="5.7%" cy="95.9%" r="1.39" opacity="0.61"/><circle cx="9.9%" cy="68.2%" r="0.31" opacity="0.65"/><circle cx="88.4%" cy="14.2%" r="0.30" opacity="0.55"/><circle cx="28.6%" cy="16.8%" r="1.30" opacity="0.43"/><circle cx="17.4%" cy="48.0%" r="0.30" opacity="0.64"/><circle cx="76.5%" cy="34.8%" r="0.43" opacity="0.28"/><circle cx="99.1%" cy="13.5%" r="0.33" opacity="0.47"/><circle cx="58.7%" cy="81.3%" r="0.45" opacity="0.48"/><circle cx="94.0%" cy="64.8%" r="0.85" opacity="0.43"/><circle cx="80.8%" cy="42.7%" r="0.74" opacity="0.34"/><circle cx="78.4%" cy="69.5%" r="0.30" opacity="0.46"/><circle cx="64.3%" cy="55.4%" r="0.67" opacity="0.62"/><circle cx="15.4%" cy="29.4%" r="0.55" opacity="0.58"/><circle cx="23.4%" cy="37.9%" r="1.38" opacity="0.62"/><circle cx="39.1%" cy="84.9%" r="0.37" opacity="0.32"/><circle cx="38.1%" cy="57.0%" r="0.36" opacity="0.49"/><circle cx="72.4%" cy="30.3%" r="0.56" opacity="0.52"/><circle cx="30.2%" cy="58.6%" r="0.57" opacity="0.34"/><circle cx="2.8%" cy="93.3%" r="0.30" opacity="0.54"/><circle cx="71.9%" cy="70.9%" r="0.35" opacity="0.48"/><circle cx="7.5%" cy="37.1%" r="0.30" opacity="0.30"/><circle cx="58.9%" cy="33.3%" r="0.77" opacity="0.58"/><circle cx="22.0%" cy="47.0%" r="0.32" opacity="0.33"/><circle cx="11.0%" cy="80.4%" r="0.30" opacity="0.44"/><circle cx="18.3%" cy="91.2%" r="0.49" opacity="0.54"/><circle cx="47.8%" cy="39.8%" r="1.35" opacity="0.55"/><circle cx="2.1%" cy="47.8%" r="1.05" opacity="0.38"/><circle cx="51.7%" cy="91.5%" r="0.95" opacity="0.53"/><circle cx="3.2%" cy="92.4%" r="0.31" opacity="0.47"/><circle cx="72.0%" cy="94.9%" r="0.34" opacity="0.24"/><circle cx="13.4%" cy="29.5%" r="1.26" opacity="0.45"/><circle cx="40.1%" cy="8.0%" r="0.70" opacity="0.59"/><circle cx="55.1%" cy="4.7%" r="0.40" opacity="0.43"/><circle cx="87.9%" cy="10.3%" r="0.57" opacity="0.32"/><circle cx="80.1%" cy="61.9%" r="0.35" opacity="0.42"/><circle cx="38.9%" cy="28.6%" r="0.32" opacity="0.47"/><circle cx="75.2%" cy="43.0%" r="0.32" opacity="0.28"/><circle cx="88.9%" cy="40.6%" r="0.43" opacity="0.50"/><circle cx="93.4%" cy="71.2%" r="0.33" opacity="0.20"/><circle cx="14.7%" cy="88.8%" r="0.33" opacity="0.40"/><circle cx="69.5%" cy="39.7%" r="1.12" opacity="0.51"/><circle cx="61.3%" cy="86.7%" r="0.31" opacity="0.62"/><circle cx="7.1%" cy="3.8%" r="0.82" opacity="0.48"/><circle cx="77.0%" cy="78.5%" r="0.84" opacity="0.29"/><circle cx="29.5%" cy="25.8%" r="1.09" opacity="0.25"/><circle cx="49.0%" cy="22.3%" r="0.30" opacity="0.56"/><circle cx="25.9%" cy="31.8%" r="0.43" opacity="0.35"/><circle cx="4.8%" cy="56.8%" r="0.54" opacity="0.53"/><circle cx="88.0%" cy="99.7%" r="0.30" opacity="0.27"/><circle cx="43.7%" cy="87.7%" r="0.38" opacity="0.28"/><circle cx="86.7%" cy="14.8%" r="0.58" opacity="0.38"/><circle cx="84.7%" cy="67.0%" r="0.43" opacity="0.31"/><circle cx="84.6%" cy="50.0%" r="0.91" opacity="0.54"/><circle cx="40.8%" cy="78.4%" r="0.36" opacity="0.28"/><circle cx="10.8%" cy="81.3%" r="0.30" opacity="0.32"/><circle cx="85.7%" cy="12.4%" r="0.30" opacity="0.28"/><circle cx="83.0%" cy="72.1%" r="0.32" opacity="0.56"/><circle cx="31.0%" cy="62.5%" r="0.32" opacity="0.54"/><circle cx="10.5%" cy="57.0%" r="0.39" opacity="0.24"/><circle cx="60.9%" cy="48.3%" r="1.39" opacity="0.32"/><circle cx="59.6%" cy="86.0%" r="0.31" opacity="0.35"/><circle cx="88.6%" cy="33.9%" r="0.31" opacity="0.49"/><circle cx="71.6%" cy="2.7%" r="0.31" opacity="0.59"/><circle cx="69.9%" cy="82.4%" r="1.07" opacity="0.32"/><circle cx="61.9%" cy="63.2%" r="0.35" opacity="0.56"/><circle cx="52.6%" cy="20.8%" r="0.54" opacity="0.58"/><circle cx="63.6%" cy="56.8%" r="0.30" opacity="0.60"/><circle cx="79.1%" cy="18.3%" r="0.36" opacity="0.42"/><circle cx="67.6%" cy="2.8%" r="1.31" opacity="0.56"/><circle cx="27.5%" cy="0.8%" r="0.71" opacity="0.29"/><circle cx="10.8%" cy="36.2%" r="0.39" opacity="0.40"/><circle cx="8.2%" cy="1.0%" r="0.47" opacity="0.49"/><circle cx="31.8%" cy="21.9%" r="0.35" opacity="0.45"/><circle cx="91.4%" cy="40.5%" r="0.34" opacity="0.33"/><circle cx="97.7%" cy="45.7%" r="0.31" opacity="0.21"/><circle cx="32.3%" cy="12.6%" r="0.34" opacity="0.62"/><circle cx="67.0%" cy="97.9%" r="0.96" opacity="0.53"/><circle cx="3.0%" cy="31.9%" r="1.05" opacity="0.53"/><circle cx="54.8%" cy="12.9%" r="0.42" opacity="0.28"/><circle cx="64.7%" cy="1.0%" r="0.60" opacity="0.27"/><circle cx="20.7%" cy="76.7%" r="0.31" opacity="0.58"/><circle cx="59.7%" cy="64.6%" r="0.34" opacity="0.25"/><circle cx="44.5%" cy="49.8%" r="0.30" opacity="0.44"/><circle cx="30.9%" cy="55.8%" r="0.43" opacity="0.60"/><circle cx="16.3%" cy="18.0%" r="0.30" opacity="0.36"/><circle cx="88.6%" cy="22.3%" r="0.33" opacity="0.28"/><circle cx="15.8%" cy="76.6%" r="0.58" opacity="0.63"/><circle cx="64.8%" cy="16.0%" r="0.30" opacity="0.51"/><circle cx="1.8%" cy="93.7%" r="0.30" opacity="0.58"/><circle cx="33.8%" cy="55.8%" r="0.32" opacity="0.53"/><circle cx="19.8%" cy="34.0%" r="1.46" opacity="0.50"/><circle cx="7.7%" cy="70.8%" r="0.41" opacity="0.59"/><circle cx="72.6%" cy="10.7%" r="0.91" opacity="0.55"/><circle cx="71.8%" cy="55.0%" r="0.31" opacity="0.42"/><circle cx="11.2%" cy="80.7%" r="0.55" opacity="0.33"/><circle cx="37.3%" cy="68.6%" r="0.54" opacity="0.42"/><circle cx="96.0%" cy="35.5%" r="0.30" opacity="0.53"/><circle cx="70.4%" cy="60.6%" r="0.34" opacity="0.25"/><circle cx="93.0%" cy="83.7%" r="1.18" opacity="0.26"/><circle cx="81.2%" cy="56.8%" r="0.41" opacity="0.37"/><circle cx="62.8%" cy="64.8%" r="1.33" opacity="0.27"/><circle cx="15.6%" cy="59.6%" r="0.48" opacity="0.20"/><circle cx="59.7%" cy="45.4%" r="0.58" opacity="0.56"/><circle cx="87.2%" cy="36.6%" r="1.12" opacity="0.50"/><circle cx="33.5%" cy="48.7%" r="0.44" opacity="0.53"/><circle cx="34.0%" cy="47.6%" r="0.30" opacity="0.59"/><circle cx="20.7%" cy="75.6%" r="1.31" opacity="0.43"/><circle cx="15.8%" cy="25.8%" r="0.64" opacity="0.47"/><circle cx="17.5%" cy="22.6%" r="0.56" opacity="0.44"/><circle cx="75.9%" cy="98.6%" r="1.22" opacity="0.22"/><circle cx="86.0%" cy="56.6%" r="0.67" opacity="0.40"/><circle cx="48.5%" cy="3.8%" r="0.32" opacity="0.40"/><circle cx="55.2%" cy="67.1%" r="0.38" opacity="0.37"/><circle cx="40.1%" cy="51.7%" r="0.30" opacity="0.49"/><circle cx="17.7%" cy="6.7%" r="0.70" opacity="0.64"/><circle cx="60.1%" cy="40.7%" r="1.22" opacity="0.25"/><circle cx="15.1%" cy="71.8%" r="0.61" opacity="0.42"/><circle cx="25.8%" cy="2.4%" r="0.32" opacity="0.51"/><circle cx="29.4%" cy="39.5%" r="0.36" opacity="0.54"/><circle cx="61.5%" cy="8.2%" r="0.48" opacity="0.43"/><circle cx="53.9%" cy="83.1%" r="0.31" opacity="0.42"/><circle cx="72.3%" cy="48.5%" r="0.31" opacity="0.55"/><circle cx="65.4%" cy="27.8%" r="0.70" opacity="0.59"/><circle cx="1.2%" cy="57.2%" r="0.39" opacity="0.59"/><circle cx="45.9%" cy="83.7%" r="0.34" opacity="0.21"/><circle cx="79.8%" cy="28.9%" r="0.94" opacity="0.54"/><circle cx="90.3%" cy="41.9%" r="0.35" opacity="0.25"/><circle cx="25.6%" cy="54.2%" r="0.30" opacity="0.34"/><circle cx="48.8%" cy="59.7%" r="0.30" opacity="0.43"/><circle cx="85.4%" cy="86.2%" r="1.04" opacity="0.27"/><circle cx="61.1%" cy="30.8%" r="0.30" opacity="0.37"/><circle cx="93.4%" cy="94.6%" r="0.35" opacity="0.23"/><circle cx="69.9%" cy="10.0%" r="0.60" opacity="0.60"/><circle cx="40.4%" cy="69.0%" r="0.80" opacity="0.63"/><circle cx="59.5%" cy="39.6%" r="0.74" opacity="0.36"/><circle cx="39.5%" cy="79.7%" r="0.50" opacity="0.40"/><circle cx="8.4%" cy="48.2%" r="0.93" opacity="0.37"/><circle cx="6.5%" cy="39.1%" r="0.94" opacity="0.58"/><circle cx="48.3%" cy="39.2%" r="0.31" opacity="0.39"/><circle cx="88.7%" cy="91.3%" r="0.52" opacity="0.40"/><circle cx="38.4%" cy="71.7%" r="0.57" opacity="0.37"/><circle cx="19.0%" cy="95.5%" r="0.49" opacity="0.60"/><circle cx="40.6%" cy="54.3%" r="0.30" opacity="0.57"/><circle cx="97.1%" cy="14.4%" r="0.33" opacity="0.37"/><circle cx="41.9%" cy="25.4%" r="0.44" opacity="0.42"/><circle cx="66.4%" cy="50.1%" r="0.72" opacity="0.53"/><circle cx="40.2%" cy="86.2%" r="0.50" opacity="0.22"/><circle cx="81.6%" cy="16.7%" r="0.31" opacity="0.65"/><circle cx="98.2%" cy="69.6%" r="0.63" opacity="0.60"/><circle cx="92.8%" cy="16.4%" r="0.31" opacity="0.58"/>
+<svg x="40%" y="38%" width="18" height="18" viewBox="0 0 24 24" overflow="visible" opacity="0.9"><path transform="translate(-12 -12)" d="M12 1.5c.7 6.2 4.3 9.8 10.5 10.5-6.2.7-9.8 4.3-10.5 10.5-.7-6.2-4.3-9.8-10.5-10.5C7.7 11.3 11.3 7.7 12 1.5Z"/></svg><svg x="66%" y="62%" width="12" height="12" viewBox="0 0 24 24" overflow="visible" opacity="0.8"><path transform="translate(-12 -12)" d="M12 1.5c.7 6.2 4.3 9.8 10.5 10.5-6.2.7-9.8 4.3-10.5 10.5-.7-6.2-4.3-9.8-10.5-10.5C7.7 11.3 11.3 7.7 12 1.5Z"/></svg><svg x="24%" y="70%" width="9" height="9" viewBox="0 0 24 24" overflow="visible" opacity="0.7"><path transform="translate(-12 -12)" d="M12 1.5c.7 6.2 4.3 9.8 10.5 10.5-6.2.7-9.8 4.3-10.5 10.5-.7-6.2-4.3-9.8-10.5-10.5C7.7 11.3 11.3 7.7 12 1.5Z"/></svg></g></svg>
+<div><svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5c.7 6.2 4.3 9.8 10.5 10.5-6.2.7-9.8 4.3-10.5 10.5-.7-6.2-4.3-9.8-10.5-10.5C7.7 11.3 11.3 7.7 12 1.5Z"/></svg>Polaris</div>
+</div>
+<div class="form">
+<main>
+<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5c.7 6.2 4.3 9.8 10.5 10.5-6.2.7-9.8 4.3-10.5 10.5-.7-6.2-4.3-9.8-10.5-10.5C7.7 11.3 11.3 7.7 12 1.5Z"/></svg>
+
+
+<h1>登录</h1>
+<p>继续前往 <b>Test RP</b></p>
+
+
+
+<form method="post" action="/authorize/abc">
+  <input type="hidden" name="op" value="send">
+  <label>手机号
+    <input name="identifier" type="tel" autocomplete="tel" autocapitalize="none" required autofocus value="">
+  </label>
+  <label class="agree">
+    <input type="checkbox" name="agree" value="v1" required>
+    <span>我已阅读并同意<a href="https://t.example/terms" target="_blank" rel="noopener">《用户协议》</a>和<a href="https://t.example/privacy" target="_blank" rel="noopener">《隐私政策》</a></span>
+  </label>
+  <altcha-widget challenge="/altcha/challenge" name="altcha" auto="onsubmit" language="zh-cn"></altcha-widget>
+  <button>继续</button>
+  
+</form>
+<script type="module" src="/altcha/altcha.js"></script>
+<script>
+
+
+
+addEventListener("submit", e => {
+  if (!/@|^[\d\s+-]+$/.test(e.target.identifier.value.trim())) e.stopPropagation();
+}, true);
+</script>
+
+
+<form method="post" action="/authorize/abc" class="providers">
+  <input type="hidden" name="op" value="provider">
+  <button name="provider" value="a" class="apple"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>通过 Apple 登录</button>
+  <button name="provider" value="g" class="google"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24s.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>使用 Google 账号登录</button>
+  
+  <button name="provider" value="m" class="microsoft"><svg viewBox="0 0 19 19" aria-hidden="true"><rect width="9" height="9" fill="#f25022"/><rect x="10" width="9" height="9" fill="#7fba00"/><rect y="10" width="9" height="9" fill="#00a4ef"/><rect x="10" y="10" width="9" height="9" fill="#ffb900"/></svg>使用 Microsoft 登录</button>
+  
+  <button name="provider" value="h" class="github"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>使用 GitHub 登录</button>
+  
+  <button name="provider" value="f" class="feishu"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#00d6b9" d="M10 8c0 1 7 3.5 14.745 16.744 0 0 4.184-4.363 6.255-5.744 1.5-1 2.712-1.332 2.712-1.332C33.712 15.156 29.5 8 28 8z"/><path fill="#163c9a" d="M43.5 18.5c-1-.667-3.65-1.771-6.5-1.5a15 15 0 0 0-3.288.668S32.5 18 31 19c-2.07 1.38-6.255 5.744-6.255 5.744-1.428 1.397-3.05 2.732-5.245 3.756 0 0 7 3 11.5 3 5.063 0 7-3.5 7-3.5 1.5-3.305 3.5-7 5.5-9.5"/><path fill="#3370ff" d="M4 17.5v17c0 1 6 5.5 15 5.5 10 0 17.05-7.705 19-12 0 0-1.937 3.5-7 3.5-4.5 0-11.5-3-11.5-3-5.117-2.239-10.03-6.577-12.906-9.117C4.974 17.953 4 17.093 4 17.5"/></svg>使用飞书登录</button>
+  
+  <button name="provider" value="l" class="feishu"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#00d6b9" d="M10 8c0 1 7 3.5 14.745 16.744 0 0 4.184-4.363 6.255-5.744 1.5-1 2.712-1.332 2.712-1.332C33.712 15.156 29.5 8 28 8z"/><path fill="#163c9a" d="M43.5 18.5c-1-.667-3.65-1.771-6.5-1.5a15 15 0 0 0-3.288.668S32.5 18 31 19c-2.07 1.38-6.255 5.744-6.255 5.744-1.428 1.397-3.05 2.732-5.245 3.756 0 0 7 3 11.5 3 5.063 0 7-3.5 7-3.5 1.5-3.305 3.5-7 5.5-9.5"/><path fill="#3370ff" d="M4 17.5v17c0 1 6 5.5 15 5.5 10 0 17.05-7.705 19-12 0 0-1.937 3.5-7 3.5-4.5 0-11.5-3-11.5-3-5.117-2.239-10.03-6.577-12.906-9.117C4.974 17.953 4 17.093 4 17.5"/></svg>使用 Lark 登录</button>
+  
+  <button name="provider" value="d" class="dingtalk"><svg viewBox="6 6 36 36" aria-hidden="true"><rect x="6" y="6" width="36" height="36" rx="8" fill="#0285fc"/><path fill="#fff" d="m20.178 37.577 3.5-6h-3l2-3c-5.5-1-6.281-3.938-6-4.5.162-.325 2.5 1 6.281 1-8.281-.5-8.281-7-7.781-7.5.423-.424 2.44 1.666 6.564 3.53-9.126-4.314-6.453-11.956-5.064-11.03 3.344 3 9.5 8.5 15 13 .658.538 1 2 0 3.25s-2.5 2.75-3 3.25h2.5z"/></svg>使用钉钉登录</button>
+  
+  <button name="provider" value="w" class="wecom"><svg viewBox="5 5 36 36" aria-hidden="true"><path fill="#fb6500" d="M28.856 31.647a.483.483 0 0 0 .06.738 6.2 6.2 0 0 1 1.911 3.725 2.02 2.02 0 1 0 2.16-2.54 6.2 6.2 0 0 1-3.448-1.922.483.483 0 0 0-.683-.001"/><path fill="#0082ef" d="M37.057 28.448a2 2 0 0 0-.58 1.215 6.2 6.2 0 0 1-1.918 3.454.484.484 0 1 0 .738.616 6.2 6.2 0 0 1 3.725-1.91 2.02 2.02 0 1 0-1.96-3.376z"/><path fill="#2dbc00" d="M31.366 22.75a2.02 2.02 0 0 0 1.215 3.435 6.2 6.2 0 0 1 3.454 1.918.483.483 0 0 0 .829-.27.48.48 0 0 0-.212-.468 6.2 6.2 0 0 1-1.911-3.726 2.02 2.02 0 0 0-3.375-.889"/><path fill="#fc0" d="m30.374 25.907-.037.037a6.2 6.2 0 0 1-3.78 1.978 2.007 2.007 0 0 0-.895 3.374 2.02 2.02 0 0 0 3.435-1.216 6.2 6.2 0 0 1 1.923-3.453.484.484 0 0 0-.646-.72"/><path fill="#0082ef" d="M18.17 8.471c-3.624.4-6.908 1.948-9.266 4.367-.938.956-1.7 2.032-2.262 3.182a11.08 11.08 0 0 0 .78 11.188c.64.968 1.693 2.178 2.654 3.037l-.435 3.423-.048.145c-.012.042-.012.09-.018.133l-.012.108.012.11a1.1 1.1 0 0 0 1.657.852h.018l.067-.049 1.04-.52 3.102-1.56a16 16 0 0 0 4.537.623c1.897.004 3.78-.323 5.564-.968a2.014 2.014 0 0 1-1.373-2.11 13.7 13.7 0 0 1-5.721.568l-.309-.042a14 14 0 0 1-2.056-.43 1.4 1.4 0 0 0-1.1.116l-.085.042-2.552 1.5-.109.066c-.06.036-.09.048-.12.048a.176.176 0 0 1-.164-.181l.097-.393.115-.43.181-.707.212-.787a1.07 1.07 0 0 0-.387-1.19 11.2 11.2 0 0 1-2.577-2.686 8.730 8.730 0 0 1-.629-8.818c.46-.92 1.065-1.773 1.815-2.54 1.935-1.997 4.657-3.267 7.669-3.593a14.3 14.3 0 0 1 3.132 0c2.994.344 5.704 1.633 7.627 3.617a10 10 0 0 1 1.796 2.551 8.7 8.7 0 0 1 .901 3.84c0 .14-.012.279-.018.412a2.015 2.015 0 0 1 2.48.29l.09.109a11 11 0 0 0-1.1-5.733 12.3 12.3 0 0 0-2.238-3.182 15.18 15.18 0 0 0-9.229-4.397 17 17 0 0 0-3.739-.01"/></svg>使用企业微信登录</button>
+  
+  <button name="provider" value="o">使用 Okta 登录</button>
+  </form>
+
+<p class="by">由 Polaris 提供安全登录</p>
+</main>
+</div>
+</body>
+</html>

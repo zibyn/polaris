@@ -23,10 +23,10 @@ func (s *Service) invitePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !live {
-		page(w, http.StatusNotFound, "message", identity.ErrInviteSpent.Error())
+		page(w, pickLang(r, ""), http.StatusNotFound, "message", identity.ErrInviteSpent.Error())
 		return
 	}
-	page(w, http.StatusOK, "invite", inviteForm{Token: token})
+	page(w, pickLang(r, ""), http.StatusOK, "invite", inviteForm{Token: token})
 }
 
 // acceptInvite is 接受: the password the User sets is their own — the admin
@@ -37,7 +37,7 @@ func (s *Service) acceptInvite(w http.ResponseWriter, r *http.Request) {
 	form := inviteForm{Token: r.PostFormValue("token")}
 	if err := s.origin.Check(r); err != nil {
 		form.Error = "请从邀请链接打开本页"
-		page(w, http.StatusForbidden, "invite", form)
+		page(w, pickLang(r, ""), http.StatusForbidden, "invite", form)
 		return
 	}
 	sub, err := s.ids.AcceptInvite(r.Context(), form.Token, r.PostFormValue("password"))
@@ -46,11 +46,11 @@ func (s *Service) acceptInvite(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, identity.ErrInviteSpent):
 		// Spent, revoked, expired or disabled: all of them are "this link is
 		// no good, ask your admin", and telling them apart helps nobody.
-		page(w, http.StatusNotFound, "message", err.Error())
+		page(w, pickLang(r, ""), http.StatusNotFound, "message", err.Error())
 		return
 	case errors.As(err, &invalid):
 		form.Error = invalid.Error()
-		page(w, http.StatusOK, "invite", form)
+		page(w, pickLang(r, ""), http.StatusOK, "invite", form)
 		return
 	case err != nil:
 		http.Error(w, "internal error", http.StatusInternalServerError)

@@ -125,6 +125,8 @@ export type Policy = {
 	dailySendLimit: number;
 	termsUrl: string;
 	privacyUrl: string;
+	termsUrlEn?: string; // English login pages link it; absent, the Chinese one
+	privacyUrlEn?: string;
 	termsVersion: string;
 	auditRetentionDays: number;
 	adminsNeedTwoFactor: boolean;

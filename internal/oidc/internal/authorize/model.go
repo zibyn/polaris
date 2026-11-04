@@ -117,6 +117,7 @@ func newRequest(req *http.Request) request {
 			IDTokenHint:             req.URL.Query().Get("id_token_hint"),
 			ClientNotificationToken: req.URL.Query().Get("client_notification_token"),
 			BindingMessage:          req.URL.Query().Get("binding_message"),
+			UILocales:               req.URL.Query().Get("ui_locales"),
 		},
 	}
 
@@ -213,6 +214,7 @@ func newFormRequest(req *http.Request) request {
 		IDTokenHint:             req.PostFormValue("id_token_hint"),
 		ClientNotificationToken: req.PostFormValue("client_notification_token"),
 		BindingMessage:          req.PostFormValue("binding_message"),
+		UILocales:               req.PostFormValue("ui_locales"),
 	}
 
 	if maxAge, err := strconv.Atoi(req.PostFormValue("max_age")); err == nil {

@@ -294,7 +294,7 @@ SELECT 'application.deleted', NULL, jsonb_build_object('clientId', gone.client_i
 
 -- name: GetSettings :one
 SELECT password_login, require_phone, daily_send_limit, terms_url, privacy_url, terms_version, audit_retention_days,
-       admins_need_two_factor, passkey_login, open_registration
+       admins_need_two_factor, passkey_login, open_registration, terms_url_en, privacy_url_en
 FROM settings;
 
 -- name: UpdateSettings :exec
@@ -304,7 +304,7 @@ WITH u AS (
         daily_send_limit = @daily_send_limit, terms_url = @terms_url, privacy_url = @privacy_url,
         terms_version = @terms_version, audit_retention_days = @audit_retention_days,
         admins_need_two_factor = @admins_need_two_factor, passkey_login = @passkey_login,
-        open_registration = @open_registration
+        open_registration = @open_registration, terms_url_en = @terms_url_en, privacy_url_en = @privacy_url_en
 )
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('settings.updated', NULL, jsonb_build_object('by', @by::text));

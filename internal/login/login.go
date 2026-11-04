@@ -4,6 +4,7 @@
 package login
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -41,8 +42,6 @@ import (
 
 //go:embed pages.html altcha challenge.openapi.json passkey.js
 var pagesFS embed.FS
-
-var pages = template.Must(template.ParseFS(pagesFS, "pages.html"))
 
 const (
 	sessionCookie = "__Host-session"
@@ -197,8 +196,8 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 		oidcop.WithUserInfoClaims(s.userClaims),
 		oidcop.WithLogout(oidcop.LogoutConfig{
 			Manager: store,
-			HandleFunc: func(w http.ResponseWriter, _ *http.Request, _ *goidc.LogoutSession) error {
-				page(w, http.StatusOK, "message", "已退出登录")
+			HandleFunc: func(w http.ResponseWriter, r *http.Request, ls *goidc.LogoutSession) error {
+				page(w, pickLang(r, ls.UILocales), http.StatusOK, "message", "已退出登录")
 				return nil
 			},
 		}, oidcop.WithLogoutPolicies(goidc.NewLogoutPolicy("session",
@@ -320,7 +319,7 @@ func DeleteOldSessions(ctx context.Context, pool *pgxpool.Pool) error {
 func (s *Service) authenticate(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client) (goidc.Status, error) {
 	// A login past its first factor goes on only in its own browser.
 	if _, ok := as.Store[storeBindSub]; ok && !sameBinder(r, as.Store[storeBinder]) {
-		page(w, http.StatusForbidden, "message", "登录已在其他浏览器中进行,请返回应用重新登录")
+		page(w, pickLang(r, as.UILocales), http.StatusForbidden, "message", "登录已在其他浏览器中进行,请返回应用重新登录")
 		return goidc.StatusPending, nil
 	}
 	// Only the login form posts to the callback; the authorization request
@@ -442,7 +441,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			return fail(err)
 		}
 		as.Store = nil
-		page(w, http.StatusOK, "message", "账号已注销")
+		page(w, pickLang(r, as.UILocales), http.StatusOK, "message", "账号已注销")
 		return goidc.StatusPending, nil
 
 	case "set-password":
@@ -746,7 +745,7 @@ func (s *Service) complete(w http.ResponseWriter, r *http.Request, as *goidc.Aut
 			return goidc.StatusFailure, goidc.NewError(goidc.ErrorCodeAccessDenied, errNoRole)
 		}
 		as.Store = nil
-		page(w, http.StatusForbidden, "denied", loginPage{Client: c.Name, Action: "/authorize/" + as.ID})
+		page(w, pickLang(r, as.UILocales), http.StatusForbidden, "denied", loginPage{Client: c.Name, Action: "/authorize/" + as.ID})
 		return goidc.StatusPending, nil
 	}
 	grant(as, session, sub, authTime, amr)
@@ -810,7 +809,7 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request, ls *goidc.Logou
 	confirmed := r.Method == http.MethodPost && r.PathValue("callback") != "" &&
 		r.PostFormValue("logout") == "1" && s.origin.Check(r) == nil
 	if !hinted && !confirmed {
-		page(w, http.StatusOK, "logout", "/logout/"+ls.ID)
+		page(w, pickLang(r, ls.UILocales), http.StatusOK, "logout", "/logout/"+ls.ID)
 		return goidc.StatusPending, nil
 	}
 	if err := s.q.EndBrowserSession(r.Context(), hash(cookie.Value)); err != nil {
@@ -1047,6 +1046,12 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 	if err != nil {
 		return goidc.StatusFailure, err
 	}
+	l := pickLang(r, as.UILocales)
+	// English pages link the English terms where there are any; the version
+	// agreed to is the same.
+	if l == langEN {
+		terms.TermsUrl, terms.PrivacyUrl = cmp.Or(terms.TermsUrlEn, terms.TermsUrl), cmp.Or(terms.PrivacyUrlEn, terms.PrivacyUrl)
+	}
 	p.Terms = terms
 	// What the first step offers is what this Application allows (ADR 0027);
 	// binding a phone number is not a login method, and goes on regardless.
@@ -1055,7 +1060,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		return goidc.StatusFailure, err
 	}
 	if m.none() && p.firstStep() {
-		page(w, http.StatusForbidden, "message", errNoMethod)
+		page(w, l, http.StatusForbidden, "message", errNoMethod)
 		return goidc.StatusPending, nil
 	}
 	setting, err := s.q.PasswordLogin(ctx)
@@ -1113,7 +1118,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			p.Passkey = template.JS(options)
 		}
 	}
-	page(w, http.StatusOK, "login", p)
+	page(w, l, http.StatusOK, "login", p)
 	return goidc.StatusPending, nil
 }
 
@@ -1127,21 +1132,22 @@ func (p loginPage) firstStep() bool {
 
 // renderError shows an authorization error that cannot go back to the
 // Application (unknown client, bad redirect_uri).
-func renderError(w http.ResponseWriter, _ *http.Request, err error) error {
+func renderError(w http.ResponseWriter, r *http.Request, err error) error {
 	msg := "请求无效"
 	var oidcErr goidc.Error
 	if errors.As(err, &oidcErr) {
 		msg = oidcErr.Description
 	}
-	page(w, http.StatusBadRequest, "message", msg)
+	page(w, pickLang(r, ""), http.StatusBadRequest, "message", msg)
 	return nil
 }
 
-func page(w http.ResponseWriter, status int, name string, data any) {
+// page renders the hosted page name in l.
+func page(w http.ResponseWriter, l lang, status int, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 	w.WriteHeader(status)
-	if err := pages.ExecuteTemplate(w, name, data); err != nil {
+	if err := pages[l].ExecuteTemplate(w, name, data); err != nil {
 		slog.Error("render", "page", name, "err", err)
 	}
 }
