@@ -128,12 +128,20 @@ const app = (names: Names, clientId: string): Part => {
 	return name ? { text: name, app: clientId } : raw(clientId);
 };
 
+// selfOnly are events only the account holder can cause; they carry no
+// by, yet the doer is the User, not the system.
+const selfOnly = new Set([
+	"login.succeeded",
+	"invite.accepted",
+	"recovery_code.used",
+]);
+
 // actor is who did it: a User, an M2M Application calling as itself, or the
 // system. byType is absent on events older than it, which were Users.
 export function actor(ev: AuditEvent, names: Names): Part[] {
 	const by = doneBy(ev);
 	if (!by) {
-		return ["系统"];
+		return ev.sub && selfOnly.has(ev.event) ? ["用户本人"] : ["系统"];
 	}
 	if (ev.detail.byType === "application") {
 		return [app(names, by)];

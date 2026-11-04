@@ -173,8 +173,10 @@ const allGroups = navGroups([
 	"config:read",
 ]);
 
-// Crumbs is the breadcrumb atop every console page: the nav group, then
-// each matched route that names itself; the last is the page you're on.
+// Crumbs is the breadcrumb atop a console page below a nav group: the
+// group, then each matched route that names itself; the last is the page
+// you're on. A group's own page has nothing above it, and the title right
+// below already names it, so it draws none.
 function Crumbs() {
 	const path = useLocation({ select: (l) => l.pathname.replace(/\/$/, "") });
 	const group = allGroups
@@ -188,6 +190,9 @@ function Crumbs() {
 			m.staticData.crumb ? [{ ...m, crumb: m.staticData.crumb }] : [],
 		),
 	];
+	if (crumbs.length < 2) {
+		return null;
+	}
 	return (
 		<Breadcrumb>
 			<BreadcrumbList className="text-[13px]">

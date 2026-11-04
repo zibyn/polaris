@@ -129,7 +129,7 @@ function Users() {
 	const [creating, setCreating] = useState(false);
 	// 创建用户 is a 待激活 account whose password the admin passes on; with
 	// 密码登录 off there is no way into it, so the entry is disabled. When
-	// the list is admin-only the empty state carries it instead, as on 应用.
+	// the list is admin-only the guide above it carries it instead, as on 应用.
 	const create =
 		can("users:write") &&
 		(off ? (
@@ -217,7 +217,9 @@ function Users() {
 			{empty && (
 				<Empty className="border">
 					<EmptyHeader>
-						<EmptyTitle>还没有用户</EmptyTitle>
+						<EmptyTitle>
+							{rows.length > 0 ? "还没有管理员以外的用户" : "还没有用户"}
+						</EmptyTitle>
 						<EmptyDescription>
 							用户注册或由管理员创建后显示在这里。
 						</EmptyDescription>
@@ -231,8 +233,9 @@ function Users() {
 					</EmptyContent>
 				</Empty>
 			)}
-			{/* The empty state stands in for the table: only admins in it. */}
-			{!empty && (
+			{/* Admins are Users too: they stay listed under the guide, as
+			    built-in items do on 应用. */}
+			{rows.length > 0 && (
 				<Table>
 					<TableHeader>
 						<TableRow>
@@ -290,27 +293,20 @@ function Users() {
 								</TableCell>
 							</TableRow>
 						))}
-						{rows.length === 0 && (
-							<TableRow>
-								<TableCell
-									colSpan={4}
-									className="text-center text-muted-foreground"
-								>
-									<span className="inline-flex items-center gap-2">
-										没有符合条件的用户
-										<Button
-											size="sm"
-											variant="outline"
-											onClick={() => navigate({ search: {} })}
-										>
-											清除筛选
-										</Button>
-									</span>
-								</TableCell>
-							</TableRow>
-						)}
 					</TableBody>
 				</Table>
+			)}
+			{!empty && rows.length === 0 && (
+				<p className="flex items-center justify-center gap-2 py-4 text-muted-foreground">
+					没有符合条件的用户
+					<Button
+						size="sm"
+						variant="outline"
+						onClick={() => navigate({ search: {} })}
+					>
+						清除筛选
+					</Button>
+				</p>
 			)}
 			{users.isFetchNextPageError && (
 				<Alert variant="destructive">

@@ -21,7 +21,7 @@ const labels = (permissions: string[]) =>
 test("an owner sees all seven groups in order", () => {
 	assert.deepEqual(
 		labels(["users:read", "applications:read", "config:read", "audit:read"]),
-		["概览", "用户", "应用", "API 资源", "审计", "认证源", "设置"],
+		["概览", "用户", "应用", "API 资源", "认证源", "审计", "设置"],
 	);
 });
 

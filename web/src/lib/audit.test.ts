@@ -110,6 +110,16 @@ test("who did it: an admin by their primary Identifier, linked", () => {
 	);
 });
 
+test("who did it: a login is the User's own doing, with no by", () => {
+	assert.deepEqual(
+		actor(
+			ev({ event: "login.succeeded", sub: "ALICE", user: "a@x.com" }),
+			names,
+		),
+		["用户本人"],
+	);
+});
+
 test("who did it: nobody is the system", () => {
 	assert.deepEqual(actor(ev({ sub: "ALICE", user: "a@x.com" }), names), [
 		"系统",
