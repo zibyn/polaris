@@ -234,24 +234,16 @@ func (e *env) claims(token string) map[string]any {
 	return claims
 }
 
-// bootstrap creates the owner through the setup page.
+// bootstrap creates the owner, nobody signed in; TestSetupThenPasswordLogin
+// goes through the setup page itself.
 func (e *env) bootstrap(username, password string) {
 	e.t.Helper()
 	token, err := e.ids.SetupToken(context.Background())
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	resp, page := e.do("GET", "/setup?token="+token, nil)
-	if resp.StatusCode != 200 || !strings.Contains(page, `value="`+token+`"`) {
-		e.t.Fatalf("setup page: %d %s", resp.StatusCode, page)
-	}
-	if !strings.Contains(page, `autocomplete="new-password"`) {
-		e.t.Errorf("setup page lacks autocomplete hints")
-	}
-	// Creating the owner lands on the console, which starts its sign-in.
-	resp, page = e.do("POST", "/setup", url.Values{"token": {token}, "username": {username}, "password": {password}})
-	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/console" {
-		e.t.Fatalf("setup: %d %q %s", resp.StatusCode, resp.Header.Get("Location"), page)
+	if _, err := e.ids.Bootstrap(context.Background(), token, username, password); err != nil {
+		e.t.Fatal(err)
 	}
 }
 
@@ -265,7 +257,23 @@ func TestSetupThenPasswordLogin(t *testing.T) {
 		t.Fatalf("wrong token: %d %s", resp.StatusCode, page)
 	}
 
-	e.bootstrap("owner", "password1")
+	resp, page = e.do("GET", "/setup?token="+token, nil)
+	if resp.StatusCode != 200 || !strings.Contains(page, `value="`+token+`"`) {
+		t.Fatalf("setup page: %d %s", resp.StatusCode, page)
+	}
+	if !strings.Contains(page, `autocomplete="new-password"`) {
+		t.Errorf("setup page lacks autocomplete hints")
+	}
+	// Creating the owner signs them in and lands on the console.
+	resp, page = e.do("POST", "/setup", url.Values{"token": {token}, "username": {"owner"}, "password": {"password1"}})
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/console" {
+		t.Fatalf("setup: %d %q %s", resp.StatusCode, resp.Header.Get("Location"), page)
+	}
+	if !e.hasSessionCookie() {
+		t.Fatal("setup didn't sign the owner in")
+	}
+	// The rest is about the password login: from a browser nobody is on.
+	e.newBrowser()
 
 	// The setup page is closed for good, and the token is dead.
 	if resp, _ := e.do("GET", "/setup?token="+token, nil); resp.StatusCode != 404 {
