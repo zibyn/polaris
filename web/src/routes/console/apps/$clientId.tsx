@@ -71,7 +71,6 @@ import {
 import {
 	type Application,
 	type ApplicationRoles,
-	type ApplicationSettings,
 	api,
 	type LoginMethod,
 	type TokenAuthMethod,
@@ -84,6 +83,11 @@ import {
 	platformKeys,
 	snippet,
 } from "#/lib/onboarding";
+import {
+	applicationsQuery,
+	patchApplication,
+	useSaveApplication,
+} from "#/lib/queries";
 import { managementAPI } from "#/lib/users";
 import { BrandSection } from "#/routes/console/-components/brand-section";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
@@ -94,7 +98,6 @@ import {
 	Section,
 } from "#/routes/console/-components/section";
 import { apisQuery } from "#/routes/console/apis/index";
-import { applicationsQuery } from "#/routes/console/apps/index";
 import { providersQuery } from "#/routes/console/providers/index";
 import { type Header, useCan } from "#/routes/console/route";
 import { date } from "#/routes/console/users/index";
@@ -161,26 +164,6 @@ const day = 86400;
 // the Android App textarea.
 const fingerprintHint =
 	"14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5";
-
-// settings is what PUT takes back: every value as it was, the webhook key
-// left out so the stored one stays. iOS / Android links come back
-// unchanged unless the 原生 App 关联 form is the one saving.
-const currentSettings = (a: Application): ApplicationSettings => ({
-	name: a.name,
-	redirectUris: a.redirectUris,
-	postLogoutRedirectUris: a.postLogoutRedirectUris,
-	defaultApi: a.defaultApi,
-	sessionIdleTimeout: a.sessionIdleTimeout,
-	sessionMaxLifetime: a.sessionMaxLifetime,
-	refreshTokens: a.refreshTokens,
-	requireRole: a.requireRole,
-	webhookUrl: a.webhookUrl,
-	backchannelLogoutUri: a.backchannelLogoutUri,
-	appleAppIds: a.appleAppIds,
-	androidApps: a.androidApps,
-	loginMethods: a.loginMethods,
-	brand: a.brand,
-});
 
 const useApplication = (clientId: string) =>
 	useQuery(applicationsQuery).data?.applications.find(
@@ -287,32 +270,11 @@ function ApplicationPage() {
 	);
 }
 
-// useSave writes a few settings and sends the rest back as they were,
-// read from the cache so a save right after another doesn't undo it.
-function useSave(app: Application) {
-	const client = useQueryClient();
-	return useMutation({
-		mutationFn: (patch: Partial<ApplicationSettings>) => {
-			const latest =
-				client
-					.getQueryData<{ applications: Application[] }>(
-						applicationsQuery.queryKey,
-					)
-					?.applications.find((a) => a.clientId === app.clientId) ?? app;
-			return api(`/applications/${app.clientId}`, {
-				method: "PUT",
-				body: { ...currentSettings(latest), ...patch },
-			});
-		},
-		onSuccess: () => client.invalidateQueries(applicationsQuery),
-	});
-}
-
 type TabProps = { app: Application; editable: boolean };
 
 function BasicTab({ app, editable }: TabProps) {
-	const save = useSave(app);
-	const saveApi = useSave(app);
+	const save = useSaveApplication(app);
+	const saveApi = useSaveApplication(app);
 	const isM2M = app.type === "m2m";
 	// An M2M Application may call the Management API; nothing may call the
 	// Account API (ADR 0015).
@@ -507,7 +469,7 @@ const authMethods: {
 // method so a backend can be given its keys before the switch.
 function ClientAuthn({ app, editable }: TabProps) {
 	const client = useQueryClient();
-	const save = useSave(app);
+	const save = useSaveApplication(app);
 	const [asked, setAsked] = useState<TokenAuthMethod | null>(null);
 	// The secret switching back issued; shown this once, like on create.
 	const [issued, setIssued] = useState<string>();
@@ -709,7 +671,7 @@ function DeleteApplication({ app }: { app: Application }) {
 }
 
 function LoginTab({ app, editable }: TabProps) {
-	const save = useSave(app);
+	const save = useSaveApplication(app);
 	const form = useForm({
 		defaultValues: {
 			redirectUris: app.redirectUris.join("\n"),
@@ -904,7 +866,7 @@ const methodNames: [LoginMethod, string][] = [
 // ones ticked, as far as the instance has them on (ADR 0027). The built-in
 // Applications always follow, so they don't show it.
 function LoginMethods({ app, editable }: TabProps) {
-	const save = useSave(app);
+	const save = useSaveApplication(app);
 	// Without config:read the Providers can't be listed; the ones chosen
 	// still show, by ID.
 	const providers =
@@ -1019,7 +981,7 @@ function LoginMethods({ app, editable }: TabProps) {
 // AppBrand is the Application's own 品牌 items over the instance's (ADR
 // 0028); the built-in Applications always follow, so they don't show it.
 function AppBrand({ app, editable }: TabProps) {
-	const save = useSave(app);
+	const save = useSaveApplication(app);
 	const client = useQueryClient();
 	return (
 		<BrandSection
@@ -1030,17 +992,9 @@ function AppBrand({ app, editable }: TabProps) {
 			logoPath={`/applications/${app.clientId}/brand/logo`}
 			onLogo={(logo) => {
 				// The next save sends the Logo back; it must be this one.
-				client.setQueryData<{ applications: Application[] }>(
-					applicationsQuery.queryKey,
-					(d) =>
-						d && {
-							applications: d.applications.map((a) =>
-								a.clientId === app.clientId
-									? { ...a, brand: { ...a.brand, logo } }
-									: a,
-							),
-						},
-				);
+				patchApplication(client, app.clientId, (a) => ({
+					brand: { ...a.brand, logo },
+				}));
 				return client.invalidateQueries(applicationsQuery);
 			}}
 			save={{
@@ -1055,7 +1009,7 @@ function AppBrand({ app, editable }: TabProps) {
 // allow this domain's Passkeys and password autofill in the App. Only
 // 无后端应用 have it; a web Application is never a native App.
 function NativeApps({ app, editable }: TabProps) {
-	const save = useSave(app);
+	const save = useSaveApplication(app);
 	const form = useForm({
 		defaultValues: {
 			apple: app.appleAppIds.join("\n"),
@@ -1123,7 +1077,7 @@ function NativeApps({ app, editable }: TabProps) {
 // BackchannelLogout is where a web Application's back end hears that a
 // login session it signed in through has ended (ADR 0022).
 function BackchannelLogout({ app, editable }: TabProps) {
-	const save = useSave(app);
+	const save = useSaveApplication(app);
 	const form = useForm({
 		defaultValues: { backchannelLogoutUri: app.backchannelLogoutUri ?? "" },
 		validationLogic: revalidateLogic(),
@@ -1166,7 +1120,7 @@ function BackchannelLogout({ app, editable }: TabProps) {
 }
 
 function WebhookTab({ app, editable }: TabProps) {
-	const save = useSave(app);
+	const save = useSaveApplication(app);
 	const secretSet = !!app.webhookSecretUpdatedAt;
 	const form = useForm({
 		defaultValues: { webhookUrl: app.webhookUrl ?? "", webhookSecret: "" },
@@ -1262,7 +1216,13 @@ function RolesTab({ app }: { app: Application }) {
 				method: "PUT",
 				body: { roles: keys },
 			}),
-		onSuccess: () => client.invalidateQueries(),
+		// Role counts on the API pages change with it.
+		onSuccess: () =>
+			Promise.all([
+				client.invalidateQueries(applicationRolesQuery(app.clientId)),
+				client.invalidateQueries(apisQuery),
+				client.invalidateQueries({ queryKey: ["roles"] }),
+			]),
 	});
 	const form = useForm({
 		defaultValues: { roles: held },

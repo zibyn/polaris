@@ -36,9 +36,9 @@ import {
 	platformKeys,
 	platforms,
 } from "#/lib/onboarding";
+import { applicationsQuery } from "#/lib/queries";
 import { FormSheet } from "#/routes/console/-components/form-sheet";
 import { apisQuery } from "#/routes/console/apis/index";
-import { applicationsQuery } from "#/routes/console/apps/index";
 
 // Grouped by type, since the type is the part that can't change later.
 const types = [...new Set(platformKeys.map((k) => platforms[k].type))];

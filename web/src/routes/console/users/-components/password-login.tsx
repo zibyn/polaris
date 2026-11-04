@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Alert, AlertDescription } from "#/components/ui/alert";
-import { policyQuery } from "#/routes/console/-settings/policy";
+import { policyQuery } from "#/lib/queries";
 
 // usePasswordLoginOff: 创建用户 hands over a password, so with 密码登录 off
 // there is nothing to create (ADR 0016) and the entry says why. Reading it

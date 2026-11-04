@@ -22,12 +22,11 @@ import {
 import { ownCount } from "#/lib/apps";
 import { type AuditEvent, api, type Overview } from "#/lib/console-api";
 import { checklist, checklistDone, checklistSummary } from "#/lib/overview";
+import { applicationsQuery, channelsQuery } from "#/lib/queries";
 import { SectionHeading } from "#/routes/console/-components/section";
 import { apisQuery } from "#/routes/console/apis/index";
-import { applicationsQuery } from "#/routes/console/apps/index";
 import { EventList } from "#/routes/console/audit";
 import { useCan, useMe } from "#/routes/console/route";
-import { channelsQuery } from "./-settings/channels";
 
 const overviewQuery = queryOptions({
 	queryKey: ["overview"],

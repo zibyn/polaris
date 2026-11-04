@@ -1,6 +1,5 @@
 import { revalidateLogic, useForm } from "@tanstack/react-form";
 import {
-	queryOptions,
 	type UseMutationResult,
 	useMutation,
 	useQueryClient,
@@ -33,17 +32,12 @@ import {
 	smsLocked,
 	testSchema,
 } from "#/lib/login";
+import { channelsQuery } from "#/lib/queries";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { FormSheet } from "#/routes/console/-components/form-sheet";
 import { SectionHeading } from "#/routes/console/-components/section";
 import { useCan } from "#/routes/console/route";
 import { PolicyNumber, usePolicy } from "./policy";
-
-export const channelsQuery = queryOptions({
-	queryKey: ["channels"],
-	queryFn: () =>
-		api<{ plugins: ChannelPlugin[]; channels: ChannelSettings[] }>("/channels"),
-});
 
 // ChannelsLink leads to the 通道 Tab from a hint that needs a channel.
 export function ChannelsLink({
@@ -150,7 +144,7 @@ function Channel({
 	const [testing, setTesting] = useState(false);
 	const remove = useMutation({
 		mutationFn: () => api(`/channels/${kind}`, { method: "DELETE" }),
-		onSuccess: () => client.invalidateQueries({ queryKey: ["channels"] }),
+		onSuccess: () => client.invalidateQueries(channelsQuery),
 		onError: failed(`停用${label}通道失败`),
 	});
 	const pluginName = plugins.find((p) => p.key === current?.plugin)?.name;
@@ -276,7 +270,7 @@ function ChannelForm({
 			// Toast here, not in mutate(): the form unmounts as the sheet closes.
 			saved();
 			onSaved();
-			return client.invalidateQueries({ queryKey: ["channels"] });
+			return client.invalidateQueries(channelsQuery);
 		},
 	});
 	return (

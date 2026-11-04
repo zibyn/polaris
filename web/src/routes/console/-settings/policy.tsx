@@ -1,50 +1,18 @@
 import { revalidateLogic, useForm } from "@tanstack/react-form";
-import {
-	queryOptions,
-	useMutation,
-	useQueryClient,
-	useSuspenseQuery,
-} from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
-import { FormField, saved } from "#/components/form";
+import { FormField } from "#/components/form";
 import { Input } from "#/components/ui/input";
-import { api, type Policy } from "#/lib/console-api";
 import { numberSchema } from "#/lib/login";
+import { policyQuery, useSavePolicy } from "#/lib/queries";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { SaveBar, Section } from "#/routes/console/-components/section";
 import { useCan } from "#/routes/console/route";
-
-const settingsKey = ["settings"];
-
-export const policyQuery = queryOptions({
-	queryKey: settingsKey,
-	queryFn: () => api<Policy>("/settings"),
-});
 
 export function usePolicy() {
 	const can = useCan();
 	const policy = useSuspenseQuery(policyQuery).data;
 	return { policy, editable: can("config:write") };
-}
-
-// useSavePolicy saves one section: PUT /settings takes the whole Policy, so
-// the rest goes back as it was, read from the cache. A save writes what it
-// sent into the cache at once, so another section's save before the refetch
-// doesn't undo it. It toasts 已保存 itself.
-export function useSavePolicy() {
-	const client = useQueryClient();
-	return useMutation({
-		mutationFn: async (patch: Partial<Policy>) => {
-			const body = { ...client.getQueryData<Policy>(settingsKey), ...patch };
-			await api("/settings", { method: "PUT", body });
-			return body;
-		},
-		onSuccess: (body) => {
-			client.setQueryData(settingsKey, body);
-			saved();
-			return client.invalidateQueries({ queryKey: settingsKey });
-		},
-	});
 }
 
 // PolicyNumber edits one numeric setting in its own section. warning shows

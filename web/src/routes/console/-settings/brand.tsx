@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import type { Policy } from "#/lib/console-api";
+import { policyQuery, useSavePolicy } from "#/lib/queries";
 import { BrandSection } from "#/routes/console/-components/brand-section";
-import { policyQuery, usePolicy, useSavePolicy } from "./policy";
+import { usePolicy } from "./policy";
 
 // BrandTab is the instance's 品牌: every Application's login pages show it
 // unless they override an item (ADR 0028).

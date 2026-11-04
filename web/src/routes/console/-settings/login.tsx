@@ -14,10 +14,11 @@ import {
 	passwordLocksOut,
 	termsSchema,
 } from "#/lib/login";
+import { channelsQuery, useSavePolicy } from "#/lib/queries";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { SaveBar, Section } from "#/routes/console/-components/section";
-import { ChannelsLink, channelsQuery } from "./channels";
-import { usePolicy, useSavePolicy } from "./policy";
+import { ChannelsLink } from "./channels";
+import { usePolicy } from "./policy";
 
 const codeKinds = [
 	{ kind: "phone", label: "手机号", channel: "短信" },

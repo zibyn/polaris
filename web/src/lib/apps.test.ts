@@ -13,8 +13,11 @@ import {
 	nativeSchema,
 	onlyBuiltin,
 	ownCount,
+	replaceApplication,
+	settingsOf,
 	webhookSchema,
 } from "./apps.ts";
+import type { Application } from "./console-api.ts";
 import { managementAPI } from "./users.ts";
 
 const consoleApp = { builtin: true };
@@ -244,5 +247,65 @@ test("the JWKS textarea shows the registered keys indented", () => {
 	assert.equal(
 		jwksText({ keys: [{ kid: "k1" }] }),
 		'{\n  "keys": [\n    {\n      "kid": "k1"\n    }\n  ]\n}',
+	);
+});
+
+const app: Application = {
+	clientId: "c1",
+	type: "confidential",
+	builtin: false,
+	tokenAuthMethod: "private_key_jwt",
+	createdAt: "2026-01-01T00:00:00Z",
+	webhookSecretUpdatedAt: "2026-01-02T00:00:00Z",
+	noLoginMethod: true,
+	name: "Shop",
+	redirectUris: ["https://shop.example/cb"],
+	postLogoutRedirectUris: [],
+	refreshTokens: true,
+	appleAppIds: [],
+	androidApps: [],
+	webhookUrl: "https://shop.example/hook",
+	webhookSecret: "s",
+	jwks: { keys: [{}] },
+	brand: { name: "Shop" },
+};
+
+test("a save sends every setting back, nothing read-only or write-only", () => {
+	const s = settingsOf(app);
+	for (const k of [
+		"clientId",
+		"type",
+		"builtin",
+		"tokenAuthMethod",
+		"createdAt",
+		"webhookSecretUpdatedAt",
+		"noLoginMethod",
+		"webhookSecret",
+		"jwks",
+	]) {
+		assert.equal(k in s, false, k);
+	}
+	assert.deepEqual(s.brand, { name: "Shop" });
+	assert.equal(s.webhookUrl, "https://shop.example/hook");
+});
+
+test("a setting the console doesn't know yet still goes back", () => {
+	const s = settingsOf({ ...app, later: 1 } as Application);
+	assert.equal((s as Record<string, unknown>).later, 1);
+});
+
+test("replacing one Application leaves the others", () => {
+	const other = { ...app, clientId: "c2" };
+	const d = replaceApplication({ applications: [app, other] }, "c1", (a) => ({
+		...a,
+		name: "New",
+	}));
+	assert.deepEqual(
+		d?.applications.map((a) => a.name),
+		["New", "Shop"],
+	);
+	assert.equal(
+		replaceApplication(undefined, "c1", (a) => a),
+		undefined,
 	);
 });
