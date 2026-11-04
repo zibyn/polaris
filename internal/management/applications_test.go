@@ -496,3 +496,91 @@ func TestRequireRole(t *testing.T) {
 		t.Errorf("M2M Application: %d", code)
 	}
 }
+
+// An Application follows the instance's login methods unless it names its
+// own; the built-in and M2M ones cannot, and an empty set is no set
+// (ADR 0027).
+func TestApplicationLoginMethods(t *testing.T) {
+	e := start(t)
+	owner := e.token(e.owner, nil)
+	if code := e.call("POST", owner, "/providers", google(nil), nil); code != 204 {
+		t.Fatalf("add google: %d", code)
+	}
+	type methods struct {
+		Methods   []string `json:"methods"`
+		Providers []string `json:"providers"`
+	}
+	type app struct {
+		ClientID      string
+		LoginMethods  *methods
+		NoLoginMethod bool
+	}
+	settings := map[string]any{
+		"name": "员工后台", "redirectUris": []string{"https://staff.example/cb"}, "postLogoutRedirectUris": []string{},
+		"refreshTokens": true, "appleAppIds": []string{}, "androidApps": []any{},
+	}
+	var created struct{ Application app }
+	if code := e.call("POST", owner, "/applications", map[string]any{"type": "public", "settings": settings}, &created); code != 200 || created.Application.LoginMethods != nil {
+		t.Fatalf("create: %d %+v", code, created)
+	}
+	path := "/applications/" + created.Application.ClientID
+
+	for name, m := range map[string]any{
+		"empty":        map[string]any{"methods": []string{}, "providers": []string{}},
+		"unknown kind": map[string]any{"methods": []string{"carrier-pigeon"}, "providers": []string{}},
+		"unknown id":   map[string]any{"methods": []string{}, "providers": []string{"nope"}},
+	} {
+		settings["loginMethods"] = m
+		if code := e.call("PUT", owner, path, settings, nil); code != 422 {
+			t.Errorf("%s: %d, want 422", name, code)
+		}
+	}
+	settings["loginMethods"] = map[string]any{"methods": []string{"passkey"}, "providers": []string{"google"}}
+	if code := e.call("PUT", owner, path, settings, nil); code != 204 {
+		t.Fatalf("set: %d", code)
+	}
+	var got app
+	e.get(owner, path, &got)
+	if got.LoginMethods == nil || !slices.Equal(got.LoginMethods.Methods, []string{"passkey"}) ||
+		!slices.Equal(got.LoginMethods.Providers, []string{"google"}) || got.NoLoginMethod {
+		t.Errorf("read back: %+v", got)
+	}
+
+	// The instance turns Passkeys off and the Provider is deleted: nothing
+	// left in common, which the Application says.
+	if _, err := e.pool.Exec(t.Context(), "UPDATE settings SET passkey_login = false"); err != nil {
+		t.Fatal(err)
+	}
+	if code := e.call("DELETE", owner, "/providers/google", nil, nil); code != 204 {
+		t.Fatalf("delete google: %d", code)
+	}
+	got = app{}
+	e.get(owner, path, &got)
+	if got.LoginMethods == nil || len(got.LoginMethods.Providers) != 0 || !got.NoLoginMethod {
+		t.Errorf("after the instance changed: %+v", got)
+	}
+
+	// Leaving it out follows the instance again.
+	delete(settings, "loginMethods")
+	if code := e.call("PUT", owner, path, settings, nil); code != 204 {
+		t.Fatalf("follow: %d", code)
+	}
+	got = app{}
+	e.get(owner, path, &got)
+	if got.LoginMethods != nil || got.NoLoginMethod {
+		t.Errorf("following the instance: %+v", got)
+	}
+
+	own := map[string]any{"methods": []string{"sms"}, "providers": []string{}}
+	m2m := m2mSettings(identity.ManagementAPI)
+	m2m["loginMethods"] = own
+	if code := e.call("POST", owner, "/applications", map[string]any{"type": "m2m", "settings": m2m}, nil); code != 422 {
+		t.Errorf("M2M: %d, want 422", code)
+	}
+	for _, builtin := range []string{identity.ConsoleClientID, identity.AccountClientID} {
+		settings["loginMethods"] = own
+		if code := e.call("PUT", owner, "/applications/"+builtin, settings, nil); code != 422 {
+			t.Errorf("%s: %d, want 422", builtin, code)
+		}
+	}
+}

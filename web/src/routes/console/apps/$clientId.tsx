@@ -70,6 +70,7 @@ import {
 	type ApplicationRoles,
 	type ApplicationSettings,
 	api,
+	type LoginMethod,
 	type TokenAuthMethod,
 } from "#/lib/console-api";
 import {
@@ -89,6 +90,7 @@ import {
 } from "#/routes/console/-components/section";
 import { apisQuery } from "#/routes/console/apis/index";
 import { applicationsQuery } from "#/routes/console/apps/index";
+import { providersQuery } from "#/routes/console/providers/index";
 import { type Header, useCan } from "#/routes/console/route";
 import { date } from "#/routes/console/users/index";
 
@@ -171,6 +173,7 @@ const currentSettings = (a: Application): ApplicationSettings => ({
 	backchannelLogoutUri: a.backchannelLogoutUri,
 	appleAppIds: a.appleAppIds,
 	androidApps: a.androidApps,
+	loginMethods: a.loginMethods,
 });
 
 const useApplication = (clientId: string) =>
@@ -224,6 +227,20 @@ function useHeader(): Header | null {
 							? "内置应用由认证服务自己使用，不能修改或删除。"
 							: "需要「管理员」角色才能修改。"}
 					</p>
+				)}
+				{app.noLoginMethod && (
+					<Alert variant="warning">
+						<AlertDescription>
+							这个应用指定的登录方式在实例里都没开，现在没有人能登录它。
+							<Link
+								to="/console/apps/$clientId"
+								params={{ clientId }}
+								search={{ tab: "login" }}
+							>
+								去改登录方式
+							</Link>
+						</AlertDescription>
+					</Alert>
 				)}
 				{onboarding && <Onboarding app={app} platform={onboarding} />}
 			</>
@@ -875,11 +892,135 @@ function LoginTab({ app, editable }: TabProps) {
 					</CollapsibleContent>
 				</Collapsible>
 			</Section>
+			{!app.builtin && <LoginMethods app={app} editable={editable} />}
 			{app.type === "public" && <NativeApps app={app} editable={editable} />}
 			{app.type === "confidential" && (
 				<BackchannelLogout app={app} editable={editable} />
 			)}
 		</div>
+	);
+}
+
+const methodNames: [LoginMethod, string][] = [
+	["sms", "短信验证码"],
+	["email", "邮箱验证码"],
+	["password", "密码"],
+	["passkey", "Passkey"],
+];
+
+// LoginMethods is the 登录方式 section: follow the instance, or only the
+// ones ticked, as far as the instance has them on (ADR 0027). The built-in
+// Applications always follow, so they don't show it.
+function LoginMethods({ app, editable }: TabProps) {
+	const save = useSave(app);
+	// Without config:read the Providers can't be listed; the ones chosen
+	// still show, by ID.
+	const providers =
+		useQuery({ ...providersQuery, retry: false }).data?.providers ?? [];
+	const chosen = app.loginMethods?.providers ?? [];
+	const listed = [
+		...providers.map((p) => ({
+			id: p.id,
+			name: p.enabled ? p.name : `${p.name}（已停用）`,
+		})),
+		...chosen
+			.filter((id) => !providers.some((p) => p.id === id))
+			.map((id) => ({ id, name: id })),
+	];
+	const form = useForm({
+		defaultValues: {
+			own: !!app.loginMethods,
+			methods: app.loginMethods?.methods ?? [],
+			providers: chosen,
+		},
+		onSubmit: ({ value }) =>
+			save.mutate(
+				{
+					loginMethods: value.own
+						? { methods: value.methods, providers: value.providers }
+						: undefined,
+				},
+				{ onSuccess: saved },
+			),
+	});
+	const own = useStore(form.store, (s) => s.values.own);
+	const tick = <T extends string>(list: T[], key: T, on: boolean) =>
+		on ? [...list, key] : list.filter((k) => k !== key);
+	return (
+		<Section
+			title="登录方式"
+			intro="默认跟随实例：设置里开着的登录方式、启用的认证源，这里都能用，以后新加的也会自动出现。指定后只能用勾选的这些，且实例也得开着；用别的方式登录过的用户进入这个应用时要重新登录。改动不影响已登录的会话。"
+			editable={editable}
+			form={form}
+			footer={editable && <SaveBar save={save} />}
+		>
+			<form.Field name="own">
+				{(field) => (
+					<FormField field={field} label="只允许指定的登录方式">
+						{({ id }) => (
+							<Switch
+								id={id}
+								disabled={!editable}
+								checked={field.state.value}
+								onCheckedChange={field.handleChange}
+							/>
+						)}
+					</FormField>
+				)}
+			</form.Field>
+			{own && (
+				<>
+					<form.Field name="methods">
+						{(field) => (
+							<div className="flex flex-wrap gap-x-4 gap-y-2">
+								{methodNames.map(([key, name]) => (
+									<Label key={key} className="font-normal">
+										<Checkbox
+											disabled={!editable}
+											checked={field.state.value.includes(key)}
+											onCheckedChange={(on) =>
+												field.handleChange(tick(field.state.value, key, on))
+											}
+										/>
+										{name}
+									</Label>
+								))}
+							</div>
+						)}
+					</form.Field>
+					{listed.length > 0 && (
+						<form.Field name="providers">
+							{(field) => (
+								<FieldSet>
+									<FieldLegend
+										variant="label"
+										className="text-[13px] text-muted-foreground font-normal"
+									>
+										认证源
+									</FieldLegend>
+									<div className="flex flex-wrap gap-x-4 gap-y-2">
+										{listed.map((p) => (
+											<Label key={p.id} className="font-normal">
+												<Checkbox
+													disabled={!editable}
+													checked={field.state.value.includes(p.id)}
+													onCheckedChange={(on) =>
+														field.handleChange(
+															tick(field.state.value, p.id, on),
+														)
+													}
+												/>
+												{p.name}
+											</Label>
+										))}
+									</div>
+								</FieldSet>
+							)}
+						</form.Field>
+					)}
+				</>
+			)}
+		</Section>
 	);
 }
 

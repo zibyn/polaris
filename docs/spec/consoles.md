@@ -60,7 +60,8 @@
 - **创建**见[创建应用与接入清单](#创建应用与接入清单)。
 - **应用详情**分三个标签;后端服务没有「登录」(它不登入任何 User),换成「角色」:
   - **基本**:名称、类型(只读;「无后端应用 / 有后端应用 / 后端服务」,写明各适合什么、创建后不能改)、`client_id`、默认 API 资源(链到对应的 API 资源详情)、「要求用户有角色」开关(让 User 登录的应用;没选默认 API 资源时置灰并说明原因,见 [rbac.md](rbac.md#签发时检查-role))、客户端认证方式(无后端应用没有;共享密钥 / 私钥签名单选,切换前确认;共享密钥下有 client secret 与重新生成,私钥签名下 secret 作废;Application 公钥以 JWKS 文本框登记,与认证方式分开保存,ADR 0023);页面底部是红框删除区。后端服务的默认 API 资源只读:它换到的令牌只对这个 API 有效,创建后不能改。
-  - **登录**:回调地址;「高级」折叠区里放退出后跳转地址、「闲置多久需重新登录」、「允许 App 保持登录」。无后端应用多一组「原生 App 关联」:iOS 的 Team ID + Bundle ID、Android 的包名 + SHA-256 签名指纹,各按行登记在文本框里,可以增删;保存后认证服务据此生成 `/.well-known/` 关联文件(见 [authentication.md](authentication.md#密码管理器适配)),iOS 和 Android 就允许这些 App 使用这个域名的通行密钥和密码自动填充。有后端应用不显示这一组,改为一组「退出通知」:一个 Back-Channel Logout 通知地址(`backchannel_logout_uri`),留空即不发(见 [protocol.md](protocol.md#back-channel-logout))。后端服务不登录,没有这个标签。
+  - **登录**:回调地址;「高级」折叠区里放退出后跳转地址、「闲置多久需重新登录」、「允许 App 保持登录」。无后端应用多一组「原生 App 关联」:iOS 的 Team ID + Bundle ID、Android 的包名 + SHA-256 签名指纹,各按行登记在文本框里,可以增删;保存后认证服务据此生成 `/.well-known/` 关联文件(见 [authentication.md](authentication.md#密码管理器适配)),iOS 和 Android 就允许这些 App 使用这个域名的通行密钥和密码自动填充。有后端应用不显示这一组,改为一组「退出通知」:一个 Back-Channel Logout 通知地址(`backchannel_logout_uri`),留空即不发(见 [protocol.md](protocol.md#back-channel-logout))。后端服务不登录,没有这个标签。另有一组「登录方式」:默认跟随实例;打开「只允许指定的登录方式」后勾选短信验证码、邮箱验证码、密码、Passkey 和各个认证源(停用的标「已停用」),至少勾一个,保存后只影响之后的登录(见 [authentication.md](authentication.md#按-application-指定登录方式))。内置应用永远跟随实例,不显示这一组。
+  - **没有可用的登录方式**:指定的方式在实例里都没开(或指定的认证源被删除)时,应用详情头部显示警告「这个应用指定的登录方式在实例里都没开,现在没有人能登录它」,链到登录标签。实例关掉某种方式时不拦截,只靠这条警告。
   - **角色**(后端服务):勾选它在其默认 API 资源上持有的 Role,它换到的 access token 带上这些角色与权限(见 [rbac.md](rbac.md))。默认 API 资源是管理 API 时,需要 `admin-roles:assign`;该 API 资源还没有角色时,链到 API 资源详情去建。
   - **用户删除通知**:通知地址与 Webhook 密钥,有一句导语说明用途。
 - 样页(应用详情的全部改写文案)见原型 [`prototype/console-copy`](https://github.com/zibyn/polaris/blob/prototype/console-copy/prototypes/console-copy/index.html) 的 A 版,以其 `NEW` 对象为准;删除区用 C 版的红框独立区块。
@@ -143,7 +144,7 @@ Passkey 开关默认打开,关它时若自己只剩 Passkey(既没开两步验�
 
 #### 撞名消解
 
-- 用户详情的分区叫「登录标识与密码」;「登录方式」只用作设置组的一个分类名。
+- 用户详情的分区叫「登录标识与密码」;「登录方式」只用作设置组的一个分类名,和应用详情登录标签里的一个分区名。
 - 设置组里的叫「令牌签名密钥」;应用里的叫「Webhook 密钥」。
 - 「认证源」指外部身份提供者;通道背后的短信、邮件厂商仍叫「供应商」,两者不混用。
 

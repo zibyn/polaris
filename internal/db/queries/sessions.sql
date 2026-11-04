@@ -2,8 +2,8 @@
 -- A NULL id_hash makes an App Session. The idle timeout and lifespan cap
 -- are the Application's, or the defaults given for the Session's kind
 -- (oidcstore.SessionDefaults). No row for a disabled User.
-INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, ip, user_agent, idle_timeout, max_lifetime)
-SELECT sqlc.narg(id_hash), @client_id::text, u.id, @auth_time, @amr, sqlc.narg(ip), sqlc.narg(user_agent),
+INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, login_method, ip, user_agent, idle_timeout, max_lifetime)
+SELECT sqlc.narg(id_hash), @client_id::text, u.id, @auth_time, @amr, @login_method::text, sqlc.narg(ip), sqlc.narg(user_agent),
        COALESCE((SELECT session_idle_timeout FROM applications WHERE applications.client_id = @client_id),
                 make_interval(secs => @default_idle_secs::int)),
        COALESCE((SELECT session_max_lifetime FROM applications WHERE applications.client_id = @client_id),
@@ -14,11 +14,11 @@ RETURNING id, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs;
 -- name: TouchSession :one
 UPDATE sessions SET last_seen_at = now(), ip = sqlc.narg(ip), user_agent = sqlc.narg(user_agent)
 WHERE sessions.id_hash = @id_hash AND sessions.id IN (SELECT l.id FROM live_sessions l)
-RETURNING id, user_id, auth_time, amr, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs;
+RETURNING id, user_id, auth_time, amr, COALESCE(login_method, '')::text AS login_method, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs;
 
 -- name: RenewSession :one
 -- The same User signed in again: new cookie, new auth_time, same Session.
-UPDATE sessions SET id_hash = @new_hash, auth_time = @auth_time, amr = @amr, last_seen_at = now(),
+UPDATE sessions SET id_hash = @new_hash, auth_time = @auth_time, amr = @amr, login_method = @login_method::text, last_seen_at = now(),
     ip = sqlc.narg(ip), user_agent = sqlc.narg(user_agent)
 WHERE sessions.id_hash = @old_hash AND sessions.user_id = @user_id
   AND sessions.id IN (SELECT l.id FROM live_sessions l)

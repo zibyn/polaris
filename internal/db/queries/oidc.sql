@@ -182,3 +182,17 @@ WHERE ar.client_id = $1 AND ar.api = $2;
 
 -- name: ConsumeJTI :execrows
 INSERT INTO oidc_jtis (jti, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING;
+
+-- name: LoginMethods :one
+-- What the Application may be signed in with (ADR 0027): the login methods
+-- the instance has on, narrowed to the Application's own set unless it
+-- follows the instance. In the terms of applications.login_methods.
+WITH instance AS (
+    SELECT CASE kind WHEN 'phone' THEN 'sms' ELSE kind END AS method FROM channels
+    UNION ALL SELECT 'password' FROM settings WHERE password_login <> 'off'
+    UNION ALL SELECT 'passkey' FROM settings WHERE passkey_login
+    UNION ALL SELECT 'provider:' || id FROM providers WHERE enabled
+)
+SELECT ARRAY(SELECT i.method FROM instance i WHERE a.login_methods IS NULL OR i.method = ANY (a.login_methods))::text[] AS open,
+       (a.login_methods IS NOT NULL)::boolean AS own
+FROM applications a WHERE a.client_id = $1;

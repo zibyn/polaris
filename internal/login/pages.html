@@ -299,7 +299,7 @@ addEventListener("DOMContentLoaded", () => {
   </span>
   <button>登录</button>
 </form>
-{{else if and (not .Bind) (or .PasswordForm (not .CodeKinds))}}
+{{else if and (not .Bind) .PasswordOn (or .PasswordForm (not .CodeKinds))}}
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="password">
   <input type="hidden" name="mode" value="password">

@@ -37,6 +37,7 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
   - 一期:手机号或邮箱(请求发码)、验证码、Identifier + 密码;
   - 二期起:WebAuthn 断言、TOTP、Provider ID + 客户端令牌:`provider` + `authorization_code`,只接受启用中、类型声明了客户端令牌型的 Provider(目前只有 Apple:App 只转交 Sign in with Apple 给的 `authorization_code`,服务端以 Bundle ID 换码,见 ADR 0011)。Provider 不是这一类或已停用时返回 `400 invalid_request`;上游换码失败返回 `400 invalid_grant`,App 须让 User 重新用 Apple 登录。之后的两步验证、绑手机号与验证码登录相同,按 `next` 继续;`amr` 为 `fed`。
   - Passkey:见下面一节。
+- **Application 指定的登录方式**:按 `client_id` 执行,与托管页同一处判断(见 [authentication.md](authentication.md#按-application-指定登录方式))。用了这个 Application 不允许的方式返回 `403 login_method_not_allowed`,在发码、验密码、`passkey=begin`、向上游换码之前就拒绝;它指定的方式在实例里都没开时,新的登录一律返回 `403 no_login_method`。都不带 `auth_session`,两个都是非标准错误码。
 - **未开放注册**:实例关闭开放注册时,发码请求的目标不属于任何 User,或 Provider 客户端令牌对应的 External Identity 没有绑定过,返回 `400 registration_closed`(非标准错误码),`error_description` 为"本实例未开放注册";不发验证码。错误码集合只新增,不改名(ADR 0010、ADR 0021)。
 - **多步认证**:用草案中的 `auth_session` 串联各步。`403 insufficient_authorization` 多带一个非标准字段 `next`,指明下一步:`code`(输入刚发出的验证码)、`password`(账号待激活:在同一 `auth_session` 里提交新的 `password`)、`phone`(先绑定手机号)、`totp`(开了两步验证:在同一 `auth_session` 里提交 `totp` 或 `recovery_code`;先于 `phone`)。`next: "password"` 排在所有步之前,连带两步验证;那一步提交的密码不带 PoW——密码本身就是证明。待激活的 User 也可以带 `delete` 注销账号。`totp` / `recovery_code` 输错时返回 `400 invalid_request` 并带回原 `auth_session`;第 5 次输错后返回 `invalid_session`,须从头登录。以后只新增取值,不改名、不删除;客户端遇到不认识的取值按失败处理。(ADR 0010)
 - **每个请求必须携带**:
@@ -75,6 +76,7 @@ Session 是一个 User 在一台设备或一个浏览器上的一次登录。
 
 - **App Session**:由 refresh token 链承载,只属于一个 Application。闲置 90 天过期。
 - **浏览器 Session**:由 cookie 承载,跨 Application 单点登录。经 OIDC 签发的 refresh token 挂在它下面,随之终止。闲置 30 天过期。
+- **登录方式**:Session 记下登录用的方式(`sms`、`email`、`password`、`passkey` 或 `provider:<id>`;`amr` 的 `fed` 分不出是哪个 Provider)。单点登录进一个指定了登录方式的 Application 时,方式不在它的生效集合里就按 `prompt=login` 处理(ADR 0027);重新登录的是同一个 User 时原地续用 Session 并改记新方式。记录这一列之前建立的 Session 没有方式,进这类 Application 一律要重新登录。
 - **过期规则**:两条,先到者为准,管理员都可按 Application 调整(跨 Application 的浏览器 Session 用发起它的那个 Application 的设置):
   - **闲置时长**:多久没有活动就失效,每次活动重新计时。默认浏览器 30 天、App 90 天。
   - **寿命上限**:从上次证明身份(`auth_time`,登录或重新认证)算起,到期即失效,不随活动延长;重新认证会重新计时。默认浏览器 90 天、App 180 天;不能短于生效的闲置时长。

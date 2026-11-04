@@ -37,6 +37,7 @@ type Application struct {
 	TokenAuthMethod        string
 	Jwks                   []byte
 	SessionMaxLifetime     pgtype.Interval
+	LoginMethods           []string
 }
 
 type ApplicationRole struct {
@@ -271,6 +272,7 @@ type Session struct {
 	UserAgent   pgtype.Text
 	// The default is a browser Session's, only for direct INSERTs (tests); oidcstore.SessionDefaults decides.
 	MaxLifetime pgtype.Interval
+	LoginMethod pgtype.Text
 }
 
 type SessionApplication struct {

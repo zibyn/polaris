@@ -66,6 +66,9 @@ const (
 	// Set, to the User a Provider just signed in, by the Provider's
 	// callback before it sends the browser back to the login.
 	storeFederated = "federated_sub"
+	// The login method the User passed the first factor with (ADR 0027),
+	// kept with federated_sub or pending_sub until the Session starts.
+	storeMethod = "login_method"
 	// Set with pending_sub or federated_sub: the hash of the binder of the
 	// browser the login is for.
 	storeBinder = "binder"
@@ -326,7 +329,8 @@ func (s *Service) authenticate(w http.ResponseWriter, r *http.Request, as *goidc
 		return s.submit(w, r, as, c)
 	}
 	if sub, ok := as.Store[storeFederated].(string); ok && sameBinder(r, as.Store[storeBinder]) {
-		return s.login(w, r, as, c, sub, []string{amrFed}, "")
+		method, _ := as.Store[storeMethod].(string)
+		return s.login(w, r, as, c, sub, []string{amrFed}, method, "")
 	}
 	prompts := strings.Fields(string(as.Prompt))
 	none := slices.Contains(prompts, string(goidc.PromptTypeNone))
@@ -337,7 +341,13 @@ func (s *Service) authenticate(w http.ResponseWriter, r *http.Request, as *goidc
 	if err != nil {
 		return goidc.StatusFailure, err
 	}
-	if sess != nil && !mustLogin(as, sess) {
+	m, err := s.methods(r.Context(), c.ID)
+	if err != nil {
+		return goidc.StatusFailure, err
+	}
+	// A Session signed in some way this Application does not allow is as
+	// good as none: the User signs in again, with a way it does (ADR 0027).
+	if sess != nil && !mustLogin(as, sess) && m.allows(sess.LoginMethod) {
 		if none {
 			if needs, err := s.q.NeedsPhone(r.Context(), sess.UserID); err != nil {
 				return goidc.StatusFailure, err
@@ -350,7 +360,7 @@ func (s *Service) authenticate(w http.ResponseWriter, r *http.Request, as *goidc
 				return goidc.StatusFailure, goidc.NewError(goidc.ErrorCodeInteractionRequired, "the terms must be agreed to first")
 			}
 		}
-		return s.complete(w, r, as, c, sess.ID, sess.UserID, sess.AuthTime.Time, sess.Amr)
+		return s.complete(w, r, as, c, sess.ID, sess.UserID, sess.AuthTime.Time, sess.Amr, sess.LoginMethod)
 	}
 	if none {
 		return goidc.StatusFailure, goidc.NewError(goidc.ErrorCodeLoginRequired, "login required")
@@ -389,6 +399,11 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 	pending, _ := as.Store[storeBindSub].(string)
 	pendingSession, _ := as.Store[oidcstore.SessionKey].(string)
 	pendingAuthTime, _ := as.Store[storeAuthTime].(int64)
+	pendingMethod, _ := as.Store[storeMethod].(string)
+	m, err := s.methods(ctx, c.ID)
+	if err != nil {
+		return goidc.StatusFailure, err
+	}
 	terms, err := s.q.Terms(ctx)
 	if err != nil {
 		return goidc.StatusFailure, err
@@ -443,7 +458,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		// No consent and no Session: the pending step asked for nothing but
 		// the password, so the terms come next as they always would.
 		delete(as.Store, storeSetPassword)
-		return s.complete(w, r, as, c, "", pending, time.Unix(pendingAuthTime, 0), storedAMR(as.Store[storeAMR]))
+		return s.complete(w, r, as, c, "", pending, time.Unix(pendingAuthTime, 0), storedAMR(as.Store[storeAMR]), pendingMethod)
 
 	case "totp":
 		if !awaitingTOTP {
@@ -468,7 +483,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		default:
 			return fail(err)
 		}
-		return s.complete(w, r, as, c, "", pending, time.Unix(pendingAuthTime, 0), amr)
+		return s.complete(w, r, as, c, "", pending, time.Unix(pendingAuthTime, 0), amr, pendingMethod)
 
 	case "send":
 		kind, value, err := identity.ParseIdentifier(form.Identifier)
@@ -480,7 +495,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			// signs in by password. Whether it exists is not told.
 			if setting, err := s.q.PasswordLogin(ctx); err != nil {
 				return goidc.StatusFailure, err
-			} else if setting == "off" {
+			} else if setting == "off" || !m.allows(methodPassword) {
 				return fail(errNoCode)
 			}
 			form.Username, form.Identifier = strings.TrimSpace(form.Identifier), ""
@@ -488,6 +503,9 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		}
 		if err == nil && pending != "" && kind != "phone" {
 			err = identity.ErrPhone
+		}
+		if err == nil && pending == "" && !m.allows(codeMethod(kind)) {
+			err = errMethodNotAllowed
 		}
 		if err == nil {
 			err = s.pow.Verify(ctx, r.PostFormValue("altcha"))
@@ -521,6 +539,9 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		}
 		form.Identifier, form.CodeSent = value, true
 		if pending == "" {
+			if !m.allows(codeMethod(kind)) {
+				return fail(errMethodNotAllowed)
+			}
 			if err := s.ids.MaySignUp(ctx, value); err != nil {
 				return fail(err)
 			}
@@ -549,17 +570,20 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			if err := s.ids.AddIdentifier(ctx, pending, kind, value); err != nil {
 				return fail(err)
 			}
-			return s.complete(w, r, as, c, pendingSession, pending, time.Unix(pendingAuthTime, 0), storedAMR(as.Store[storeAMR]))
+			return s.complete(w, r, as, c, pendingSession, pending, time.Unix(pendingAuthTime, 0), storedAMR(as.Store[storeAMR]), pendingMethod)
 		}
 		sub, err := s.ids.SignIn(ctx, kind, value)
 		if err != nil {
 			return fail(err)
 		}
-		return s.login(w, r, as, c, sub, []string{string(codeAMR(kind))}, terms.TermsVersion)
+		return s.login(w, r, as, c, sub, []string{string(codeAMR(kind))}, codeMethod(kind), terms.TermsVersion)
 
 	case "password":
 		if pending != "" {
 			break
+		}
+		if !m.allows(methodPassword) {
+			return fail(errMethodNotAllowed)
 		}
 		if !agreed {
 			form.PasswordForm = true // back to the form with the box to tick
@@ -569,7 +593,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		if err != nil {
 			return fail(err)
 		}
-		return s.login(w, r, as, c, sub, []string{string(goidc.AMRPassword)}, terms.TermsVersion)
+		return s.login(w, r, as, c, sub, []string{string(goidc.AMRPassword)}, methodPassword, terms.TermsVersion)
 
 	case "passkey":
 		if pending != "" {
@@ -584,13 +608,16 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		// already, so the amr claim says mfa and TOTP never comes up. The
 		// form is the page's own script that posts it — no box was ticked, so
 		// no version: the consent step comes after, as for a Provider.
-		return s.login(w, r, as, c, in.Sub, passkey.AMR(in.BackupEligible), "")
+		return s.login(w, r, as, c, in.Sub, passkey.AMR(in.BackupEligible), methodPasskey, "")
 
 	case "provider":
 		if pending != "" {
 			break
 		}
 		id := r.PostFormValue("provider")
+		if !m.allows(providerMethod(id)) {
+			return fail(errMethodNotAllowed)
+		}
 		to, err := s.providers.Begin(ctx, s.issuer, id, as.ID, binder(w, r))
 		if errors.Is(err, provider.ErrNotFound) {
 			return fail(errNoProvider)
@@ -613,7 +640,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 				return goidc.StatusFailure, err
 			}
 		}
-		return s.complete(w, r, as, c, pendingSession, pending, time.Unix(pendingAuthTime, 0), storedAMR(as.Store[storeAMR]))
+		return s.complete(w, r, as, c, pendingSession, pending, time.Unix(pendingAuthTime, 0), storedAMR(as.Store[storeAMR]), pendingMethod)
 	}
 	return s.render(w, r, as, c, loginPage{})
 }
@@ -654,15 +681,23 @@ func withMFA(amr []string) []string {
 	return append(amr, amrMFA)
 }
 
-// login goes on with a User who just passed the first factor as amr says,
-// having agreed to the terms of version (if any).
-func (s *Service) login(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client, sub string, amr []string, version string) (goidc.Status, error) {
+// login goes on with a User who just passed the first factor, the login
+// method as amr says, having agreed to the terms of version (if any). A
+// method the Application does not allow (since the page was shown) signs
+// nobody in.
+func (s *Service) login(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client, sub string, amr []string, method, version string) (goidc.Status, error) {
+	if m, err := s.methods(r.Context(), c.ID); err != nil {
+		return goidc.StatusFailure, err
+	} else if !m.allows(method) {
+		as.Store = nil
+		return s.render(w, r, as, c, loginPage{Error: errMethodNotAllowed.Error()})
+	}
 	if version != "" {
 		if err := s.q.RecordConsent(r.Context(), sqlc.RecordConsentParams{UserID: sub, Version: version, ClientID: c.ID}); err != nil {
 			return goidc.StatusFailure, err
 		}
 	}
-	return s.complete(w, r, as, c, "", sub, time.Now(), amr)
+	return s.complete(w, r, as, c, "", sub, time.Now(), amr, method)
 }
 
 // complete grants sub, unless 待激活, 两步验证, 同意协议 or 绑手机号 still
@@ -671,7 +706,7 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request, as *goidc.AuthnS
 // browser holds no Session; session is empty unless the browser already had
 // one (whose login passed 两步验证 already), and the Session starts once
 // nothing is left.
-func (s *Service) complete(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client, session, sub string, authTime time.Time, amr []string) (goidc.Status, error) {
+func (s *Service) complete(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client, session, sub string, authTime time.Time, amr []string, method string) (goidc.Status, error) {
 	// 待激活 comes before 两步验证, 同意协议 and 绑手机号 (ADR 0016), and
 	// nextStep owns that order for the direct auth API too. The only evidence
 	// so far is that the User knows a password an admin chose, and running the
@@ -684,7 +719,7 @@ func (s *Service) complete(w http.ResponseWriter, r *http.Request, as *goidc.Aut
 		return goidc.StatusFailure, err
 	}
 	if what != stepDone {
-		as.Store = map[string]any{storeBindSub: sub, storeAuthTime: authTime.Unix(), storeAMR: amr, storeBinder: hex.EncodeToString(hash(binder(w, r)))}
+		as.Store = map[string]any{storeBindSub: sub, storeAuthTime: authTime.Unix(), storeAMR: amr, storeMethod: method, storeBinder: hex.EncodeToString(hash(binder(w, r)))}
 		if session != "" {
 			as.Store[oidcstore.SessionKey] = session
 		}
@@ -698,7 +733,7 @@ func (s *Service) complete(w http.ResponseWriter, r *http.Request, as *goidc.Aut
 	}
 	if session == "" {
 		var err error
-		if session, err = s.newSession(w, r, c.ID, sub, authTime, amr); err != nil {
+		if session, err = s.newSession(w, r, c.ID, sub, authTime, amr, method); err != nil {
 			return goidc.StatusFailure, err
 		}
 	}
@@ -906,14 +941,14 @@ func (s *Service) session(w http.ResponseWriter, r *http.Request) (*sqlc.TouchSe
 // newSession signs sub in on this browser, for clientID, and returns the
 // Session id. The same User keeps their Session (and the refresh tokens
 // under it) with a fresh cookie; another User's Session ends: a browser
-// holds one User.
-func (s *Service) newSession(w http.ResponseWriter, r *http.Request, clientID, sub string, authTime time.Time, amr []string) (string, error) {
+// holds one User. The Session renewed takes the new login method.
+func (s *Service) newSession(w http.ResponseWriter, r *http.Request, clientID, sub string, authTime time.Time, amr []string, method string) (string, error) {
 	token := rand.Text()
 	ip, ua := oidcstore.Device(deviceContext(r))
 	if old, err := r.Cookie(sessionCookie); err == nil {
 		sess, err := s.q.RenewSession(r.Context(), sqlc.RenewSessionParams{
 			OldHash: hash(old.Value), NewHash: hash(token), UserID: sub,
-			AuthTime: pgtype.Timestamptz{Time: authTime, Valid: true}, Amr: amr, Ip: ip, UserAgent: ua,
+			AuthTime: pgtype.Timestamptz{Time: authTime, Valid: true}, Amr: amr, LoginMethod: method, Ip: ip, UserAgent: ua,
 		})
 		if err == nil {
 			setSessionCookie(w, token, int(sess.IdleSecs))
@@ -925,7 +960,7 @@ func (s *Service) newSession(w http.ResponseWriter, r *http.Request, clientID, s
 			return "", err
 		}
 	}
-	sess, err := s.store.CreateSession(deviceContext(r), hash(token), clientID, sub, authTime, amr)
+	sess, err := s.store.CreateSession(deviceContext(r), hash(token), clientID, sub, authTime, amr, method)
 	if err != nil {
 		return "", err
 	}
@@ -1013,14 +1048,27 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		return goidc.StatusFailure, err
 	}
 	p.Terms = terms
+	// What the first step offers is what this Application allows (ADR 0027);
+	// binding a phone number is not a login method, and goes on regardless.
+	m, err := s.methods(ctx, c.ID)
+	if err != nil {
+		return goidc.StatusFailure, err
+	}
+	if m.none() && p.firstStep() {
+		page(w, http.StatusForbidden, "message", errNoMethod)
+		return goidc.StatusPending, nil
+	}
 	setting, err := s.q.PasswordLogin(ctx)
 	if err != nil {
 		return goidc.StatusFailure, err
 	}
-	p.PasswordOn = setting != "off"
+	p.PasswordOn = setting != "off" && m.allows(methodPassword)
 	kinds, err := s.q.ChannelKinds(ctx)
 	if err != nil {
 		return goidc.StatusFailure, err
+	}
+	if !p.Bind {
+		kinds = slices.DeleteFunc(kinds, func(k string) bool { return !m.allows(codeMethod(k)) })
 	}
 	switch {
 	case p.Bind && !slices.Contains(kinds, "phone"):
@@ -1037,6 +1085,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		if p.Providers, err = s.providers.Buttons(ctx); err != nil {
 			return goidc.StatusFailure, err
 		}
+		p.Providers = slices.DeleteFunc(p.Providers, func(b provider.Button) bool { return !m.allows(providerMethod(b.ID)) })
 	}
 	if p.PasswordOn && !p.Bind && !p.SetPassword {
 		p.IdentifierLabel = strings.Replace(p.CodeKinds, "或", "、", 1) + "或用户名"
@@ -1052,7 +1101,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		if err != nil {
 			return goidc.StatusFailure, err
 		}
-		if on {
+		if on && m.allows(methodPasskey) {
 			options, challenge, err := s.passkeys.LoginOptions(ctx)
 			if err != nil {
 				return goidc.StatusFailure, err

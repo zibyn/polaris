@@ -11,6 +11,17 @@
 | TOTP | 唯一的第二因素 | User 自愿开启 | 托管页、直连 API | 二期 |
 | Provider(通用 OIDC、Apple 等) | 第一因素 | 管理员添加 Provider | 通用 OIDC:托管页;Apple:托管页、直连 API | 二期起 |
 
+## 按 Application 指定登录方式
+
+上表除 TOTP 外的五类是**登录方式**(Provider 按单个算)。默认每个 Application 都**跟随实例**:实例开着什么就能用什么,以后新加的 Provider 也自动可用。管理员也可以给一个 Application **指定一组**,生效的是实例开着的与指定的取交集;指定后,实例新加的 Provider 不会自动加进来(ADR 0027)。
+
+- **谁能指定**:让 User 登录的 Application。内置的管理端、账号中心与 M2M Application 永远跟随实例,不会因为 Application 设置把管理员锁在外面(ADR 0017 的自锁问题)。
+- **托管页与直连 API**:只提供生效集合里的方式;不在集合里的,发码、密码、Passkey、Provider 跳转与客户端令牌一律在服务端拒绝。绑手机号那一步不是登录方式,照常可用。两个面共用同一处判断。
+- **单点登录**:Session 记下它的登录方式(Provider 记到具体是哪一个)。浏览器 Session 的方式不在目标 Application 的生效集合里时,按 `prompt=login` 处理,User 用允许的方式重新登录:同一个 User 原地续用这个 Session,改记新的方式;换成别的 User 时旧 Session 结束。只在指定了一组的 Application 上检查;跟随实例的照旧。
+- **交集变空**:实例关掉某种方式不受 Application 设置牵制;交集变空的 Application,登录页显示「该应用当前没有可用的登录方式,请联系管理员」,直连 API 返回 `403 no_login_method`,管理端在它上面显示警告。
+- **不追溯**:改设置只影响之后的登录与单点登录判断,已签发的 Session 和 refresh token 照常可用。
+- **账号中心**:「绑定其他账号」等绑定登录途径的入口只看实例开关,不受任何 Application 设置影响。
+
 ## 验证码
 
 - **生成**:由 Polaris 生成和核验,Channel 只负责投递。

@@ -12,7 +12,7 @@ import (
 )
 
 const application = `-- name: Application :one
-SELECT client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, session_idle_timeout, builtin, created_at, refresh_tokens, webhook_url, webhook_secret, webhook_secret_updated_at, apple_app_ids, android_apps, backchannel_logout_uri, require_role, token_auth_method, jwks, session_max_lifetime FROM applications WHERE client_id = $1
+SELECT client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, session_idle_timeout, builtin, created_at, refresh_tokens, webhook_url, webhook_secret, webhook_secret_updated_at, apple_app_ids, android_apps, backchannel_logout_uri, require_role, token_auth_method, jwks, session_max_lifetime, login_methods FROM applications WHERE client_id = $1
 `
 
 func (q *Queries) Application(ctx context.Context, clientID string) (Application, error) {
@@ -40,6 +40,7 @@ func (q *Queries) Application(ctx context.Context, clientID string) (Application
 		&i.TokenAuthMethod,
 		&i.Jwks,
 		&i.SessionMaxLifetime,
+		&i.LoginMethods,
 	)
 	return i, err
 }
@@ -354,6 +355,33 @@ SELECT pg_advisory_xact_lock(hashtext('signing_keys'))
 func (q *Queries) LockSigningKeys(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, lockSigningKeys)
 	return err
+}
+
+const loginMethods = `-- name: LoginMethods :one
+WITH instance AS (
+    SELECT CASE kind WHEN 'phone' THEN 'sms' ELSE kind END AS method FROM channels
+    UNION ALL SELECT 'password' FROM settings WHERE password_login <> 'off'
+    UNION ALL SELECT 'passkey' FROM settings WHERE passkey_login
+    UNION ALL SELECT 'provider:' || id FROM providers WHERE enabled
+)
+SELECT ARRAY(SELECT i.method FROM instance i WHERE a.login_methods IS NULL OR i.method = ANY (a.login_methods))::text[] AS open,
+       (a.login_methods IS NOT NULL)::boolean AS own
+FROM applications a WHERE a.client_id = $1
+`
+
+type LoginMethodsRow struct {
+	Open []string
+	Own  bool
+}
+
+// What the Application may be signed in with (ADR 0027): the login methods
+// the instance has on, narrowed to the Application's own set unless it
+// follows the instance. In the terms of applications.login_methods.
+func (q *Queries) LoginMethods(ctx context.Context, clientID string) (LoginMethodsRow, error) {
+	row := q.db.QueryRow(ctx, loginMethods, clientID)
+	var i LoginMethodsRow
+	err := row.Scan(&i.Open, &i.Own)
+	return i, err
 }
 
 const logoutSession = `-- name: LogoutSession :one

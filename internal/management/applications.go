@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -44,7 +45,43 @@ type ApplicationSettings struct {
 	AndroidApps            []AndroidApp `json:"androidApps" nullable:"false"`
 	// Kept apart from the authentication method: registering keys switches
 	// nothing, so a client can deploy them first (ADR 0023).
-	JWKS json.RawMessage `json:"jwks,omitempty" doc:"Application 公钥 checking its private_key_jwt assertions, as a JWKS of public RSA (2048 bits or more) and EC P-256 keys, each with a distinct kid, at most 5; replaces the registered set, absent keeps it. Not for public Applications."`
+	JWKS         json.RawMessage `json:"jwks,omitempty" doc:"Application 公钥 checking its private_key_jwt assertions, as a JWKS of public RSA (2048 bits or more) and EC P-256 keys, each with a distinct kid, at most 5; replaces the registered set, absent keeps it. Not for public Applications."`
+	LoginMethods *LoginMethods   `json:"loginMethods,omitempty" doc:"The login methods it offers (ADR 0027). Absent follows the instance, the default: whatever the instance has on, Providers added later included. Set, only these, as far as the instance has them on; 单点登录 from a Session signed in another way asks for a new login. Not for the built-in or M2M Applications"`
+}
+
+// LoginMethods are an Application's own login methods; it offers those the
+// instance has on too.
+type LoginMethods struct {
+	Methods   []string `json:"methods" nullable:"false" enum:"sms,email,password,passkey" doc:"短信验证码, 邮箱验证码, 密码, Passkey"`
+	Providers []string `json:"providers" nullable:"false" doc:"IDs of the Providers it offers"`
+}
+
+// column is m in the terms of applications.login_methods: nil follows the
+// instance.
+func (m *LoginMethods) column() []string {
+	if m == nil {
+		return nil
+	}
+	out := append([]string{}, m.Methods...)
+	for _, id := range m.Providers {
+		out = append(out, "provider:"+id)
+	}
+	return out
+}
+
+func loginMethodsOf(column []string) *LoginMethods {
+	if column == nil {
+		return nil
+	}
+	m := &LoginMethods{Methods: []string{}, Providers: []string{}}
+	for _, v := range column {
+		if id, ok := strings.CutPrefix(v, "provider:"); ok {
+			m.Providers = append(m.Providers, id)
+		} else {
+			m.Methods = append(m.Methods, v)
+		}
+	}
+	return m
 }
 
 type AndroidApp struct {
@@ -59,6 +96,7 @@ type Application struct {
 	CreatedAt time.Time `json:"createdAt"`
 	ApplicationSettings
 	TokenAuthMethod        string     `json:"tokenAuthMethod" enum:"none,client_secret_basic,private_key_jwt" doc:"How it authenticates at the token endpoint; none for a public Application. Switch it with the auth-method operation."`
+	NoLoginMethod          bool       `json:"noLoginMethod,omitempty" doc:"Its own login methods and the instance's have none in common: nobody can sign in to it"`
 	WebhookSecretUpdatedAt *time.Time `json:"webhookSecretUpdatedAt,omitempty" doc:"When the webhook signing key was last set"`
 }
 
@@ -114,9 +152,17 @@ func (s *Service) applications(ctx context.Context, clientID string) ([]Applicat
 				Name: r.Name, RedirectURIs: r.RedirectUris, PostLogoutRedirectURIs: r.PostLogoutRedirectUris,
 				DefaultAPI: r.DefaultApi, SessionIdleTimeout: r.SessionIdleTimeout, SessionMaxLifetime: r.SessionMaxLifetime, RefreshTokens: r.RefreshTokens,
 				RequireRole: r.RequireRole, WebhookURL: r.WebhookUrl, BackchannelLogoutURI: r.BackchannelLogoutUri, AppleAppIDs: r.AppleAppIds,
-				JWKS: r.Jwks,
+				JWKS: r.Jwks, LoginMethods: loginMethodsOf(r.LoginMethods),
 			},
 			TokenAuthMethod: r.TokenAuthMethod,
+		}
+		if r.LoginMethods != nil {
+			// shortcut: one query per Application that names its own; fold into ListApplications if lists grow long.
+			open, err := s.q.LoginMethods(ctx, r.ClientID)
+			if err != nil {
+				return nil, err
+			}
+			a.NoLoginMethod = len(open.Open) == 0
 		}
 		if r.Type == "public" {
 			a.TokenAuthMethod = "none"
@@ -178,6 +224,11 @@ func (s *Service) updateApplication(ctx context.Context, in *struct {
 	app, err := s.application(ctx, in.ClientID)
 	if err != nil {
 		return nil, err
+	}
+	// They always follow the instance: no Application setting locks admins
+	// out of the console (ADR 0027).
+	if app.Builtin && in.Body.LoginMethods != nil {
+		return nil, huma.Error422UnprocessableEntity("内置 Application 的登录方式跟随实例")
 	}
 	if app.Builtin {
 		return nil, errBuiltinApplication
@@ -245,6 +296,12 @@ func (st *ApplicationSettings) validate(typ string) error {
 		if st.RequireRole {
 			return identity.Invalid("M2M Application 没有 User 登录,不能要求 Role")
 		}
+		if st.LoginMethods != nil {
+			return identity.Invalid("M2M Application 不登录,没有登录方式")
+		}
+	}
+	if m := st.LoginMethods; m != nil && len(m.Methods)+len(m.Providers) == 0 {
+		return identity.Invalid("指定登录方式时至少选一种")
 	}
 	// The Roles checked are the ones on the default API.
 	if st.RequireRole && st.DefaultAPI == "" {
@@ -315,6 +372,15 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 	if err := invalid(st.validate(typ)); err != nil {
 		return 0, err
 	}
+	if st.LoginMethods != nil {
+		for _, id := range st.LoginMethods.Providers {
+			if _, err := q.GetProvider(ctx, id); errors.Is(err, pgx.ErrNoRows) {
+				return 0, huma.Error422UnprocessableEntity("没有这个认证源:" + id)
+			} else if err != nil {
+				return 0, err
+			}
+		}
+	}
 	var secret []byte
 	if st.WebhookSecret != "" {
 		var err error
@@ -333,6 +399,7 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 		DefaultApi:             st.DefaultAPI, IdleSecs: st.SessionIdleTimeout, MaxSecs: st.SessionMaxLifetime, RefreshTokens: st.RefreshTokens,
 		RequireRole: st.RequireRole, WebhookUrl: st.WebhookURL, WebhookSecret: secret, BackchannelLogoutUri: st.BackchannelLogoutURI,
 		AppleAppIds: append([]string{}, st.AppleAppIDs...), AndroidApps: android, Jwks: st.JWKS,
+		LoginMethods: st.LoginMethods.column(),
 	})
 	var pg *pgconn.PgError
 	switch {

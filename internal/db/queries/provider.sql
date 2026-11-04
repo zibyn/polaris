@@ -42,8 +42,13 @@ FROM put;
 
 -- name: DeleteProvider :execrows
 -- Audited with who did it.
+-- Applications that named it stop naming it: a Provider created later under
+-- the same id is not the one they chose.
 WITH gone AS (
     DELETE FROM providers WHERE providers.id = @id RETURNING providers.id
+), unnamed AS (
+    UPDATE applications SET login_methods = array_remove(login_methods, 'provider:' || @id::text)
+    WHERE 'provider:' || @id::text = ANY (login_methods) AND EXISTS (SELECT 1 FROM gone)
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'provider.deleted', NULL, jsonb_build_object('id', gone.id, 'by', @by::text) FROM gone;

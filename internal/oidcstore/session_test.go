@@ -18,7 +18,7 @@ func TestRevokingAnAppSessionsRefreshTokenEndsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(pool, keyring)
-	sess, err := s.CreateSession(ctx, nil, "polaris-console", "ALICE", time.Now(), []string{"sms"})
+	sess, err := s.CreateSession(ctx, nil, "polaris-console", "ALICE", time.Now(), []string{"sms"}, "sms")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestCreateSession(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			authTime := time.Now().Add(-c.age).Truncate(time.Second)
-			sess, err := s.CreateSession(ctx, c.idHash, c.clientID, "ALICE", authTime, []string{"pwd"})
+			sess, err := s.CreateSession(ctx, c.idHash, c.clientID, "ALICE", authTime, []string{"pwd"}, "password")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -132,7 +132,7 @@ func TestSessionLivenessAgrees(t *testing.T) {
 		t.Helper()
 		n++
 		idHash := []byte{byte(n)}
-		sess, err := s.CreateSession(ctx, idHash, "rp", "ALICE", time.Now(), []string{"pwd"})
+		sess, err := s.CreateSession(ctx, idHash, "rp", "ALICE", time.Now(), []string{"pwd"}, "password")
 		if err != nil {
 			t.Fatal(err)
 		}
