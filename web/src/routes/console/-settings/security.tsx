@@ -8,11 +8,7 @@ import { failed } from "#/components/form";
 import { ItemList, PropRow } from "#/components/item-list";
 import { Button } from "#/components/ui/button";
 import { api, type SigningKey } from "#/lib/console-api";
-import {
-	asksShorterRetention,
-	lastRotation,
-	rotatedRecently,
-} from "#/lib/login";
+import { lastRotation, rotatedRecently } from "#/lib/login";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { Section } from "#/routes/console/-components/section";
 import { useCan } from "#/routes/console/route";
@@ -37,7 +33,6 @@ export function SecurityTab() {
 				help="超过该天数的审计记录会自动删除。"
 				min={1}
 				confirm={{
-					when: asksShorterRetention,
 					title: "缩短审计保留期？",
 					action: "缩短保留期",
 					body: "超出新期限的记录将在一小时内删除，此操作无法撤销。",

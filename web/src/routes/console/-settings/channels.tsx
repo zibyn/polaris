@@ -26,12 +26,7 @@ import {
 	type ChannelPlugin,
 	type ChannelSettings,
 } from "#/lib/console-api";
-import {
-	channelSchema,
-	sendsNothing,
-	smsLocked,
-	testSchema,
-} from "#/lib/login";
+import { channelSchema, smsLocked, testSchema } from "#/lib/login";
 import { channelsQuery } from "#/lib/queries";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { FormSheet } from "#/routes/console/-components/form-sheet";
@@ -81,8 +76,8 @@ export function ChannelsTab() {
 				suffix="条"
 				help="达到上限后当天停止发送验证码。"
 				min={0}
-				warning={(n) =>
-					sendsNothing(n) && (
+				warning={(plan) =>
+					plan.warn.sendsNothing && (
 						<Alert variant="warning">
 							<AlertDescription>
 								设为 0 将停止发送所有验证码，包括登录和绑定手机号。

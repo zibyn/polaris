@@ -119,28 +119,39 @@ export const smsLocked = (
 	requirePhone: boolean,
 ) => kind === "phone" && requirePhone;
 
-// asksRequirePhone: turning 必须绑定手机号 on makes users without a phone
-// bind one before their next login goes through.
-export const asksRequirePhone = (before: boolean, after: boolean) =>
-	!before && after;
+// planPolicySave is what saving patch over before needs (docs/spec/
+// consoles.md「依赖提示」): the question to ask first, if any, and what the
+// values as typed warn about. A section only patches its own settings, so
+// at most one question applies.
+//   requirePhone: turning 必须绑定手机号 on makes users without a phone bind
+//     one before their next login goes through.
+//   termsVersion: any new version, the first included, makes every user
+//     agree again; clearing it asks nothing of them.
+//   shorterRetention: the hourly cleanup deletes what falls outside the new
+//     period, for good.
+//   passwordLocksOut: with password login off, users who only have a
+//     username can't sign in, and the account center can't set one.
+//   sendsNothing: a daily limit of 0 stops every code, login and binding.
+export const planPolicySave = (before: Policy, patch: Partial<Policy>) => {
+	const after = { ...before, ...patch };
+	const confirm =
+		!before.requirePhone && after.requirePhone
+			? "requirePhone"
+			: after.termsVersion !== "" && after.termsVersion !== before.termsVersion
+				? "termsVersion"
+				: after.auditRetentionDays < before.auditRetentionDays
+					? "shorterRetention"
+					: undefined;
+	return {
+		confirm,
+		warn: {
+			passwordLocksOut: after.passwordLogin === "off",
+			sendsNothing: after.dailySendLimit === 0,
+		},
+	};
+};
 
-// asksTermsVersion: any new version, the first included, makes every user
-// agree again; clearing it asks nothing of them.
-export const asksTermsVersion = (before: string, after: string) =>
-	after !== "" && after !== before;
-
-// asksShorterRetention: the hourly cleanup deletes what falls outside the
-// new period, for good.
-export const asksShorterRetention = (before: number, after: number) =>
-	after < before;
-
-// passwordLocksOut: with password login off, users who only have a username
-// can't sign in, and the account center can't set one.
-export const passwordLocksOut = (mode: Policy["passwordLogin"]) =>
-	mode === "off";
-
-// sendsNothing: a daily limit of 0 stops every code, login and binding alike.
-export const sendsNothing = (dailySendLimit: number) => dailySendLimit === 0;
+export type PolicyPlan = ReturnType<typeof planPolicySave>;
 
 // rotatedRecently: rotating again this soon retires the key before last,
 // and tokens it signed stop working at once.
