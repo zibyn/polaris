@@ -3,8 +3,10 @@ package login
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
 
 type setupForm struct {
@@ -31,7 +33,7 @@ func (s *Service) setup(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, "", "", http.StatusForbidden, "setup", form)
 		return
 	}
-	_, err := s.ids.Bootstrap(r.Context(), form.Token, form.Username, r.PostFormValue("password"))
+	sub, err := s.ids.Bootstrap(r.Context(), form.Token, form.Username, r.PostFormValue("password"))
 	var invalid identity.Invalid
 	switch {
 	case errors.Is(err, identity.ErrSetupClosed):
@@ -42,8 +44,19 @@ func (s *Service) setup(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	default:
-		// The owner is made and the setup page is closed; the console starts
-		// its sign-in, which is the login page they just set a password for.
+		// The owner is made and the setup page is closed. They just proved
+		// the password by choosing it, so they are signed in with it rather
+		// than asked to type it again, as an accepted invite is; whatever
+		// else a login needs first (nextStep) leaves it to the login page.
+		amr := []string{string(goidc.AMRPassword)}
+		what, err := s.nextStep(r.Context(), sub, amr, false)
+		if err == nil && what == stepDone {
+			_, err = s.newSession(w, r, identity.ConsoleClientID, sub, time.Now(), amr, identity.MethodPassword)
+		}
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 		http.Redirect(w, r, "/console", http.StatusSeeOther)
 	}
 }

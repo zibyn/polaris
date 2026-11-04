@@ -59,7 +59,7 @@ export const patchApplication = (
 		replaceApplication(d, clientId, (a) => ({ ...a, ...patch(a) })),
 	);
 
-const settingsKey = ["settings"];
+export const settingsKey = ["settings"];
 
 export const policyQuery = queryOptions({
 	queryKey: settingsKey,
@@ -73,6 +73,7 @@ export const policyQuery = queryOptions({
 export function useSavePolicy() {
 	const client = useQueryClient();
 	return useMutation({
+		mutationKey: settingsKey,
 		mutationFn: async (patch: Partial<Policy>) => {
 			const body = { ...client.getQueryData<Policy>(settingsKey), ...patch };
 			await api("/settings", { method: "PUT", body });

@@ -1325,7 +1325,6 @@ function Onboarding({
 	});
 	// After a reload the secret is gone: nothing left to save here.
 	const items = checklist(app, saved || !secret);
-	const tracked = items.filter((i) => i.done !== undefined);
 	const body = {
 		clientId: (
 			<div className="flex items-center gap-2">
@@ -1379,9 +1378,6 @@ function Onboarding({
 			<CollapsibleTrigger className="flex items-center gap-1 font-semibold text-[15px] [&[data-panel-open]>svg]:rotate-90">
 				<ChevronRight className="size-4 transition-transform" />
 				接入清单
-				<span className="ml-1 font-normal text-faint text-xs tabular-nums">
-					{tracked.filter((i) => i.done).length} / {tracked.length}
-				</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent>
 				<ol className="mt-4 space-y-4">

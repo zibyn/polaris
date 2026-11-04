@@ -1,14 +1,20 @@
 import { revalidateLogic, useForm } from "@tanstack/react-form";
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { FormField } from "#/components/form";
+import { useIsMutating, useSuspenseQuery } from "@tanstack/react-query";
+import { type ReactNode, useId, useState } from "react";
+import { FormError, FormField } from "#/components/form";
 import { ItemList, PropRow } from "#/components/item-list";
 import { Alert, AlertDescription } from "#/components/ui/alert";
+import {
+	Field,
+	FieldContent,
+	FieldDescription,
+	FieldLabel,
+} from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
 import { Switch } from "#/components/ui/switch";
 import type { ChannelSettings, Policy } from "#/lib/console-api";
 import { hasChannel, planPolicySave, termsSchema } from "#/lib/login";
-import { channelsQuery, useSavePolicy } from "#/lib/queries";
+import { channelsQuery, settingsKey, useSavePolicy } from "#/lib/queries";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { SaveBar, Section } from "#/routes/console/-components/section";
 import { ChannelsLink } from "./channels";
@@ -27,50 +33,9 @@ export function LoginTab() {
 	return (
 		<div className="space-y-10">
 			<CodeLogin channels={channels} />
-			<OpenRegistration current={p} editable={editable} />
-			<PasswordLogin current={p} editable={editable} />
-			<PasskeyLogin current={p} editable={editable} />
-			<RequirePhone current={p} editable={editable} sms={sms} />
+			<Switches current={p} editable={editable} sms={sms} />
 			<Terms current={p} editable={editable} />
-			<AdminsNeedTwoFactor current={p} editable={editable} />
 		</div>
-	);
-}
-
-// AdminsNeedTwoFactor: the server turns it down while the admin saving it
-// has neither 两步验证 nor a Passkey of their own; SaveBar shows why.
-function AdminsNeedTwoFactor({ current, editable }: SectionProps) {
-	const save = useSavePolicy();
-	const form = useForm({
-		defaultValues: { adminsNeedTwoFactor: current.adminsNeedTwoFactor },
-		onSubmit: ({ value }) => save.mutate(value),
-	});
-	return (
-		<Section
-			title="两步验证"
-			editable={editable}
-			form={form}
-			footer={editable && <SaveBar save={save} />}
-		>
-			<form.Field name="adminsNeedTwoFactor">
-				{(field) => (
-					<FormField
-						field={field}
-						label="管理员必须启用两步验证或 Passkey"
-						help="开启后，未启用两步验证且没有 Passkey 的管理员无法使用管理端。"
-					>
-						{({ id }) => (
-							<Switch
-								id={id}
-								checked={field.state.value}
-								disabled={!editable}
-								onCheckedChange={field.handleChange}
-							/>
-						)}
-					</FormField>
-				)}
-			</form.Field>
-		</Section>
 	);
 }
 
@@ -108,186 +73,153 @@ function CodeLogin({ channels }: { channels: ChannelSettings[] }) {
 	);
 }
 
-function OpenRegistration({ current, editable }: SectionProps) {
-	const save = useSavePolicy();
-	const form = useForm({
-		defaultValues: { openRegistration: current.openRegistration },
-		onSubmit: ({ value }) => save.mutate(value),
-	});
+// Switches is every 登录方式 on/off: each saves the moment it flips, as
+// switches do; a flip with consequences asks first (planPolicySave).
+// The server turns some flips down while the admin saving them would lose
+// their own way in (两步验证, Passkey, 密码); the row shows why.
+function Switches({ current, editable, sms }: SectionProps & { sms: boolean }) {
 	return (
-		<Section
-			title="开放注册"
-			editable={editable}
-			form={form}
-			footer={editable && <SaveBar save={save} />}
-		>
-			<form.Field name="openRegistration">
-				{(field) => (
-					<FormField
-						field={field}
+		<>
+			<Section title="注册与登录">
+				<div className="space-y-6">
+					<PolicySwitch
+						current={current}
+						editable={editable}
 						label="开放注册"
 						help="开启后，未注册的手机号、邮箱或外部账号首次登录时自动注册。关闭后，登录页会提示手机号或邮箱是否已注册。"
-					>
-						{({ id }) => (
-							<Switch
-								id={id}
-								checked={field.state.value}
-								disabled={!editable}
-								onCheckedChange={field.handleChange}
-							/>
-						)}
-					</FormField>
-				)}
-			</form.Field>
-		</Section>
-	);
-}
-
-function PasswordLogin({ current, editable }: SectionProps) {
-	const save = useSavePolicy();
-	const form = useForm({
-		defaultValues: { passwordLogin: current.passwordLogin },
-		onSubmit: ({ value }) => save.mutate(value),
-	});
-	return (
-		<Section
-			title="密码登录"
-			editable={editable}
-			form={form}
-			footer={editable && <SaveBar save={save} />}
-		>
-			<form.Field name="passwordLogin">
-				{(field) => (
-					<FormField
-						field={field}
+						checked={current.openRegistration}
+						patch={(on) => ({ openRegistration: on })}
+					/>
+					<PolicySwitch
+						current={current}
+						editable={editable}
 						label="允许密码登录"
 						help="开启后，用户可用手机号、邮箱或用户名加密码登录。关闭后已设置的密码保留。"
+						checked={current.passwordLogin === "on"}
+						patch={(on) => ({ passwordLogin: on ? "on" : "off" })}
 					>
-						{({ id }) => (
-							<>
-								<Switch
-									id={id}
-									checked={field.state.value === "on"}
-									disabled={!editable}
-									onCheckedChange={(on) =>
-										field.handleChange(on ? "on" : "off")
-									}
-								/>
-								{planPolicySave(current, { passwordLogin: field.state.value })
-									.warn.passwordLocksOut && (
-									<Alert variant="warning">
-										<AlertDescription>
-											仅有用户名的用户将无法登录，也无法在账号中心设置密码。
-										</AlertDescription>
-									</Alert>
-								)}
-							</>
+						{planPolicySave(current, {}).warn.passwordLocksOut && (
+							<Alert variant="warning">
+								<AlertDescription>
+									仅有用户名的用户将无法登录，也无法在账号中心设置密码。
+								</AlertDescription>
+							</Alert>
 						)}
-					</FormField>
-				)}
-			</form.Field>
-		</Section>
-	);
-}
-
-// PasskeyLogin: the server turns it down while the admin saving it satisfies
-// 管理员必须启用两步验证或 Passkey with a Passkey alone; SaveBar shows why.
-function PasskeyLogin({ current, editable }: SectionProps) {
-	const save = useSavePolicy();
-	const form = useForm({
-		defaultValues: { passkeyLogin: current.passkeyLogin },
-		onSubmit: ({ value }) => save.mutate(value),
-	});
-	return (
-		<Section
-			title="Passkey"
-			editable={editable}
-			form={form}
-			footer={editable && <SaveBar save={save} />}
-		>
-			<form.Field name="passkeyLogin">
-				{(field) => (
-					<FormField
-						field={field}
+					</PolicySwitch>
+					<PolicySwitch
+						current={current}
+						editable={editable}
 						label="允许 Passkey 登录"
 						help="开启后，用户可用 Passkey 登录。关闭后已添加的 Passkey 保留。"
+						checked={current.passkeyLogin}
+						patch={(on) => ({ passkeyLogin: on })}
+					/>
+					<PolicySwitch
+						current={current}
+						editable={editable}
+						label="必须绑定手机号"
+						help="开启后，没有手机号的用户需先绑定手机号才能登录。"
+						checked={current.requirePhone}
+						// Without SMS it can only be turned off, never on.
+						disabled={!sms && !current.requirePhone}
+						patch={(on) => ({ requirePhone: on })}
+						confirm={{
+							title: "开启必须绑定手机号？",
+							action: "开启必须绑定手机号",
+							body: "没有手机号的用户下次登录时需先绑定手机号。",
+						}}
 					>
-						{({ id }) => (
-							<Switch
-								id={id}
-								checked={field.state.value}
-								disabled={!editable}
-								onCheckedChange={field.handleChange}
-							/>
+						{!sms && (
+							<Alert variant="warning">
+								<AlertDescription>
+									需先启用短信通道，否则用户收不到绑定手机号的验证码。{" "}
+									<ChannelsLink>启用短信通道</ChannelsLink>
+								</AlertDescription>
+							</Alert>
 						)}
-					</FormField>
-				)}
-			</form.Field>
-		</Section>
+					</PolicySwitch>
+				</div>
+			</Section>
+			<Section title="管理员">
+				<PolicySwitch
+					current={current}
+					editable={editable}
+					label="管理员必须启用两步验证或 Passkey"
+					help="开启后，未启用两步验证且没有 Passkey 的管理员无法使用管理端。"
+					checked={current.adminsNeedTwoFactor}
+					patch={(on) => ({ adminsNeedTwoFactor: on })}
+				/>
+			</Section>
+		</>
 	);
 }
 
-function RequirePhone({
+// PolicySwitch is one row of Switches: what it does on the left, the
+// switch on the right, then any notes and why the last save failed.
+function PolicySwitch({
 	current,
 	editable,
-	sms,
-}: SectionProps & { sms: boolean }) {
+	label,
+	help,
+	checked,
+	disabled,
+	patch,
+	confirm,
+	children,
+}: SectionProps & {
+	label: string;
+	help: ReactNode;
+	checked: boolean;
+	disabled?: boolean;
+	patch: (on: boolean) => Partial<Policy>;
+	confirm?: { title: string; action: string; body: ReactNode };
+	children?: ReactNode;
+}) {
+	const id = useId();
 	const save = useSavePolicy();
-	const [asking, setAsking] = useState(false);
-	const form = useForm({
-		defaultValues: { requirePhone: current.requirePhone },
-		onSubmit: ({ value }) =>
-			planPolicySave(current, value).confirm
-				? setAsking(true)
-				: save.mutate(value),
-	});
+	// PUT /settings takes the whole Policy, so one save at a time: a second
+	// flip mid-save would send the first one's old value back.
+	const busy = useIsMutating({ mutationKey: settingsKey }) > 0;
+	// want is where the switch is headed while its save is in flight.
+	const [want, setWant] = useState<boolean>();
+	const [asking, setAsking] = useState<boolean>();
+	const go = (on: boolean) => {
+		setWant(on);
+		save.mutate(patch(on), { onSettled: () => setWant(undefined) });
+	};
 	return (
-		<Section
-			title="必须绑定手机号"
-			editable={editable}
-			form={form}
-			footer={editable && <SaveBar save={save} />}
-		>
-			<form.Field name="requirePhone">
-				{(field) => (
-					<FormField
-						field={field}
-						label="必须绑定手机号"
-						help="开启后，没有手机号的用户需先绑定手机号才能登录。"
-					>
-						{({ id }) => (
-							<>
-								<Switch
-									id={id}
-									checked={field.state.value}
-									// Without SMS it can only be turned off, never on.
-									disabled={!editable || (!sms && !field.state.value)}
-									onCheckedChange={field.handleChange}
-								/>
-								{!sms && (
-									<Alert variant="warning">
-										<AlertDescription>
-											需先启用短信通道，否则用户收不到绑定手机号的验证码。{" "}
-											<ChannelsLink>启用短信通道</ChannelsLink>
-										</AlertDescription>
-									</Alert>
-								)}
-							</>
-						)}
-					</FormField>
-				)}
-			</form.Field>
-			<ConfirmDialog
-				open={asking}
-				onOpenChange={setAsking}
-				title="开启必须绑定手机号？"
-				action="开启必须绑定手机号"
-				destructive={false}
-				onConfirm={() => save.mutate({ requirePhone: true })}
-			>
-				没有手机号的用户下次登录时需先绑定手机号。
-			</ConfirmDialog>
-		</Section>
+		<div className="space-y-3">
+			<Field orientation="horizontal">
+				<FieldContent>
+					<FieldLabel htmlFor={id}>{label}</FieldLabel>
+					<FieldDescription>{help}</FieldDescription>
+				</FieldContent>
+				<Switch
+					id={id}
+					checked={want ?? checked}
+					disabled={!editable || busy || disabled}
+					onCheckedChange={(on) =>
+						confirm && planPolicySave(current, patch(on)).confirm
+							? setAsking(on)
+							: go(on)
+					}
+				/>
+			</Field>
+			{children}
+			<FormError error={save.error} />
+			{confirm && (
+				<ConfirmDialog
+					open={asking !== undefined}
+					onOpenChange={(o) => !o && setAsking(undefined)}
+					title={confirm.title}
+					action={confirm.action}
+					destructive={false}
+					onConfirm={() => asking !== undefined && go(asking)}
+				>
+					{confirm.body}
+				</ConfirmDialog>
+			)}
+		</div>
 	);
 }
 

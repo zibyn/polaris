@@ -65,7 +65,8 @@ export function CreateAppSheet({
 			title="创建应用"
 			description={
 				p
-					? `${typeName[p.type]}。类型创建后不能更改。`
+					? // The platform isn't stored: say which type the app will show as.
+						`${p.name}属于「${typeName[p.type]}」，创建后按此类型显示，不能更改。`
 					: "选择最接近的平台，将按平台预设配置。"
 			}
 		>
