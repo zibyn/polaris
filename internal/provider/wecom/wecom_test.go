@@ -16,7 +16,8 @@ import (
 // fake is qyapi: gettoken hands out "at1", "at2", ... and getuserinfo
 // answers what a test sets while the token is the latest one.
 type fake struct {
-	gettokens int
+	gettokens int // tokens handed out
+	calls     int // gettoken requests, failed ones too
 	userinfo  string
 	expire    bool // the next getuserinfo answers 42001
 }
@@ -26,6 +27,7 @@ func start(t *testing.T) *fake {
 	f := &fake{userinfo: `{"errcode":0,"errmsg":"ok","userid":"ZhangSan"}`}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /cgi-bin/gettoken", func(w http.ResponseWriter, r *http.Request) {
+		f.calls++
 		if r.URL.Query().Get("corpid") != "ww1" || r.URL.Query().Get("corpsecret") != "shh" {
 			_, _ = w.Write([]byte(`{"errcode":40001,"errmsg":"invalid credential"}`))
 			return
@@ -100,6 +102,21 @@ func TestWeComCachesTheAccessToken(t *testing.T) {
 	}
 	if f.gettokens != 2 {
 		t.Errorf("gettoken called %d times after expiry", f.gettokens)
+	}
+}
+
+// A wrong secret is not retried at WeCom on every login: that would lock
+// the corp out of gettoken.
+func TestWeComBacksOffAFailedGettoken(t *testing.T) {
+	f := start(t)
+	p := newWeCom(t, "wrong")
+	for range 3 {
+		if _, err := callback(p); err == nil || !strings.Contains(err.Error(), "invalid credential") {
+			t.Fatalf("err %v", err)
+		}
+	}
+	if f.calls != 1 {
+		t.Errorf("gettoken called %d times", f.calls)
 	}
 }
 

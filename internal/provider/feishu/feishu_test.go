@@ -68,7 +68,7 @@ func signIn(t *testing.T, key string, f *fake) (provider.Identity, error) {
 		t.Fatal(err)
 	}
 	if _, ok := p.(provider.NoReauthPrompt); !ok {
-		t.Error("feishu can ask for no fresh sign-in")
+		t.Errorf("%s can ask for no fresh sign-in", key)
 	}
 	authURL, err := p.AuthURL(context.Background(), cb, "st", "n", "verifier-verifier-verifier-verifier-verifier")
 	if err != nil {

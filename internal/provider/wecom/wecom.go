@@ -35,11 +35,9 @@ func init() {
 		Name: "企业微信",
 		Fields: []provider.ConfigField{
 			// A userid is unique only within its corp.
-			{Field: channel.Field{Key: "corp_id", Label: "企业 ID", Type: "text",
-				Help: "不要修改已登录过 Polaris 的成员的账号(userid):改了以后他在这里就是另一个外部账号"},
-				Immutable: true},
+			{Field: channel.Field{Key: "corp_id", Label: "企业 ID", Type: "text"}, Immutable: true},
 			{Field: channel.Field{Key: "agent_id", Label: "AgentId", Type: "text",
-				Help: "应用里要开启「企业微信授权登录」,并把 Polaris 的域名配成可信域名(须 ICP 备案,端口也要一致);成员须在应用可见范围内"}},
+				Help: "应用里要开启「企业微信授权登录」,并把 Polaris 的域名配成可信域名(须 ICP 备案,端口也要一致);成员须在应用可见范围内。不要修改已登录过 Polaris 的成员的账号(userid):改了以后他在这里就是另一个外部账号"}},
 			{Field: channel.Field{Key: "secret", Label: "Secret", Type: "text", Secret: true,
 				Help: "2022-06-20 之后新建的应用,要把 Polaris 服务器的出口 IP 加进「企业可信 IP」"}},
 		},
@@ -58,6 +56,10 @@ type upstream struct {
 	mu      sync.Mutex
 	token   string
 	expires time.Time
+	// failed and failure hold the last gettoken error, returned again for a
+	// minute rather than asking WeCom.
+	failed  time.Time
+	failure error
 }
 
 // NoReauthPrompt: WeCom has no way to ask for a fresh sign-in.
@@ -129,20 +131,36 @@ func (u *upstream) accessToken(ctx context.Context) (string, error) {
 	if u.token != "" && time.Now().Before(u.expires) {
 		return u.token, nil
 	}
+	if time.Since(u.failed) < time.Minute {
+		return "", u.failure
+	}
+	token, expiresIn, err := u.getToken(ctx)
+	if err != nil {
+		// A login given up on is no failure of WeCom's to remember.
+		if ctx.Err() == nil {
+			u.failed, u.failure = time.Now(), err
+		}
+		return "", err
+	}
+	// A margin so a token is never used in its last minutes, and a floor so
+	// a missing expires_in does not mean a gettoken per login.
+	u.token, u.expires = token, time.Now().Add(max(time.Duration(expiresIn)*time.Second*9/10, time.Minute))
+	return u.token, nil
+}
+
+func (u *upstream) getToken(ctx context.Context) (string, int, error) {
 	var tok struct {
 		errorReply
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 	}
 	if err := get(ctx, "/cgi-bin/gettoken", url.Values{"corpid": {u.corpID}, "corpsecret": {u.secret}}, &tok); err != nil {
-		return "", fmt.Errorf("企业微信 access_token: %w", err)
+		return "", 0, fmt.Errorf("企业微信 access_token: %w", err)
 	}
 	if tok.ErrCode != 0 || tok.AccessToken == "" {
-		return "", tok.err("企业微信 access_token(检查企业 ID 与 Secret)")
+		return "", 0, tok.err("企业微信 access_token(检查企业 ID 与 Secret)")
 	}
-	// A margin so a token is never used in its last minutes.
-	u.token, u.expires = tok.AccessToken, time.Now().Add(time.Duration(tok.ExpiresIn)*time.Second*9/10)
-	return u.token, nil
+	return tok.AccessToken, tok.ExpiresIn, nil
 }
 
 // errorReply is how every qyapi answer says it failed, over HTTP 200.
