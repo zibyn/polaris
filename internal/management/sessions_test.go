@@ -15,7 +15,7 @@ func (e *env) session(sub, clientID string, browser bool) string {
 	if browser {
 		idHash = []byte(sub + clientID)
 	}
-	s, err := oidcstore.New(e.pool, e.keyring).CreateSession(context.Background(), idHash, clientID, sub, time.Now(), []string{"sms"})
+	s, err := oidcstore.New(e.pool, e.keyring).CreateSession(context.Background(), idHash, clientID, sub, time.Now(), []string{"sms"}, "sms")
 	if err != nil {
 		e.t.Fatal(err)
 	}

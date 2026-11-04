@@ -36,6 +36,10 @@ const (
 	// Ours: the Application requires a Role on its default API, and the User
 	// holds none (docs/spec/rbac.md). Only ever added to, like next.
 	errApplicationAccessDenied = "application_access_denied"
+	// Ours: the Application does not allow this login method, or (no_login_method)
+	// any: its own set and the instance's have nothing in common (ADR 0027).
+	errLoginMethodNotAllowed = "login_method_not_allowed"
+	errNoLoginMethod         = "no_login_method"
 )
 
 // Values of next (ADR 0010): only ever added to, never renamed or removed.
@@ -64,6 +68,7 @@ type pendingLogin struct {
 	Sub      string   `json:"sub"`
 	AuthTime int64    `json:"auth_time"`
 	AMR      []string `json:"amr"`
+	Method   string   `json:"method,omitempty"` // the login method (ADR 0027)
 	// TOTP: waiting for a TOTP code or a 恢复码, with Failures mistakes so far.
 	TOTP     bool `json:"totp,omitempty"`
 	Failures int  `json:"failures,omitempty"`
@@ -172,6 +177,20 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 	if err != nil {
 		return answer{}, err
 	}
+	m, err := s.methods(ctx, c.ID)
+	if err != nil {
+		return answer{}, err
+	}
+	if m.none() && st.Pending == nil {
+		return answer{}, &challengeError{status: http.StatusForbidden, Code: errNoLoginMethod, Description: errNoMethod}
+	}
+	// refuse turns down a login method the Application does not allow.
+	refuse := func(method string) error {
+		if m.allows(method) {
+			return nil
+		}
+		return &challengeError{status: http.StatusForbidden, Code: errLoginMethodNotAllowed, Description: errMethodNotAllowed.Error()}
+	}
 
 	// save keeps st in the auth_session.
 	save := func() error {
@@ -194,7 +213,10 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 	// signedIn ends the sign-in with an authorization code, unless sub must
 	// pass 两步验证, agree to the terms or bind a phone number first, in that
 	// order.
-	signedIn := func(sub string, authTime time.Time, amr []string) (answer, error) {
+	signedIn := func(sub string, authTime time.Time, amr []string, method string) (answer, error) {
+		if err := refuse(method); err != nil {
+			return answer{}, err
+		}
 		what, err := s.nextStep(ctx, sub, amr, false)
 		if err != nil {
 			return answer{}, err
@@ -218,13 +240,13 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			// so far is that the User knows a password someone else chose, and
 			// letting that carry on through 两步验证, the terms and a phone
 			// number would build the session on it.
-			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, Password: true}, ""
+			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, Method: method, Password: true}, ""
 			return next(nextPassword, "set your own password: send password")
 		case stepTOTP:
-			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, TOTP: true}, ""
+			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, Method: method, TOTP: true}, ""
 			return next(nextTOTP, "两步验证 is on: send totp or recovery_code")
 		case stepPhone:
-			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr}, ""
+			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, Method: method}, ""
 			return next(nextPhone, "a phone number must be bound: send a code to one")
 		}
 		if ok, err := s.mayUse(ctx, c.ID, sub); err != nil {
@@ -238,7 +260,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 				return answer{}, err
 			}
 		}
-		sess, err := s.store.CreateSession(deviceContext(r), nil, c.ID, sub, authTime, amr)
+		sess, err := s.store.CreateSession(deviceContext(r), nil, c.ID, sub, authTime, amr, method)
 		if errors.Is(err, pgx.ErrNoRows) { // disabled since authenticating
 			return answer{}, &challengeError{status: http.StatusBadRequest, Code: string(goidc.ErrorCodeAccessDenied), Description: identity.ErrDisabled.Error()}
 		} else if err != nil {
@@ -300,7 +322,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			}
 			return mistake(err)
 		}
-		return signedIn(p.Sub, time.Unix(p.AuthTime, 0), p.AMR)
+		return signedIn(p.Sub, time.Unix(p.AuthTime, 0), p.AMR, p.Method)
 
 	case st.Pending != nil && st.Pending.TOTP: // nothing else before TOTP
 		p := st.Pending
@@ -313,9 +335,9 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		})
 		switch {
 		case err == nil:
-			return signedIn(p.Sub, time.Unix(p.AuthTime, 0), withMFA(p.AMR))
+			return signedIn(p.Sub, time.Unix(p.AuthTime, 0), withMFA(p.AMR), p.Method)
 		case errors.Is(err, twofactor.ErrOff): // turned off meanwhile: nothing to enter
-			return signedIn(p.Sub, time.Unix(p.AuthTime, 0), p.AMR)
+			return signedIn(p.Sub, time.Unix(p.AuthTime, 0), p.AMR, p.Method)
 		case wrongSecondFactor(err):
 			if p.Failures++; p.Failures >= totpTries {
 				if err := s.q.DeleteChallengeSession(ctx, hash(token)); err != nil {
@@ -332,6 +354,9 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 	case r.PostFormValue("passkey") == "begin":
 		if st.Pending != nil {
 			return answer{}, invalid("a phone number must be bound")
+		}
+		if err := refuse(methodPasskey); err != nil {
+			return answer{}, err
 		}
 		// No PoW: begin sends no code and checks no credential, so a PoW
 		// would protect nothing; the per-IP budget bounds it instead
@@ -372,7 +397,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			return answer{}, invalid(bad.Error())
 		}
 		// The amr says mfa, which signedIn reads as 两步验证 passed.
-		return signedIn(in.Sub, time.Now(), passkey.AMR(in.BackupEligible))
+		return signedIn(in.Sub, time.Now(), passkey.AMR(in.BackupEligible), methodPasskey)
 
 	case r.PostFormValue("code") != "":
 		if st.Identifier == "" {
@@ -390,18 +415,23 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			if err := s.ids.AddIdentifier(ctx, p.Sub, kind, value); err != nil {
 				return mistake(err)
 			}
-			return signedIn(p.Sub, time.Unix(p.AuthTime, 0), p.AMR)
+			return signedIn(p.Sub, time.Unix(p.AuthTime, 0), p.AMR, p.Method)
 		}
 		sub, err := s.ids.SignIn(ctx, kind, value)
 		if err != nil {
 			return mistake(err)
 		}
-		return signedIn(sub, time.Now(), []string{string(codeAMR(kind))})
+		return signedIn(sub, time.Now(), []string{string(codeAMR(kind))}, codeMethod(kind))
 
 	case r.PostFormValue("identifier") != "":
 		kind, value, err := identity.ParseIdentifier(r.PostFormValue("identifier"))
 		if err == nil && st.Pending != nil && kind != "phone" {
 			err = identity.ErrPhone
+		}
+		if err == nil && st.Pending == nil {
+			if err := refuse(codeMethod(kind)); err != nil {
+				return answer{}, err
+			}
 		}
 		if err == nil {
 			err = s.pow.Verify(ctx, r.PostFormValue("altcha"))
@@ -422,6 +452,9 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if st.Pending != nil {
 			return answer{}, invalid("a phone number must be bound")
 		}
+		if err := refuse(providerMethod(r.PostFormValue("provider"))); err != nil {
+			return answer{}, err
+		}
 		sub, err := s.providers.SignInWithClientToken(ctx, r.PostFormValue("provider"), r.PostFormValue("authorization_code"))
 		switch {
 		case errors.Is(err, provider.ErrNotFound):
@@ -432,11 +465,14 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		case err != nil:
 			return mistake(err)
 		}
-		return signedIn(sub, time.Now(), []string{amrFed})
+		return signedIn(sub, time.Now(), []string{amrFed}, providerMethod(r.PostFormValue("provider")))
 
 	case r.PostFormValue("username") != "":
 		if st.Pending != nil {
 			return answer{}, invalid("a phone number must be bound")
+		}
+		if err := refuse(methodPassword); err != nil {
+			return answer{}, err
 		}
 		if err := s.pow.Verify(ctx, r.PostFormValue("altcha")); err != nil {
 			return mistake(err)
@@ -445,7 +481,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if err != nil {
 			return mistake(err)
 		}
-		return signedIn(sub, time.Now(), []string{string(goidc.AMRPassword)})
+		return signedIn(sub, time.Now(), []string{string(goidc.AMRPassword)}, methodPassword)
 	}
 	return answer{}, invalid("send identifier, code, username and password, provider and authorization_code, or passkey")
 }

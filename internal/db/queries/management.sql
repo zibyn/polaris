@@ -227,7 +227,7 @@ SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_re
        COALESCE(extract(epoch FROM session_max_lifetime), 0)::int AS session_max_lifetime,
        refresh_tokens, require_role, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
        COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps,
-       token_auth_method, jwks
+       token_auth_method, jwks, login_methods
 FROM applications
 WHERE @client_id::text = '' OR client_id = @client_id
 ORDER BY builtin DESC, created_at, client_id;
@@ -256,7 +256,8 @@ UPDATE applications SET
     backchannel_logout_uri = NULLIF(@backchannel_logout_uri::text, ''),
     apple_app_ids = @apple_app_ids,
     android_apps = @android_apps,
-    jwks = COALESCE(sqlc.narg(jwks), jwks)
+    jwks = COALESCE(sqlc.narg(jwks), jwks),
+    login_methods = sqlc.narg(login_methods)
 WHERE client_id = @client_id AND NOT builtin;
 
 -- name: SetApplicationSecret :execrows

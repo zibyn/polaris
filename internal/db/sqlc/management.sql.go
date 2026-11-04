@@ -410,7 +410,7 @@ SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_re
        COALESCE(extract(epoch FROM session_max_lifetime), 0)::int AS session_max_lifetime,
        refresh_tokens, require_role, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
        COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps,
-       token_auth_method, jwks
+       token_auth_method, jwks, login_methods
 FROM applications
 WHERE $1::text = '' OR client_id = $1
 ORDER BY builtin DESC, created_at, client_id
@@ -436,6 +436,7 @@ type ListApplicationsRow struct {
 	AndroidApps            []byte
 	TokenAuthMethod        string
 	Jwks                   []byte
+	LoginMethods           []string
 }
 
 // One Application, or all of them for an empty client_id.
@@ -468,6 +469,7 @@ func (q *Queries) ListApplications(ctx context.Context, clientID string) ([]List
 			&i.AndroidApps,
 			&i.TokenAuthMethod,
 			&i.Jwks,
+			&i.LoginMethods,
 		); err != nil {
 			return nil, err
 		}
@@ -1041,8 +1043,9 @@ UPDATE applications SET
     backchannel_logout_uri = NULLIF($11::text, ''),
     apple_app_ids = $12,
     android_apps = $13,
-    jwks = COALESCE($14, jwks)
-WHERE client_id = $15 AND NOT builtin
+    jwks = COALESCE($14, jwks),
+    login_methods = $15
+WHERE client_id = $16 AND NOT builtin
 `
 
 type UpdateApplicationParams struct {
@@ -1060,6 +1063,7 @@ type UpdateApplicationParams struct {
 	AppleAppIds            []string
 	AndroidApps            []byte
 	Jwks                   []byte
+	LoginMethods           []string
 	ClientID               string
 }
 
@@ -1082,6 +1086,7 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 		arg.AppleAppIds,
 		arg.AndroidApps,
 		arg.Jwks,
+		arg.LoginMethods,
 		arg.ClientID,
 	)
 	if err != nil {

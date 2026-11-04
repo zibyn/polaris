@@ -59,13 +59,14 @@ func SessionDefaults(browser bool) (idleSecs, maxSecs int32) {
 
 // CreateSession signs sub in for clientID: a browser Session under the
 // cookie hash idHash, or an App Session if idHash is nil. Its device comes
-// from ctx (WithDevice). pgx.ErrNoRows: the User is disabled.
-func (s *Store) CreateSession(ctx context.Context, idHash []byte, clientID, sub string, authTime time.Time, amr []string) (sqlc.CreateSessionRow, error) {
+// from ctx (WithDevice); method is the login method it was signed in with
+// (ADR 0027). pgx.ErrNoRows: the User is disabled.
+func (s *Store) CreateSession(ctx context.Context, idHash []byte, clientID, sub string, authTime time.Time, amr []string, method string) (sqlc.CreateSessionRow, error) {
 	ip, ua := Device(ctx)
 	idle, maxLife := SessionDefaults(idHash != nil)
 	return s.q.CreateSession(ctx, sqlc.CreateSessionParams{
 		IDHash: idHash, ClientID: clientID, UserID: sub, AuthTime: pgtype.Timestamptz{Time: authTime, Valid: true},
-		Amr: amr, Ip: ip, UserAgent: ua, DefaultIdleSecs: idle, DefaultMaxSecs: maxLife,
+		Amr: amr, LoginMethod: method, Ip: ip, UserAgent: ua, DefaultIdleSecs: idle, DefaultMaxSecs: maxLife,
 	})
 }
 

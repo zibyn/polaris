@@ -101,6 +101,20 @@ curl -X DELETE "$ISSUER/v1/management/users/$SUB/invite" -H "Authorization: Bear
 - 对已有 User 只有这一条路:Management API 不提供替本人设密码的接口。
 - 邀请现在是什么状态,`GET /users/{sub}` 的 `invite` 字段说得出:`{"state": "none" | "sent" | "accepted"}`,`sent` 时带 `expiresAt`(链接失效的时刻,发出后 7 天)。`accepted` 是上一条已经被本人用掉;撤销过、过期、从来没发过,一律是 `none`——过期的不用等清理任务扫掉那行,对调用方来说都是"没有能用的链接"。`accepted` 靠审计日志里的 `invite.accepted` 认出来,日志过了保留期(默认 180 天)这条就回落到 `none`:同样按"没有能用的链接"处理即可。
 
+## 指定 Application 的登录方式
+
+`ApplicationSettings` 的 `loginMethods` 不填就是**跟随实例**(默认):实例开着的登录方式、启用的 Provider 都能用,以后新加的也算。填了就只用这几种,且实例也得开着(ADR 0027):
+
+```json
+"loginMethods": {"methods": ["sms", "password"], "providers": ["corp-sso"]}
+```
+
+- `methods` 取 `sms`、`email`、`password`、`passkey`;`providers` 是 Provider ID,必须已存在,删除 Provider 时自动从各 Application 里去掉。
+- 两个都空、M2M Application 带这一项、或者内置的管理端与账号中心带这一项,返回 `422`。
+- `PUT /applications/{clientId}` 整体替换设置:改别的字段时要把 `loginMethods` 原样带回,漏掉就回到跟随实例。
+- 读出来的 Application 多一个只读的 `noLoginMethod`:为 `true` 时它指定的方式在实例里一个都没开,现在没人能登录它。
+- 改设置不吊销已有的 Session 和 refresh token,只影响之后的登录与单点登录判断。
+
 ## 各接口所需 Permission
 
 | Permission | 接口 |

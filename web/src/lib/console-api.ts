@@ -152,7 +152,12 @@ export type ApplicationSettings = {
 	appleAppIds: string[];
 	androidApps: AndroidApp[];
 	jwks?: { keys: unknown[] }; // Application 公钥; absent keeps the stored set
+	loginMethods?: LoginMethods; // absent follows the instance (ADR 0027)
 };
+// LoginMethods are an Application's own 登录方式; it offers those the
+// instance has on too.
+export type LoginMethod = "sms" | "email" | "password" | "passkey";
+export type LoginMethods = { methods: LoginMethod[]; providers: string[] };
 // TokenAuthMethod is the 客户端认证方式; none for a public Application.
 export type TokenAuthMethod =
 	| "none"
@@ -165,6 +170,7 @@ export type Application = ApplicationSettings & {
 	tokenAuthMethod: TokenAuthMethod;
 	createdAt: string;
 	webhookSecretUpdatedAt?: string;
+	noLoginMethod?: boolean; // its own login methods and the instance's have none in common
 };
 export type PermissionInfo = { key: string; name: string; builtin: boolean };
 export type RoleDef = {

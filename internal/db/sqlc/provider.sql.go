@@ -61,6 +61,9 @@ func (q *Queries) BindExternalIdentity(ctx context.Context, arg BindExternalIden
 const deleteProvider = `-- name: DeleteProvider :execrows
 WITH gone AS (
     DELETE FROM providers WHERE providers.id = $2 RETURNING providers.id
+), unnamed AS (
+    UPDATE applications SET login_methods = array_remove(login_methods, 'provider:' || $2::text)
+    WHERE 'provider:' || $2::text = ANY (login_methods) AND EXISTS (SELECT 1 FROM gone)
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'provider.deleted', NULL, jsonb_build_object('id', gone.id, 'by', $1::text) FROM gone
@@ -72,6 +75,8 @@ type DeleteProviderParams struct {
 }
 
 // Audited with who did it.
+// Applications that named it stop naming it: a Provider created later under
+// the same id is not the one they chose.
 func (q *Queries) DeleteProvider(ctx context.Context, arg DeleteProviderParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteProvider, arg.By, arg.ID)
 	if err != nil {

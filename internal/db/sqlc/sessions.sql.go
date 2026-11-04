@@ -12,13 +12,13 @@ import (
 )
 
 const createSession = `-- name: CreateSession :one
-INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, ip, user_agent, idle_timeout, max_lifetime)
-SELECT $1, $2::text, u.id, $3, $4, $5, $6,
+INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, login_method, ip, user_agent, idle_timeout, max_lifetime)
+SELECT $1, $2::text, u.id, $3, $4, $5::text, $6, $7,
        COALESCE((SELECT session_idle_timeout FROM applications WHERE applications.client_id = $2),
-                make_interval(secs => $7::int)),
+                make_interval(secs => $8::int)),
        COALESCE((SELECT session_max_lifetime FROM applications WHERE applications.client_id = $2),
-                make_interval(secs => $8::int))
-FROM users u WHERE u.id = $9 AND u.disabled_at IS NULL
+                make_interval(secs => $9::int))
+FROM users u WHERE u.id = $10 AND u.disabled_at IS NULL
 RETURNING id, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs
 `
 
@@ -27,6 +27,7 @@ type CreateSessionParams struct {
 	ClientID        string
 	AuthTime        pgtype.Timestamptz
 	Amr             []string
+	LoginMethod     string
 	Ip              pgtype.Text
 	UserAgent       pgtype.Text
 	DefaultIdleSecs int32
@@ -48,6 +49,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (C
 		arg.ClientID,
 		arg.AuthTime,
 		arg.Amr,
+		arg.LoginMethod,
 		arg.Ip,
 		arg.UserAgent,
 		arg.DefaultIdleSecs,
@@ -105,21 +107,22 @@ func (q *Queries) EndUserSession(ctx context.Context, arg EndUserSessionParams) 
 }
 
 const renewSession = `-- name: RenewSession :one
-UPDATE sessions SET id_hash = $1, auth_time = $2, amr = $3, last_seen_at = now(),
-    ip = $4, user_agent = $5
-WHERE sessions.id_hash = $6 AND sessions.user_id = $7
+UPDATE sessions SET id_hash = $1, auth_time = $2, amr = $3, login_method = $4::text, last_seen_at = now(),
+    ip = $5, user_agent = $6
+WHERE sessions.id_hash = $7 AND sessions.user_id = $8
   AND sessions.id IN (SELECT l.id FROM live_sessions l)
 RETURNING id, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs
 `
 
 type RenewSessionParams struct {
-	NewHash   []byte
-	AuthTime  pgtype.Timestamptz
-	Amr       []string
-	Ip        pgtype.Text
-	UserAgent pgtype.Text
-	OldHash   []byte
-	UserID    string
+	NewHash     []byte
+	AuthTime    pgtype.Timestamptz
+	Amr         []string
+	LoginMethod string
+	Ip          pgtype.Text
+	UserAgent   pgtype.Text
+	OldHash     []byte
+	UserID      string
 }
 
 type RenewSessionRow struct {
@@ -133,6 +136,7 @@ func (q *Queries) RenewSession(ctx context.Context, arg RenewSessionParams) (Ren
 		arg.NewHash,
 		arg.AuthTime,
 		arg.Amr,
+		arg.LoginMethod,
 		arg.Ip,
 		arg.UserAgent,
 		arg.OldHash,
@@ -146,7 +150,7 @@ func (q *Queries) RenewSession(ctx context.Context, arg RenewSessionParams) (Ren
 const touchSession = `-- name: TouchSession :one
 UPDATE sessions SET last_seen_at = now(), ip = $1, user_agent = $2
 WHERE sessions.id_hash = $3 AND sessions.id IN (SELECT l.id FROM live_sessions l)
-RETURNING id, user_id, auth_time, amr, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs
+RETURNING id, user_id, auth_time, amr, COALESCE(login_method, '')::text AS login_method, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs
 `
 
 type TouchSessionParams struct {
@@ -156,11 +160,12 @@ type TouchSessionParams struct {
 }
 
 type TouchSessionRow struct {
-	ID       string
-	UserID   string
-	AuthTime pgtype.Timestamptz
-	Amr      []string
-	IdleSecs int32
+	ID          string
+	UserID      string
+	AuthTime    pgtype.Timestamptz
+	Amr         []string
+	LoginMethod string
+	IdleSecs    int32
 }
 
 func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) (TouchSessionRow, error) {
@@ -171,6 +176,7 @@ func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) (Tou
 		&i.UserID,
 		&i.AuthTime,
 		&i.Amr,
+		&i.LoginMethod,
 		&i.IdleSecs,
 	)
 	return i, err
