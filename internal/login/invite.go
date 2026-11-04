@@ -69,7 +69,7 @@ func (s *Service) acceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if what == stepDone {
-		if _, err := s.newSession(w, r, identity.AccountClientID, sub, time.Now(), amr, methodEmail); err != nil {
+		if _, err := s.newSession(w, r, identity.AccountClientID, sub, time.Now(), amr, identity.MethodEmail); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}

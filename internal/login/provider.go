@@ -69,7 +69,7 @@ func (s *Service) providerCallback(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了，请稍后重试")
 		return
 	}
-	as.Store = map[string]any{storeFederated: f.Sub, storeMethod: providerMethod(id), storeBinder: hex.EncodeToString(hash(b))}
+	as.Store = map[string]any{storeFederated: f.Sub, storeMethod: identity.ProviderMethod(id), storeBinder: hex.EncodeToString(hash(b))}
 	if err := s.store.SaveSession(ctx, as); err != nil {
 		slog.Error("provider login", "err", err)
 		s.page(w, r, pickLang(r, ""), "", http.StatusInternalServerError, "message", "出错了，请稍后重试")

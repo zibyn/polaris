@@ -184,9 +184,11 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 	if m.none() && st.Pending == nil {
 		return answer{}, &challengeError{status: http.StatusForbidden, Code: errNoLoginMethod, Description: errNoMethod}
 	}
-	// refuse turns down a login method the Application does not allow.
+	// refuse turns down a login method the Application's own set leaves out.
+	// One the instance has off is left to its own switch, with the error the
+	// SDK already knows (docs/sdk-behavior.md).
 	refuse := func(method string) error {
-		if m.allows(method) {
+		if m.admits(method) {
 			return nil
 		}
 		return &challengeError{status: http.StatusForbidden, Code: errLoginMethodNotAllowed, Description: errMethodNotAllowed.Error()}
@@ -355,7 +357,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if st.Pending != nil {
 			return answer{}, invalid("a phone number must be bound")
 		}
-		if err := refuse(methodPasskey); err != nil {
+		if err := refuse(identity.MethodPasskey); err != nil {
 			return answer{}, err
 		}
 		// No PoW: begin sends no code and checks no credential, so a PoW
@@ -397,7 +399,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			return answer{}, invalid(bad.Error())
 		}
 		// The amr says mfa, which signedIn reads as 两步验证 passed.
-		return signedIn(in.Sub, time.Now(), passkey.AMR(in.BackupEligible), methodPasskey)
+		return signedIn(in.Sub, time.Now(), passkey.AMR(in.BackupEligible), identity.MethodPasskey)
 
 	case r.PostFormValue("code") != "":
 		if st.Identifier == "" {
@@ -421,7 +423,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if err != nil {
 			return mistake(err)
 		}
-		return signedIn(sub, time.Now(), []string{string(codeAMR(kind))}, codeMethod(kind))
+		return signedIn(sub, time.Now(), []string{string(codeAMR(kind))}, identity.CodeMethod(kind))
 
 	case r.PostFormValue("identifier") != "":
 		kind, value, err := identity.ParseIdentifier(r.PostFormValue("identifier"))
@@ -429,7 +431,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			err = identity.ErrPhone
 		}
 		if err == nil && st.Pending == nil {
-			if err := refuse(codeMethod(kind)); err != nil {
+			if err := refuse(identity.CodeMethod(kind)); err != nil {
 				return answer{}, err
 			}
 		}
@@ -452,7 +454,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if st.Pending != nil {
 			return answer{}, invalid("a phone number must be bound")
 		}
-		if err := refuse(providerMethod(r.PostFormValue("provider"))); err != nil {
+		if err := refuse(identity.ProviderMethod(r.PostFormValue("provider"))); err != nil {
 			return answer{}, err
 		}
 		sub, err := s.providers.SignInWithClientToken(ctx, r.PostFormValue("provider"), r.PostFormValue("authorization_code"))
@@ -465,13 +467,13 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		case err != nil:
 			return mistake(err)
 		}
-		return signedIn(sub, time.Now(), []string{amrFed}, providerMethod(r.PostFormValue("provider")))
+		return signedIn(sub, time.Now(), []string{amrFed}, identity.ProviderMethod(r.PostFormValue("provider")))
 
 	case r.PostFormValue("username") != "":
 		if st.Pending != nil {
 			return answer{}, invalid("a phone number must be bound")
 		}
-		if err := refuse(methodPassword); err != nil {
+		if err := refuse(identity.MethodPassword); err != nil {
 			return answer{}, err
 		}
 		if err := s.pow.Verify(ctx, r.PostFormValue("altcha")); err != nil {
@@ -481,7 +483,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if err != nil {
 			return mistake(err)
 		}
-		return signedIn(sub, time.Now(), []string{string(goidc.AMRPassword)}, methodPassword)
+		return signedIn(sub, time.Now(), []string{string(goidc.AMRPassword)}, identity.MethodPassword)
 	}
 	return answer{}, invalid("send identifier, code, username and password, provider and authorization_code, or passkey")
 }

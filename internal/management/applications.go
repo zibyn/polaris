@@ -15,7 +15,6 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -65,7 +64,7 @@ func (m *LoginMethods) column() []string {
 	}
 	out := append([]string{}, m.Methods...)
 	for _, id := range m.Providers {
-		out = append(out, "provider:"+id)
+		out = append(out, identity.ProviderMethod(id))
 	}
 	return out
 }
@@ -76,7 +75,7 @@ func loginMethodsOf(column []string) *LoginMethods {
 	}
 	m := &LoginMethods{Methods: []string{}, Providers: []string{}}
 	for _, v := range column {
-		if id, ok := strings.CutPrefix(v, "provider:"); ok {
+		if id, ok := identity.MethodProvider(v); ok {
 			m.Providers = append(m.Providers, id)
 		} else {
 			m.Methods = append(m.Methods, v)
