@@ -225,13 +225,15 @@ func (s *Service) updateApplication(ctx context.Context, in *struct {
 	if err != nil {
 		return nil, err
 	}
-	// They always follow the instance: no Application setting locks admins
-	// out of the console (ADR 0027).
-	if app.Builtin && in.Body.LoginMethods != nil {
-		return nil, huma.Error422UnprocessableEntity("内置 Application 的登录方式跟随实例")
+	if in.Body.LoginMethods != nil {
+		if err := invalid(noOwn(app.Builtin, app.Type, "登录方式")); err != nil {
+			return nil, err
+		}
 	}
-	if app.Builtin && in.Body.Brand != nil {
-		return nil, huma.Error422UnprocessableEntity("内置 Application 的品牌跟随实例")
+	if in.Body.Brand != nil {
+		if err := invalid(noOwn(app.Builtin, app.Type, "品牌")); err != nil {
+			return nil, err
+		}
 	}
 	if app.Builtin {
 		return nil, errBuiltinApplication
@@ -282,6 +284,19 @@ var (
 	certSHA256  = regexp.MustCompile(`^([0-9A-F]{2}:){31}[0-9A-F]{2}$`)
 )
 
+// noOwn refuses an Application its own what, 登录方式 or 品牌: a built-in
+// one follows the instance, so that no Application setting locks admins out
+// of the console (ADR 0027); an M2M one never signs in.
+func noOwn(builtin bool, typ, what string) error {
+	switch {
+	case builtin:
+		return identity.Invalid("内置 Application 的" + what + "跟随实例")
+	case typ == "m2m":
+		return identity.Invalid("M2M Application 不登录,没有" + what)
+	}
+	return nil
+}
+
 func (st *ApplicationSettings) validate(typ string) error {
 	// An M2M Application only ever calls its one API as itself: no login, so
 	// nothing to redirect to and no native App to associate. Its default API
@@ -299,11 +314,15 @@ func (st *ApplicationSettings) validate(typ string) error {
 		if st.RequireRole {
 			return identity.Invalid("M2M Application 没有 User 登录,不能要求 Role")
 		}
-		if st.LoginMethods != nil {
-			return identity.Invalid("M2M Application 不登录,没有登录方式")
+	}
+	if st.LoginMethods != nil {
+		if err := noOwn(false, typ, "登录方式"); err != nil {
+			return err
 		}
-		if st.Brand != nil {
-			return identity.Invalid("M2M Application 不登录,没有品牌")
+	}
+	if st.Brand != nil {
+		if err := noOwn(false, typ, "品牌"); err != nil {
+			return err
 		}
 	}
 	if m := st.LoginMethods; m != nil && len(m.Methods)+len(m.Providers) == 0 {
