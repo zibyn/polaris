@@ -82,6 +82,7 @@ import {
 	snippet,
 } from "#/lib/onboarding";
 import { managementAPI } from "#/lib/users";
+import { BrandSection } from "#/routes/console/-components/brand-section";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import {
 	DangerZone,
@@ -174,6 +175,7 @@ const currentSettings = (a: Application): ApplicationSettings => ({
 	appleAppIds: a.appleAppIds,
 	androidApps: a.androidApps,
 	loginMethods: a.loginMethods,
+	brand: a.brand,
 });
 
 const useApplication = (clientId: string) =>
@@ -893,6 +895,7 @@ function LoginTab({ app, editable }: TabProps) {
 				</Collapsible>
 			</Section>
 			{!app.builtin && <LoginMethods app={app} editable={editable} />}
+			{!app.builtin && <AppBrand app={app} editable={editable} />}
 			{app.type === "public" && <NativeApps app={app} editable={editable} />}
 			{app.type === "confidential" && (
 				<BackchannelLogout app={app} editable={editable} />
@@ -1021,6 +1024,41 @@ function LoginMethods({ app, editable }: TabProps) {
 				</>
 			)}
 		</Section>
+	);
+}
+
+// AppBrand is the Application's own 品牌 items over the instance's (ADR
+// 0028); the built-in Applications always follow, so they don't show it.
+function AppBrand({ app, editable }: TabProps) {
+	const save = useSave(app);
+	const client = useQueryClient();
+	return (
+		<BrandSection
+			intro="默认跟随实例在设置里配的品牌。这里填了哪项就只换哪项，留空的继续跟随实例。"
+			brand={app.brand}
+			editable={editable}
+			follows="跟随实例"
+			logoPath={`/applications/${app.clientId}/brand/logo`}
+			onLogo={(logo) => {
+				// The next save sends the Logo back; it must be this one.
+				client.setQueryData<{ applications: Application[] }>(
+					applicationsQuery.queryKey,
+					(d) =>
+						d && {
+							applications: d.applications.map((a) =>
+								a.clientId === app.clientId
+									? { ...a, brand: { ...a.brand, logo } }
+									: a,
+							),
+						},
+				);
+				return client.invalidateQueries(applicationsQuery);
+			}}
+			save={{
+				...save,
+				mutate: (brand, o) => save.mutate({ brand }, o),
+			}}
+		/>
 	);
 }
 

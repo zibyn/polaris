@@ -119,6 +119,21 @@ curl -X DELETE "$ISSUER/v1/management/users/$SUB/invite" -H "Authorization: Bear
 
 `PUT /settings` 的 `termsUrlEn`、`privacyUrlEn` 可选,须为 https。英文托管页优先链到它们,没填就用 `termsUrl`、`privacyUrl`。`termsVersion` 只有一个,中英文协议算同一版,换语言不会要求重新同意。`PUT /settings` 整体替换:改别的字段时要把它们原样带回。
 
+## 品牌
+
+托管页的品牌(ADR 0028)有三项:品牌名、Logo、主色。实例在 `PUT /settings` 的 `brand` 里设默认,Application 在 `ApplicationSettings` 的 `brand` 里逐项覆盖,没填的项跟随实例:
+
+```json
+"brand": {"name": "Acme", "logo": "<上传返回的引用>", "color": "#0a66c2"}
+```
+
+- `color` 只收 `#rrggbb`,白字在它上面(也就是它在白底上)的对比度要达到 4.5:1(WCAG AA),否则 `422`。悬停色、浅底和浅底上的文字色由服务端推导。
+- Logo 先上传:`PUT /settings/brand/logo` 或 `PUT /applications/{clientId}/brand/logo`,请求体就是图片本身。只收 PNG、WebP、SVG(按内容判断,不看 Content-Type),不超过 1 MB,不重新编码;不合格返回 `422`(超过 2 MB 的请求体是 `413`)。上传当场生效,返回 `{"logo": "<引用>"}`,旧 Logo 同一事务里删掉。Logo 公开在 `/brand-logos/{logo}`,响应带 `Content-Security-Policy: sandbox` 和 `X-Content-Type-Options: nosniff`。`DELETE` 同一路径去掉 Logo。
+- `PUT` 时 `brand.logo` 只能原样带回当前的引用,或留空去掉 Logo;别的值返回 `422`。
+- `PUT /settings` 和 `PUT /applications/{clientId}` 都是整体替换:漏带 `brand` 就清空实例品牌,或让 Application 回到全部跟随实例(它自己的 Logo 一并删掉)。
+- 内置 Application 和 M2M Application 不能带品牌,带了返回 `422`。
+- 改动记入审计:实例的记 `settings.updated`,Application 的记 `application.updated`。
+
 ## 各接口所需 Permission
 
 | Permission | 接口 |
@@ -128,10 +143,10 @@ curl -X DELETE "$ISSUER/v1/management/users/$SUB/invite" -H "Authorization: Bear
 | `users:write` | `POST /users`、`POST` / `DELETE /users/{sub}/invite`、`POST /users/{sub}/disable`、`POST /users/{sub}/enable`、`DELETE /users/{sub}`、`DELETE /users/{sub}/2fa`、`PUT /users/{sub}/identifiers/{kind}`、`DELETE /users/{sub}/sessions/{id}`、`DELETE /users/{sub}/passkeys/{id}`、`DELETE /users/{sub}/external-identities/{provider}` |
 | `audit:read` | `GET /audit` |
 | `applications:read` | `GET /apis`、`GET /applications`、`GET /applications/{clientId}`、`GET /applications/{clientId}/roles` |
-| `applications:write` | `PUT` / `DELETE /apis/{api}`、`PUT` / `DELETE /apis/{api}/permissions/{key}`、`PUT` / `DELETE /apis/{api}/roles/{key}`、`POST /applications`、`PUT` / `DELETE /applications/{clientId}`、`POST /applications/{clientId}/secret` |
+| `applications:write` | `PUT` / `DELETE /apis/{api}`、`PUT` / `DELETE /apis/{api}/permissions/{key}`、`PUT` / `DELETE /apis/{api}/roles/{key}`、`POST /applications`、`PUT` / `DELETE /applications/{clientId}`、`POST /applications/{clientId}/secret`、`PUT` / `DELETE /applications/{clientId}/brand/logo` |
 | `roles:assign` | `PUT /users/{sub}/roles`、`PUT /applications/{clientId}/roles` |
 | `config:read` | `GET /channels`、`GET /providers`、`GET /settings`、`GET /signing-keys` |
-| `config:write` | `PUT` / `DELETE /channels/{kind}`、`POST /channels/{kind}/test`、`POST /providers`、`PUT` / `DELETE /providers/{id}`、`POST /providers/{id}/enable`、`POST /providers/{id}/disable`、`PUT /settings` |
+| `config:write` | `PUT` / `DELETE /channels/{kind}`、`POST /channels/{kind}/test`、`POST /providers`、`PUT` / `DELETE /providers/{id}`、`POST /providers/{id}/enable`、`POST /providers/{id}/disable`、`PUT /settings`、`PUT` / `DELETE /settings/brand/logo` |
 | `keys:rotate` | `POST /signing-keys/rotate` |
 
 除表里的 Permission,还有这几条附加规则:

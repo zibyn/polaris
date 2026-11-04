@@ -12,7 +12,7 @@ import (
 )
 
 const application = `-- name: Application :one
-SELECT client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, session_idle_timeout, builtin, created_at, refresh_tokens, webhook_url, webhook_secret, webhook_secret_updated_at, apple_app_ids, android_apps, backchannel_logout_uri, require_role, token_auth_method, jwks, session_max_lifetime, login_methods FROM applications WHERE client_id = $1
+SELECT client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, session_idle_timeout, builtin, created_at, refresh_tokens, webhook_url, webhook_secret, webhook_secret_updated_at, apple_app_ids, android_apps, backchannel_logout_uri, require_role, token_auth_method, jwks, session_max_lifetime, login_methods, brand_name, brand_logo, brand_color FROM applications WHERE client_id = $1
 `
 
 func (q *Queries) Application(ctx context.Context, clientID string) (Application, error) {
@@ -41,6 +41,9 @@ func (q *Queries) Application(ctx context.Context, clientID string) (Application
 		&i.Jwks,
 		&i.SessionMaxLifetime,
 		&i.LoginMethods,
+		&i.BrandName,
+		&i.BrandLogo,
+		&i.BrandColor,
 	)
 	return i, err
 }
@@ -81,6 +84,29 @@ func (q *Queries) AuthnSession(ctx context.Context, id string) ([]byte, error) {
 	var data []byte
 	err := row.Scan(&data)
 	return data, err
+}
+
+const brand = `-- name: Brand :one
+SELECT COALESCE(a.brand_name, s.brand_name)::text AS name,
+       COALESCE(a.brand_logo, s.brand_logo)::text AS logo,
+       COALESCE(a.brand_color, s.brand_color)::text AS color
+FROM settings s LEFT JOIN applications a ON a.client_id = $1
+`
+
+type BrandRow struct {
+	Name  string
+	Logo  string
+	Color string
+}
+
+// The 品牌 the hosted pages of the Application client_id show: its own
+// items, the instance's where it has none. An unknown or empty client_id
+// gets the instance's.
+func (q *Queries) Brand(ctx context.Context, clientID string) (BrandRow, error) {
+	row := q.db.QueryRow(ctx, brand, clientID)
+	var i BrandRow
+	err := row.Scan(&i.Name, &i.Logo, &i.Color)
+	return i, err
 }
 
 const challengeSession = `-- name: ChallengeSession :one

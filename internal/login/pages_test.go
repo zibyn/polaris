@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"testing"
+	"text/template/parse"
 
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/provider"
@@ -16,7 +17,7 @@ import (
 func TestPagesGolden(t *testing.T) {
 	for name, c := range goldenCases() {
 		w := httptest.NewRecorder()
-		page(w, langZH, 200, c.tmpl, c.data)
+		page(w, langZH, chrome{Name: "Polaris"}, 200, c.tmpl, c.data)
 		want, err := os.ReadFile("testdata/golden/" + name + ".html")
 		if err != nil {
 			t.Fatal(err)
@@ -34,7 +35,7 @@ func TestPagesEnglish(t *testing.T) {
 	comments := regexp.MustCompile(`(?s)/\*.*?\*/|//[^\n]*`)
 	for name, c := range goldenCases() {
 		w := httptest.NewRecorder()
-		page(w, langEN, 200, c.tmpl, c.data)
+		page(w, langEN, chrome{Name: "Polaris"}, 200, c.tmpl, c.data)
 		body := w.Body.String()
 		if !bytes.Contains(w.Body.Bytes(), []byte(`<html lang="en">`)) || !bytes.Contains(w.Body.Bytes(), []byte("</html>")) {
 			t.Errorf("%s did not render in English:\n%s", name, body)
@@ -96,6 +97,66 @@ func goldenCases() map[string]goldenCase {
 		"invite":             {"invite", inviteForm{Token: "tok", Error: "密码至少 8 位"}},
 		"message":            {"message", "已退出登录"},
 		"denied":             {"denied", loginPage{Client: "Test RP", Action: "/authorize/abc"}},
-		"logout":             {"logout", "/logout/abc"},
+		"logout":             {"logout", logoutPage{Action: "/logout/abc", Name: "Polaris"}},
+	}
+}
+
+// Every phrase the templates pass to t has English, in branches no golden
+// case reaches too.
+func TestEveryPhraseHasEnglish(t *testing.T) {
+	var walk func(parse.Node)
+	walk = func(n parse.Node) {
+		switch n := n.(type) {
+		case *parse.ListNode:
+			if n != nil {
+				for _, c := range n.Nodes {
+					walk(c)
+				}
+			}
+		case *parse.ActionNode:
+			walk(n.Pipe)
+		case *parse.IfNode:
+			walk(n.Pipe)
+			walk(n.List)
+			walk(n.ElseList)
+		case *parse.RangeNode:
+			walk(n.Pipe)
+			walk(n.List)
+			walk(n.ElseList)
+		case *parse.WithNode:
+			walk(n.Pipe)
+			walk(n.List)
+			walk(n.ElseList)
+		case *parse.TemplateNode:
+			walk(n.Pipe)
+		case *parse.PipeNode:
+			if n != nil {
+				for _, c := range n.Cmds {
+					walk(c)
+				}
+			}
+		case *parse.CommandNode:
+			if id, ok := n.Args[0].(*parse.IdentifierNode); ok && id.Ident == "t" && len(n.Args) > 1 {
+				if str, ok := n.Args[1].(*parse.StringNode); ok {
+					if _, ok := messagesEN[str.Text]; !ok {
+						t.Errorf("no English for %q", str.Text)
+					}
+				}
+			}
+			for _, a := range n.Args {
+				walk(a)
+			}
+		}
+	}
+	for _, tmpl := range pages[langZH].Templates() {
+		if tmpl.Tree != nil {
+			walk(tmpl.Tree.Root)
+		}
+	}
+	// What render sets as the identifier field's label, which t translates.
+	for _, label := range []string{"手机号", "邮箱", "手机号或邮箱", "手机号或用户名", "邮箱或用户名", "手机号、邮箱或用户名"} {
+		if _, ok := messagesEN[label]; !ok {
+			t.Errorf("no English for label %q", label)
+		}
 	}
 }

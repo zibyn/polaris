@@ -227,7 +227,7 @@ SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_re
        COALESCE(extract(epoch FROM session_max_lifetime), 0)::int AS session_max_lifetime,
        refresh_tokens, require_role, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
        COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps,
-       token_auth_method, jwks, login_methods
+       token_auth_method, jwks, login_methods, brand_name, brand_logo, brand_color
 FROM applications
 WHERE @client_id::text = '' OR client_id = @client_id
 ORDER BY builtin DESC, created_at, client_id;
@@ -257,7 +257,10 @@ UPDATE applications SET
     apple_app_ids = @apple_app_ids,
     android_apps = @android_apps,
     jwks = COALESCE(sqlc.narg(jwks), jwks),
-    login_methods = sqlc.narg(login_methods)
+    login_methods = sqlc.narg(login_methods),
+    brand_name = sqlc.narg(brand_name),
+    brand_logo = sqlc.narg(brand_logo),
+    brand_color = sqlc.narg(brand_color)
 WHERE client_id = @client_id AND NOT builtin;
 
 -- name: SetApplicationSecret :execrows
@@ -294,7 +297,8 @@ SELECT 'application.deleted', NULL, jsonb_build_object('clientId', gone.client_i
 
 -- name: GetSettings :one
 SELECT password_login, require_phone, daily_send_limit, terms_url, privacy_url, terms_version, audit_retention_days,
-       admins_need_two_factor, passkey_login, open_registration, terms_url_en, privacy_url_en
+       admins_need_two_factor, passkey_login, open_registration, terms_url_en, privacy_url_en,
+       brand_name, brand_logo, brand_color
 FROM settings;
 
 -- name: UpdateSettings :exec
@@ -304,7 +308,8 @@ WITH u AS (
         daily_send_limit = @daily_send_limit, terms_url = @terms_url, privacy_url = @privacy_url,
         terms_version = @terms_version, audit_retention_days = @audit_retention_days,
         admins_need_two_factor = @admins_need_two_factor, passkey_login = @passkey_login,
-        open_registration = @open_registration, terms_url_en = @terms_url_en, privacy_url_en = @privacy_url_en
+        open_registration = @open_registration, terms_url_en = @terms_url_en, privacy_url_en = @privacy_url_en,
+        brand_name = @brand_name, brand_logo = @brand_logo, brand_color = @brand_color
 )
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('settings.updated', NULL, jsonb_build_object('by', @by::text));
@@ -371,3 +376,30 @@ SELECT (SELECT count(*) FROM users) AS users,
        (SELECT count(*) FROM applications) AS applications,
        (SELECT count(*) FROM sends WHERE sent_at >= now() - interval '1 day') AS sends_last_day,
        (SELECT daily_send_limit FROM settings) AS daily_send_limit;
+
+-- name: SetInstanceLogo :exec
+-- Replaces the instance's Logo; audited with who did it.
+WITH u AS (UPDATE settings SET brand_logo = @logo)
+INSERT INTO audit_log (event, sub, detail)
+VALUES ('settings.updated', NULL, jsonb_build_object('by', @by::text));
+
+-- name: SetApplicationLogo :execrows
+-- Replaces an Application's own Logo; NULL follows the instance's.
+UPDATE applications SET brand_logo = sqlc.narg(logo)
+WHERE client_id = @client_id AND NOT builtin AND type <> 'm2m';
+
+-- name: DeleteUnusedLogos :exec
+-- Deletes the Logo blobs no brand names any more: the one a new upload,
+-- a cleared Logo or a deleted Application left behind.
+DELETE FROM blobs WHERE key LIKE 'brand/%'
+    AND key NOT IN (SELECT brand_logo FROM settings
+                    UNION ALL SELECT brand_logo FROM applications WHERE brand_logo IS NOT NULL);
+
+-- name: LockInstanceLogo :one
+-- The instance's Logo, locked until the transaction ends: a save checks
+-- the Logo it sends back against this, not one an upload just replaced.
+SELECT brand_logo FROM settings FOR UPDATE;
+
+-- name: LockApplicationLogo :one
+-- An Application's own Logo ('' for none), locked as LockInstanceLogo.
+SELECT COALESCE(brand_logo, '')::text FROM applications WHERE client_id = @client_id FOR UPDATE;

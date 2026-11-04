@@ -196,3 +196,12 @@ WITH instance AS (
 SELECT ARRAY(SELECT i.method FROM instance i WHERE a.login_methods IS NULL OR i.method = ANY (a.login_methods))::text[] AS open,
        (a.login_methods IS NOT NULL)::boolean AS own
 FROM applications a WHERE a.client_id = $1;
+
+-- name: Brand :one
+-- The 品牌 the hosted pages of the Application client_id show: its own
+-- items, the instance's where it has none. An unknown or empty client_id
+-- gets the instance's.
+SELECT COALESCE(a.brand_name, s.brand_name)::text AS name,
+       COALESCE(a.brand_logo, s.brand_logo)::text AS logo,
+       COALESCE(a.brand_color, s.brand_color)::text AS color
+FROM settings s LEFT JOIN applications a ON a.client_id = @client_id;

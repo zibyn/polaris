@@ -78,7 +78,7 @@ var messagesEN = map[string]string{
 	"点开这个链接,就说明这个邮箱是你的。设一个只有你知道的密码,就能直接使用。": "Opening this link shows the email is yours. Set a password only you know and you're in.",
 	"你没有使用 %s 的权限,请联系管理员":                   "You don't have access to %s. Please contact your admin.",
 	"切换账号": "Switch account",
-	"要退出 Polaris 吗?使用它登录的应用也会随之退出。": "Sign out of Polaris? Apps you signed in to with it will sign out too.",
+	"要退出 %s 吗?使用它登录的应用也会随之退出。": "Sign out of %s? Apps you signed in to with it will sign out too.",
 	"退出": "Sign out",
 
 	// The identifier field's label (render).
