@@ -89,9 +89,11 @@
   - **通用 OIDC**:自填 issuer(必须提供 discovery)、client_id、client secret;issuer 创建后不可改。
   - **通用 OAuth2**:自填 authorization、token、userinfo 三个 endpoint、scope,以及 **userinfo 里哪个字段是用户 ID**;不校验 id_token,身份不带上游签名背书(ADR 0013)。这个字段必须选上游不会变的(如 GitHub 的数字 `id`,而不是随时可改的 `login`)。
   - **Apple**:Team ID、Key ID、`.p8` 私钥、Services ID、Bundle ID。
-- 具名供应商与两个通用类型**共用同一份实现**,差别只在端点、scope、品牌是否预填。
+  - **飞书**、**Lark**、**钉钉**:企业自建 / 内部应用,只问 client_id 与 client secret,帮助文字写明谁能登录、应用里要开什么。
+  - **企业微信**:企业 ID(不可改)、AgentId、Secret;帮助文字写明可信域名、企业可信 IP、可见范围,以及不要改已登录成员的账号。
+- Google、Microsoft、GitHub 与两个通用类型**共用同一份实现**,差别只在端点、scope、品牌是否预填;飞书 / Lark、钉钉、企业微信各有独立实现。
 - **Microsoft 比其他供应商多一个字段**:不可改的租户,填 `common`、`organizations` 或具体租户 ID;前两者接受任意 `https://login.microsoftonline.com/<租户 GUID>/v2.0` 的 issuer,其余值严格校验(ADR 0013)。
-- **Provider ID** 只在添加时填,之后不可改,出现在回调 URL 与直连认证 API 里;issuer(通用 OIDC)、租户(Microsoft)同理。回调 URL 显示在表单里,可以复制。
+- **Provider ID** 只在添加时填,之后不可改,出现在回调 URL 与直连认证 API 里;issuer(通用 OIDC)、租户(Microsoft)、企业 ID(企业微信)同理。回调 URL 显示在表单里,可以复制。
 - **停用**的确认弹窗写明"N 个用户已绑定,其中 M 个没有其他登录方式,停用后他们无法登录"。还有绑定的认证源不显示删除按钮。
 - 用户详情的「已绑定的外部账号」分区列出认证源名称和绑定时间;持有 `users:write` 的管理员可以解绑,受"最后一个登录途径"约束。
 
@@ -194,7 +196,7 @@ Passkey 开关默认打开,关它时若自己只剩 Passkey(既没开两步验�
 - **面板里不再套卡片。**分区靠「分区标题 + 留白」分开,分区之间留 40px;同一分区内的条目用分隔线隔开。现有的 `Card` 用法(概览统计、`Section` 表单、最近事件等)全部改为这种分区。
 - 统计数字排成一行,用竖分隔线隔开,不做成四张卡片。
 - 只有三种块可以有底色或边框:**强调块**(上手清单、告警条)用浅底、无边框;**危险区**保留红框(见文案风格指南第 6 条);**空状态**保留虚线框。
-- 不用 emoji、渐变和插画。图标只用 lucide。例外只有两处:登录页品牌区的星云渐变(见[登录页](#登录页));登录页上具名供应商(Apple、Google、Microsoft、GitHub)的按钮,按各自的品牌规范用官方标志和规定样式。通用 OIDC、通用 OAuth2 的按钮仍是纯文字。
+- 不用 emoji、渐变和插画。图标只用 lucide。例外只有两处:登录页品牌区的星云渐变(见[登录页](#登录页));登录页上具名供应商(Apple、Google、Microsoft、GitHub、飞书 / Lark、钉钉、企业微信)的按钮,按各自的品牌规范用官方标志和规定样式。通用 OIDC、通用 OAuth2 的按钮仍是纯文字。
 
 #### 尺寸
 

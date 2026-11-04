@@ -95,23 +95,30 @@ func (u *upstream) NoReauthPrompt() {}
 // nonce: there is no id_token to carry one, and state and PKCE guard the
 // code without it.
 func (u *upstream) AuthURL(_ context.Context, redirectURI, state, _, verifier string) (string, error) {
+	return AuthURL(u.authorizationEndpoint, u.clientID, u.scope, redirectURI, state, verifier), nil
+}
+
+// AuthURL is an authorization code request with PKCE (S256) at endpoint;
+// scope is left out when empty. Feishu, OAuth2 everywhere but its token
+// and userinfo shapes, builds its own with it.
+func AuthURL(endpoint, clientID, scope, redirectURI, state, verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	q := url.Values{
 		"response_type":         {"code"},
-		"client_id":             {u.clientID},
+		"client_id":             {clientID},
 		"redirect_uri":          {redirectURI},
 		"state":                 {state},
 		"code_challenge":        {base64.RawURLEncoding.EncodeToString(sum[:])},
 		"code_challenge_method": {"S256"},
 	}
-	if u.scope != "" {
-		q.Set("scope", u.scope)
+	if scope != "" {
+		q.Set("scope", scope)
 	}
 	sep := "?"
-	if strings.Contains(u.authorizationEndpoint, "?") {
+	if strings.Contains(endpoint, "?") {
 		sep = "&"
 	}
-	return u.authorizationEndpoint + sep + q.Encode(), nil
+	return endpoint + sep + q.Encode()
 }
 
 // Callback exchanges the code and asks the upstream who it was, which is
