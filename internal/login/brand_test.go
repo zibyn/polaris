@@ -39,7 +39,7 @@ func TestNamedProviderButtons(t *testing.T) {
 		`class="microsoft"`, "使用 Microsoft 登录",
 		`class="github"`, "使用 GitHub 登录",
 		`class="feishu"`, "使用飞书登录", "使用 Lark 登录", "#00d6b9",
-		`class="dingtalk"`, "使用钉钉登录",
+		`class="dingtalk"`, "使用钉钉登录", "#0285fc",
 		`class="wecom"`, "使用企业微信登录", "#2dbc00",
 	} {
 		if !strings.Contains(page, want) {
