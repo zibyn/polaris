@@ -29,7 +29,7 @@ func init() {
 		Name:  "Webhook",
 		Kinds: []string{"phone", "email"},
 		Fields: []channel.Field{
-			{Key: "url", Label: "URL", Type: "url", Help: `收到 POST {"to", "code"}(注册邀请为 {"to", "link"}),返回 2xx 即视为送达`},
+			{Key: "url", Label: "URL", Type: "url", Help: `接收 POST {"to", "code"}（注册邀请为 {"to", "link"}），返回 2xx 视为送达`},
 			{Key: "secret", Label: "签名密钥", Type: "text", Secret: true,
 				Help: "X-Polaris-Signature: t=<秒>,v1=<hex HMAC-SHA256(密钥, \"<t>.<body>\")>"},
 		},

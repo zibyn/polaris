@@ -291,7 +291,7 @@ func TestDisablingAUserEndsTheirSessions(t *testing.T) {
 		t.Error("browser Session survived")
 	}
 	_, page := e.authorize("")
-	if _, body := e.submit(page, "owner", "password1"); !strings.Contains(body, "已被管理员禁用") {
+	if _, body := e.submit(page, "owner", "password1"); !strings.Contains(body, "账号已禁用") {
 		t.Errorf("hosted login: %.300s", body)
 	}
 	if r := e.challenge(url.Values{"username": {"owner"}, "password": {"password1"}, "altcha": {e.solve()}}); r.Status != 400 || r.Code != "" {

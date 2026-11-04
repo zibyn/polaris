@@ -26,7 +26,7 @@ func init() {
 		Kinds: []string{"email"},
 		Fields: []channel.Field{
 			{Key: "host", Label: "服务器", Type: "text", Help: "如 smtp.qq.com"},
-			{Key: "port", Label: "端口", Type: "number", Help: "465 直接走 TLS;其他端口须支持 STARTTLS"},
+			{Key: "port", Label: "端口", Type: "number", Help: "465 端口使用 TLS，其他端口须支持 STARTTLS"},
 			{Key: "username", Label: "用户名", Type: "text", Optional: true},
 			{Key: "password", Label: "密码", Type: "text", Secret: true, Optional: true},
 			{Key: "from", Label: "发件人", Type: "text", Help: "如 Polaris <noreply@example.com>"},

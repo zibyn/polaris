@@ -47,4 +47,4 @@ func (m methods) none() bool { return m.Own && len(m.Open) == 0 }
 
 var errMethodNotAllowed = identity.Invalid("该应用不支持这种登录方式")
 
-const errNoMethod = "该应用当前没有可用的登录方式,请联系管理员"
+const errNoMethod = "该应用没有可用的登录方式，请联系管理员"

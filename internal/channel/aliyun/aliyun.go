@@ -30,8 +30,8 @@ func init() {
 		Fields: []channel.Field{
 			{Key: "accessKeyId", Label: "AccessKey ID", Type: "text"},
 			{Key: "accessKeySecret", Label: "AccessKey Secret", Type: "text", Secret: true},
-			{Key: "signName", Label: "签名", Type: "text", Help: "号码认证控制台赠送的签名;只能发往中国大陆 +86 号码"},
-			{Key: "templateCode", Label: "模板 Code", Type: "text", Help: "与签名配套的赠送模板,选登录/注册场景"},
+			{Key: "signName", Label: "签名", Type: "text", Help: "号码认证控制台赠送的签名，仅支持中国大陆 +86 号码"},
+			{Key: "templateCode", Label: "模板 Code", Type: "text", Help: "与签名配套的赠送模板，选择登录/注册场景"},
 		},
 		New: func(c map[string]string) (channel.Channel, error) {
 			return &sms{id: c["accessKeyId"], secret: c["accessKeySecret"], sign: c["signName"], template: c["templateCode"]}, nil

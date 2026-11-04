@@ -37,9 +37,9 @@ func init() {
 			// A userid is unique only within its corp.
 			{Field: channel.Field{Key: "corp_id", Label: "企业 ID", Type: "text"}, Immutable: true},
 			{Field: channel.Field{Key: "agent_id", Label: "AgentId", Type: "text",
-				Help: "应用里要开启「企业微信授权登录」,并把 Polaris 的域名配成可信域名(须 ICP 备案,端口也要一致);成员须在应用可见范围内。不要修改已登录过 Polaris 的成员的账号(userid):改了以后他在这里就是另一个外部账号"}},
+				Help: "应用需开启「企业微信授权登录」，并将 Polaris 域名设为可信域名（须 ICP 备案，端口一致）。仅可见范围内的成员可登录。修改成员 userid 后会被视为另一个外部账号"}},
 			{Field: channel.Field{Key: "secret", Label: "Secret", Type: "text", Secret: true,
-				Help: "2022-06-20 之后新建的应用,要把 Polaris 服务器的出口 IP 加进「企业可信 IP」"}},
+				Help: "2022-06-20 之后创建的应用，需将 Polaris 服务器出口 IP 加入「企业可信 IP」"}},
 		},
 		New: func(c map[string]string) (provider.Redirect, error) {
 			return &upstream{corpID: c["corp_id"], agentID: c["agent_id"], secret: c["secret"]}, nil

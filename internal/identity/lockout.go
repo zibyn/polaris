@@ -32,8 +32,8 @@ const (
 )
 
 const (
-	ErrPasswordLocked Invalid = "密码错误次数过多,请 15 分钟后再试,或用验证码登录"
-	ErrIPLocked       Invalid = "失败次数过多,请 1 小时后再试"
+	ErrPasswordLocked Invalid = "密码错误次数过多，请 15 分钟后重试或使用验证码登录"
+	ErrIPLocked       Invalid = "失败次数过多，请 1 小时后重试"
 	// ErrWrongCode is otp's; FromIP counts it.
 	ErrWrongCode Invalid = "验证码错误或已失效"
 	// ErrWrongTOTP and ErrWrongRecoveryCode are twofactor's; FromIP counts

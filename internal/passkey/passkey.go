@@ -30,18 +30,18 @@ import (
 )
 
 const (
-	ErrNotBegun   identity.Invalid = "没有正在进行的验证,请重新开始"
-	ErrExpired    identity.Invalid = "验证已过期,请重新开始"
+	ErrNotBegun   identity.Invalid = "没有进行中的验证，请重新开始"
+	ErrExpired    identity.Invalid = "验证已过期，请重新开始"
 	ErrDuplicate  identity.Invalid = "这把 Passkey 已经添加过了"
 	ErrNoUV       identity.Invalid = "设备未验证用户身份,不能添加为 Passkey"
 	ErrVerifyFail identity.Invalid = "Passkey 注册未通过验证,请重试"
 	ErrName       identity.Invalid = "名称须为 1–64 个字符"
 
-	ErrNoPasskey identity.Invalid = "没有找到这把 Passkey,请改用其他方式登录"
-	ErrLoginFail identity.Invalid = "Passkey 登录未通过验证,请重试"
+	ErrNoPasskey identity.Invalid = "未找到该 Passkey，请使用其他方式登录"
+	ErrLoginFail identity.Invalid = "Passkey 登录未通过验证，请重试"
 	// ErrCloned is a counter that went backwards: the Passkey may be a
 	// clone's. Audited before it is returned.
-	ErrCloned identity.Invalid = "这把 Passkey 的计数器异常,已拒绝登录"
+	ErrCloned identity.Invalid = "该 Passkey 计数器异常，已拒绝登录"
 	// ErrNoPasskeys is a reauthentication asked for by a User who has added
 	// no Passkey to reauthenticate with.
 	ErrNoPasskeys identity.Invalid = "你还没有添加 Passkey"

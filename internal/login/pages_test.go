@@ -69,7 +69,7 @@ func goldenCases() map[string]goldenCase {
 			p.PasswordOn = false
 			p.CodeKinds = "邮箱"
 			p.IdentifierLabel = "邮箱"
-			p.Error = "人机验证未通过,请重试"
+			p.Error = "人机验证未通过，请重试"
 		})},
 		"login-password":     {"login", with(func(p *loginPage) { p.PasswordForm = true; p.Error = "用户名或密码错误" })},
 		"login-username":     {"login", with(func(p *loginPage) { p.Username = "alice"; p.Passkey = "" })},

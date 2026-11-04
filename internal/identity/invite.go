@@ -19,7 +19,7 @@ const (
 	// ErrNoEmail: 一个没有邮箱的账号发不出邀请。
 	ErrNoEmail Invalid = "这个 User 没有邮箱,发不了邀请"
 	// ErrInviteSpent: 链接用过、被撤销或过期 —— 对本人是同一种情况。
-	ErrInviteSpent Invalid = "这个邀请链接已失效或已过期,请联系管理员重新发送"
+	ErrInviteSpent Invalid = "邀请链接已失效，请联系管理员重新发送"
 )
 
 // MintInvite mints a 注册邀请 for sub and returns its plaintext token and the

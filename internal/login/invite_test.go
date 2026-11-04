@@ -106,7 +106,7 @@ func TestAnInviteLinkThatIsNoGood(t *testing.T) {
 	e := start(t)
 	ctx := context.Background()
 	_, token := e.invited("bob@example.com")
-	const spent = "这个邀请链接已失效或已过期,请联系管理员重新发送"
+	const spent = "邀请链接已失效，请联系管理员重新发送"
 
 	noGood := func(what, token string) {
 		t.Helper()

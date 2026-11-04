@@ -321,7 +321,7 @@ func DeleteOldSessions(ctx context.Context, pool *pgxpool.Pool) error {
 func (s *Service) authenticate(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client) (goidc.Status, error) {
 	// A login past its first factor goes on only in its own browser.
 	if _, ok := as.Store[storeBindSub]; ok && !sameBinder(r, as.Store[storeBinder]) {
-		s.page(w, r, pickLang(r, as.UILocales), c.ID, http.StatusForbidden, "message", "登录已在其他浏览器中进行,请返回应用重新登录")
+		s.page(w, r, pickLang(r, as.UILocales), c.ID, http.StatusForbidden, "message", "登录已在其他浏览器中进行，请返回应用重新登录")
 		return goidc.StatusPending, nil
 	}
 	// Only the login form posts to the callback; the authorization request
@@ -654,9 +654,9 @@ var (
 	errAgree  = identity.Invalid("请先阅读并同意用户协议和隐私政策")
 	errNoCode = identity.Invalid("该账号不能用验证码登录")
 	// The 5th wrong TOTP code or 恢复码 ends the login.
-	errTOTPTries    = identity.Invalid("两步验证错误次数过多,请重新登录")
-	errNoProvider   = identity.Invalid("这个外部登录方式已停用")
-	errProviderDown = identity.Invalid("暂时无法连接这个外部登录方式,请稍后重试")
+	errTOTPTries    = identity.Invalid("两步验证错误次数过多，请重新登录")
+	errNoProvider   = identity.Invalid("该外部登录方式已停用")
+	errProviderDown = identity.Invalid("暂时无法连接该外部登录方式，请稍后重试")
 )
 
 // needsTOTP reports whether sub, signed in with amr, must still enter a
@@ -1083,7 +1083,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 	}
 	switch {
 	case p.Bind && !slices.Contains(kinds, "phone"):
-		p.Error = "需要绑定手机号,但短信通道未配置,请联系管理员"
+		p.Error = "需要绑定手机号，但未配置短信验证码，请联系管理员"
 	case p.Bind || slices.Equal(kinds, []string{"phone"}):
 		p.CodeKinds = "手机号"
 	case slices.Equal(kinds, []string{"email"}):

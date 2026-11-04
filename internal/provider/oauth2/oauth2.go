@@ -32,13 +32,13 @@ func init() {
 			{Field: channel.Field{Key: "token_endpoint", Label: "Token endpoint", Type: "url"}},
 			{Field: channel.Field{Key: "userinfo_endpoint", Label: "Userinfo endpoint", Type: "url"}},
 			{Field: channel.Field{Key: "scope", Label: "Scope", Type: "text", Optional: true,
-				Help: "按服务商要求填写,多个以空格分隔"}},
+				Help: "多个以空格分隔"}},
 			{Field: channel.Field{Key: "client_id", Label: "Client ID", Type: "text"}},
 			{Field: channel.Field{Key: "client_secret", Label: "Client secret", Type: "text", Secret: true}},
 			// The anchor: which External Identity a login is, so a field the
 			// upstream may change must not be it.
 			{Field: channel.Field{Key: "user_id_field", Label: "用户 ID 字段", Type: "text",
-				Help: "userinfo 顶层表示用户 ID 的字段,例如 GitHub 的数字 id。填上游会变的字段(如 login)的话,用户一改名就变成另一个人"},
+				Help: "userinfo 中表示用户 ID 的顶层字段，须选用不会变化的字段，如 GitHub 的 id 而非 login"},
 				Immutable: true},
 		},
 	}))
