@@ -228,6 +228,7 @@ type meOutput struct {
 		RecentAuthUntil time.Time    `json:"recentAuthUntil" doc:"Until when sensitive actions need no reauthentication"`
 		TwoFactor       TwoFactor    `json:"twoFactor"`
 		PasskeyLogin    bool         `json:"passkeyLogin" doc:"The instance offers Passkey login: the account center shows the Passkey section and reauthentication way only then"`
+		Admin           bool         `json:"admin" doc:"The User holds a Management API Role: the account center links to the console"`
 		// External Identities and the Providers to bind.
 		ExternalIdentities []ExternalIdentity `json:"externalIdentities" nullable:"false"`
 		Providers          []Provider         `json:"providers" nullable:"false" doc:"The enabled Providers, to bind or reauthenticate at"`
@@ -270,7 +271,7 @@ func (s *Service) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 	out := &meOutput{}
 	b := &out.Body
 	b.Sub, b.CreatedAt, b.HasPassword, b.PasswordAllowed = c.sub, u.CreatedAt.Time, u.HasPassword, u.PasswordAllowed
-	b.RecentAuthUntil, b.TwoFactor, b.PasskeyLogin = c.authTime.Add(recent), twoFactorOf(u), u.PasskeyLogin
+	b.RecentAuthUntil, b.TwoFactor, b.PasskeyLogin, b.Admin = c.authTime.Add(recent), twoFactorOf(u), u.PasskeyLogin, u.Admin
 	p, err := s.profiles.Get(ctx, c.sub)
 	if err != nil {
 		return nil, err

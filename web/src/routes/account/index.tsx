@@ -5,7 +5,7 @@ import {
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { encode } from "uqr";
@@ -151,6 +151,15 @@ function Account() {
 				<div className="flex items-center gap-2 font-semibold">
 					<Star className="size-5 text-star" />
 					Polaris
+					{/* Admins come here from the console's menu; this is the way back. */}
+					{user.admin && (
+						<Link
+							to="/console"
+							className="ml-auto font-medium text-[13px] text-primary-ink underline-offset-2 hover:underline"
+						>
+							返回管理端
+						</Link>
+					)}
 				</div>
 				<header className="flex items-center gap-4">
 					<UserAvatar

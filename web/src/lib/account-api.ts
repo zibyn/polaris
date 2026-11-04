@@ -26,6 +26,8 @@ export type Me = {
 	passwordAllowed: boolean;
 	// Whether the instance offers Passkey login at all.
 	passkeyLogin: boolean;
+	// Holds a Management API Role: the header links back to the console.
+	admin: boolean;
 	recentAuthUntil: string;
 	twoFactor: {
 		enabled: boolean;

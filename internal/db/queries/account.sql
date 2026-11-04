@@ -19,7 +19,9 @@ SELECT u.created_at,
        (SELECT count(*) FROM recovery_codes c WHERE c.user_id = u.id AND c.used_at IS NULL) AS recovery_codes_left,
        -- Whether the instance offers Passkey login: the account center hides
        -- its Passkey section and reauthentication way while it does not.
-       s.passkey_login
+       s.passkey_login,
+       -- Holds a Management API Role: the account center links to the console.
+       EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.api = 'urn:polaris:management-api') AS admin
 FROM users u, settings s
 WHERE u.id = $1;
 
