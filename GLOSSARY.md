@@ -32,6 +32,14 @@ _Avoid_: 自助注册, 注册开关, 仅邀请
 在 Polaris 注册的一个接入方:委托 Polaris 认证 User(App、小程序或 Web 端),或以自己的身份调用 API(M2M Application)。
 _Avoid_: Client, 租户, 项目
 
+**托管页**:
+Polaris 自己渲染、浏览器跳转过来的页面:登录、绑定、协议同意、首次引导、邀请接受、退出等。不含管理端和账号中心。
+_Avoid_: 登录 UI, Universal Login, 认证页
+
+**品牌**:
+托管页上代替 Polaris 标识的一组外观设置:品牌名、Logo、主色。实例设一套默认,Application 可逐项覆盖;都不设时托管页就是 Polaris 自己的样子。
+_Avoid_: 主题, 皮肤, 外观, Branding
+
 **Webhook**:
 Application 选配的一个地址,Polaris 向它推送 User 的变更(注销或删除、禁用或恢复、Identifier、用户资料、Role);不含 Session 终止,那由 Back-Channel Logout 通知。
 _Avoid_: 回调, 事件订阅, 通知地址
