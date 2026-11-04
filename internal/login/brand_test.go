@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	_ "github.com/zibyn/polaris/internal/provider/dingtalk"
+	_ "github.com/zibyn/polaris/internal/provider/feishu"
 	_ "github.com/zibyn/polaris/internal/provider/github"
 	_ "github.com/zibyn/polaris/internal/provider/google"
 	_ "github.com/zibyn/polaris/internal/provider/microsoft"
@@ -27,6 +28,8 @@ func TestNamedProviderButtons(t *testing.T) {
 	create("google", "Google", map[string]string{"client_id": "c", "client_secret": "s"})
 	create("microsoft", "Microsoft", map[string]string{"tenant": "common", "client_id": "c", "client_secret": "s"})
 	create("github", "GitHub", map[string]string{"client_id": "c", "client_secret": "s"})
+	create("feishu", "飞书", map[string]string{"client_id": "c", "client_secret": "s"})
+	create("lark", "Lark", map[string]string{"client_id": "c", "client_secret": "s"})
 	create("dingtalk", "钉钉", map[string]string{"client_id": "c", "client_secret": "s"})
 	create("wecom", "企业微信", map[string]string{"corp_id": "c", "agent_id": "1", "secret": "s"})
 
@@ -35,6 +38,7 @@ func TestNamedProviderButtons(t *testing.T) {
 		`class="google"`, "使用 Google 账号登录",
 		`class="microsoft"`, "使用 Microsoft 登录",
 		`class="github"`, "使用 GitHub 登录",
+		`class="feishu"`, "使用飞书登录", "使用 Lark 登录", "#00d6b9",
 		`class="dingtalk"`, "使用钉钉登录",
 		`class="wecom"`, "使用企业微信登录",
 	} {
