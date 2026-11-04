@@ -64,19 +64,6 @@ type challengeState struct {
 	PasskeyChallenge string `json:"passkey_challenge,omitempty"`
 }
 
-type pendingLogin struct {
-	Sub      string   `json:"sub"`
-	AuthTime int64    `json:"auth_time"`
-	AMR      []string `json:"amr"`
-	Method   string   `json:"method,omitempty"` // the login method (ADR 0027)
-	// TOTP: waiting for a TOTP code or a 恢复码, with Failures mistakes so far.
-	TOTP     bool `json:"totp,omitempty"`
-	Failures int  `json:"failures,omitempty"`
-	// Password: 待激活, waiting for the User to replace the initial password
-	// an admin set. Nothing else happens until they do (ADR 0016).
-	Password bool `json:"password,omitempty"`
-}
-
 // challengeError is a draft error response; AuthSession lets the App go on.
 type challengeError struct {
 	status      int
@@ -236,19 +223,19 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 				return answer{}, err
 			}
 		}
+		if what == stepSetPassword || what == stepTOTP || what == stepPhone {
+			st.Pending, st.Identifier = newPending(sub, authTime, amr, method, what), ""
+		}
 		switch what {
 		case stepSetPassword:
 			// 待激活 comes before everything else (ADR 0016): the only evidence
 			// so far is that the User knows a password someone else chose, and
 			// letting that carry on through 两步验证, the terms and a phone
 			// number would build the session on it.
-			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, Method: method, Password: true}, ""
 			return next(nextPassword, "set your own password: send password")
 		case stepTOTP:
-			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, Method: method, TOTP: true}, ""
 			return next(nextTOTP, "两步验证 is on: send totp or recovery_code")
 		case stepPhone:
-			st.Pending, st.Identifier = &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, Method: method}, ""
 			return next(nextPhone, "a phone number must be bound: send a code to one")
 		}
 		if ok, err := s.mayUse(ctx, c.ID, sub); err != nil {
@@ -324,7 +311,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			}
 			return mistake(err)
 		}
-		return signedIn(p.Sub, time.Unix(p.AuthTime, 0), p.AMR, p.Method)
+		return signedIn(p.Sub, p.authTime(), p.AMR, p.Method)
 
 	case st.Pending != nil && st.Pending.TOTP: // nothing else before TOTP
 		p := st.Pending
@@ -337,11 +324,11 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		})
 		switch {
 		case err == nil:
-			return signedIn(p.Sub, time.Unix(p.AuthTime, 0), withMFA(p.AMR), p.Method)
+			return signedIn(p.Sub, p.authTime(), withMFA(p.AMR), p.Method)
 		case errors.Is(err, twofactor.ErrOff): // turned off meanwhile: nothing to enter
-			return signedIn(p.Sub, time.Unix(p.AuthTime, 0), p.AMR, p.Method)
+			return signedIn(p.Sub, p.authTime(), p.AMR, p.Method)
 		case wrongSecondFactor(err):
-			if p.Failures++; p.Failures >= totpTries {
+			if p.missed() {
 				if err := s.q.DeleteChallengeSession(ctx, hash(token)); err != nil {
 					return answer{}, err
 				}
@@ -417,7 +404,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			if err := s.ids.AddIdentifier(ctx, p.Sub, kind, value); err != nil {
 				return mistake(err)
 			}
-			return signedIn(p.Sub, time.Unix(p.AuthTime, 0), p.AMR, p.Method)
+			return signedIn(p.Sub, p.authTime(), p.AMR, p.Method)
 		}
 		sub, err := s.ids.SignIn(ctx, kind, value)
 		if err != nil {

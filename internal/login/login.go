@@ -50,16 +50,9 @@ const (
 	// Keys in the AuthnSession store, carried into the grant.
 	storeAuthTime = "auth_time"
 	storeAMR      = "amr"
-	// Set instead of a grant while a User past the first factor must still
-	// enter a TOTP code, bind a phone number or agree to the terms; with
-	// auth_time and amr, and the Session only if the browser already had one.
-	storeBindSub = "pending_sub"
-	// Set, to the mistakes so far, while the pending login waits for a TOTP
-	// code or a 恢复码.
-	storeTOTPFailures = "totp_failures"
-	// Set while a 待激活 User past the first factor must replace the initial
-	// password an admin set (ADR 0016). It comes before 两步验证.
-	storeSetPassword = "set_password"
+	// A pendingLogin, set instead of a grant while a User past the first
+	// factor still has a step to take (nextStep).
+	storePending = "pending"
 	// The challenge of the login's Passkey options, renewed each time the
 	// first step renders; what a replayed assertion fails against.
 	storePasskeyChallenge = "passkey_challenge"
@@ -67,9 +60,9 @@ const (
 	// callback before it sends the browser back to the login.
 	storeFederated = "federated_sub"
 	// The login method the User passed the first factor with (ADR 0027),
-	// kept with federated_sub or pending_sub until the Session starts.
+	// kept with federated_sub until the Session starts.
 	storeMethod = "login_method"
-	// Set with pending_sub or federated_sub: the hash of the binder of the
+	// Set with pending or federated_sub: the hash of the binder of the
 	// browser the login is for.
 	storeBinder = "binder"
 	// The Identifier a code was sent to in this login. 重新获取 sends to it
@@ -320,7 +313,7 @@ func DeleteOldSessions(ctx context.Context, pool *pgxpool.Pool) error {
 // password forms.
 func (s *Service) authenticate(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client) (goidc.Status, error) {
 	// A login past its first factor goes on only in its own browser.
-	if _, ok := as.Store[storeBindSub]; ok && !sameBinder(r, as.Store[storeBinder]) {
+	if pendingOf(as) != nil && !sameBinder(r, as.Store[storeBinder]) {
 		s.page(w, r, pickLang(r, as.UILocales), c.ID, http.StatusForbidden, "message", "登录已在其他浏览器中进行，请返回应用重新登录")
 		return goidc.StatusPending, nil
 	}
@@ -350,15 +343,14 @@ func (s *Service) authenticate(w http.ResponseWriter, r *http.Request, as *goidc
 	// good as none: the User signs in again, with a way it does (ADR 0027).
 	if sess != nil && !mustLogin(as, sess) && m.admits(sess.LoginMethod) {
 		if none {
-			if needs, err := s.q.NeedsPhone(r.Context(), sess.UserID); err != nil {
+			// What complete would show a page for, prompt=none cannot.
+			switch what, err := s.nextStep(r.Context(), sess.UserID, sess.Amr, true); {
+			case err != nil:
 				return goidc.StatusFailure, err
-			} else if needs {
-				return goidc.StatusFailure, goidc.NewError(goidc.ErrorCodeInteractionRequired, "a phone number must be bound first")
-			}
-			if needs, err := s.q.NeedsConsent(r.Context(), sess.UserID); err != nil {
-				return goidc.StatusFailure, err
-			} else if needs {
+			case what == stepConsent:
 				return goidc.StatusFailure, goidc.NewError(goidc.ErrorCodeInteractionRequired, "the terms must be agreed to first")
+			case what == stepPhone:
+				return goidc.StatusFailure, goidc.NewError(goidc.ErrorCodeInteractionRequired, "a phone number must be bound first")
 			}
 		}
 		return s.complete(w, r, as, c, sess.ID, sess.UserID, sess.AuthTime.Time, sess.Amr, sess.LoginMethod)
@@ -397,10 +389,11 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		form.Error = "请从登录页提交"
 		return s.render(w, r, as, c, form)
 	}
-	pending, _ := as.Store[storeBindSub].(string)
-	pendingSession, _ := as.Store[oidcstore.SessionKey].(string)
-	pendingAuthTime, _ := as.Store[storeAuthTime].(int64)
-	pendingMethod, _ := as.Store[storeMethod].(string)
+	pl := pendingOf(as)
+	pending := ""
+	if pl != nil {
+		pending = pl.Sub
+	}
 	m, err := s.methods(ctx, c.ID)
 	if err != nil {
 		return goidc.StatusFailure, err
@@ -422,8 +415,8 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 	}
 
 	op := r.PostFormValue("op")
-	failures, awaitingTOTP := as.Store[storeTOTPFailures].(int64)
-	awaitingPassword := as.Store[storeSetPassword] == true
+	awaitingTOTP := pl != nil && pl.TOTP
+	awaitingPassword := pl != nil && pl.Password
 	switch {
 	case awaitingPassword && op != "set-password" && op != "delete-pending":
 		// 待激活: nothing else before the User sets their own password —
@@ -458,15 +451,14 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		}
 		// No consent and no Session: the pending step asked for nothing but
 		// the password, so the terms come next as they always would.
-		delete(as.Store, storeSetPassword)
-		return s.complete(w, r, as, c, "", pending, time.Unix(pendingAuthTime, 0), storedAMR(as.Store[storeAMR]), pendingMethod)
+		return s.complete(w, r, as, c, "", pending, pl.authTime(), pl.AMR, pl.Method)
 
 	case "totp":
 		if !awaitingTOTP {
 			break
 		}
 		form.Recovery = r.PostFormValue("recovery_code") != ""
-		amr := storedAMR(as.Store[storeAMR])
+		amr := pl.AMR
 		err := s.ids.SecondFactor(ctx, identity.AttemptFrom(r, c.ID), pending, form.Recovery, func() error {
 			return s.twoFactor.Check(ctx, pending, r.PostFormValue("totp"), r.PostFormValue("recovery_code"))
 		})
@@ -475,16 +467,16 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			amr = withMFA(amr)
 		case errors.Is(err, twofactor.ErrOff): // turned off meanwhile: nothing to enter
 		case wrongSecondFactor(err):
-			if failures++; failures >= totpTries {
+			if pl.missed() {
 				as.Store = nil
 				return s.render(w, r, as, c, loginPage{Error: errTOTPTries.Error()})
 			}
-			as.Store[storeTOTPFailures] = failures
+			as.Store[storePending] = pl
 			return fail(err)
 		default:
 			return fail(err)
 		}
-		return s.complete(w, r, as, c, "", pending, time.Unix(pendingAuthTime, 0), amr, pendingMethod)
+		return s.complete(w, r, as, c, "", pending, pl.authTime(), amr, pl.Method)
 
 	case "send":
 		kind, value, err := identity.ParseIdentifier(form.Identifier)
@@ -569,7 +561,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			if err := s.ids.AddIdentifier(ctx, pending, kind, value); err != nil {
 				return fail(err)
 			}
-			return s.complete(w, r, as, c, pendingSession, pending, time.Unix(pendingAuthTime, 0), storedAMR(as.Store[storeAMR]), pendingMethod)
+			return s.complete(w, r, as, c, pl.Session, pending, pl.authTime(), pl.AMR, pl.Method)
 		}
 		sub, err := s.ids.SignIn(ctx, kind, value)
 		if err != nil {
@@ -639,7 +631,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 				return goidc.StatusFailure, err
 			}
 		}
-		return s.complete(w, r, as, c, pendingSession, pending, time.Unix(pendingAuthTime, 0), storedAMR(as.Store[storeAMR]), pendingMethod)
+		return s.complete(w, r, as, c, pl.Session, pending, pl.authTime(), pl.AMR, pl.Method)
 	}
 	return s.render(w, r, as, c, loginPage{})
 }
@@ -718,16 +710,9 @@ func (s *Service) complete(w http.ResponseWriter, r *http.Request, as *goidc.Aut
 		return goidc.StatusFailure, err
 	}
 	if what != stepDone {
-		as.Store = map[string]any{storeBindSub: sub, storeAuthTime: authTime.Unix(), storeAMR: amr, storeMethod: method, storeBinder: hex.EncodeToString(hash(binder(w, r)))}
-		if session != "" {
-			as.Store[oidcstore.SessionKey] = session
-		}
-		if what == stepTOTP {
-			as.Store[storeTOTPFailures] = int64(0)
-		}
-		if what == stepSetPassword {
-			as.Store[storeSetPassword] = true
-		}
+		pl := newPending(sub, authTime, amr, method, what)
+		pl.Session = session
+		as.Store = map[string]any{storePending: pl, storeBinder: hex.EncodeToString(hash(binder(w, r)))}
 		return s.render(w, r, as, c, loginPage{})
 	}
 	if session == "" {
@@ -829,24 +814,6 @@ func codeAMR(kind string) goidc.AMR {
 		return goidc.AMROneTimePassword
 	}
 	return goidc.AMRSMS
-}
-
-// storedAMR reads amr back from an AuthnSession store, where it was decoded
-// from JSON.
-func storedAMR(v any) []string {
-	switch vs := v.(type) {
-	case []string:
-		return vs
-	case []any:
-		out := make([]string, 0, len(vs))
-		for _, x := range vs {
-			if s, ok := x.(string); ok {
-				out = append(out, s)
-			}
-		}
-		return out
-	}
-	return nil
 }
 
 type grantTypeKey struct{}
@@ -1025,9 +992,8 @@ type loginPage struct {
 func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client, p loginPage) (goidc.Status, error) {
 	p.Client, p.Action = c.Name, "/authorize/"+as.ID
 	ctx := r.Context()
-	if pending, ok := as.Store[storeBindSub].(string); ok {
-		_, signedIn := as.Store[oidcstore.SessionKey]
-		what, err := s.nextStep(ctx, pending, storedAMR(as.Store[storeAMR]), signedIn)
+	if pl := pendingOf(as); pl != nil {
+		what, err := s.nextStep(ctx, pl.Sub, pl.AMR, pl.Session != "")
 		if err != nil {
 			return goidc.StatusFailure, err
 		}
@@ -1086,7 +1052,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		p.CodeKinds = "手机号或邮箱"
 	}
 	p.IdentifierLabel = p.CodeKinds
-	if _, pending := as.Store[storeBindSub]; !pending && !p.TOTP && !p.SetPassword {
+	if pendingOf(as) == nil && !p.TOTP && !p.SetPassword {
 		if p.Providers, err = s.providers.Buttons(ctx); err != nil {
 			return goidc.StatusFailure, err
 		}
