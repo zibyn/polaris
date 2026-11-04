@@ -100,6 +100,10 @@ _Avoid_: 通行密钥, 安全密钥, WebAuthn 凭证, FIDO 凭证
 User 能用来登录的一条路径:手机号、邮箱、用户名(须配合密码),或已启用 Provider 的 External Identity。Passkey 是 Credential,保存在设备或密码管理器里、可能随之丢失,不算登录途径。
 _Avoid_: 认证途径, 登录手段, 账号方式
 
+**登录方式**:
+实例或 Application 提供给 User 的一种认证手段:短信验证码、邮箱验证码、密码、Passkey,或某个已启用的 Provider。实例开着的登录方式,Application 可以全部跟随,或只指定其中一部分;管理端与账号中心永远跟随实例。登录方式是实例和 Application 提供的,登录途径是 User 持有的。
+_Avoid_: 认证方式, 连接, Connection
+
 **两步验证**(2FA):
 User 自愿开启的状态:开启后,除 Passkey 外,任何第一因素登录都还要输入 TOTP 或一个恢复码。
 _Avoid_: MFA, 二次验证, 双因素认证(界面和文档里);协议值 `amr` 的 `mfa` 和审计事件名 `mfa.*` 是标识符,保留不改
