@@ -7,17 +7,12 @@ import { Alert, AlertDescription } from "#/components/ui/alert";
 import { Input } from "#/components/ui/input";
 import { Switch } from "#/components/ui/switch";
 import type { ChannelSettings, Policy } from "#/lib/console-api";
-import {
-	asksRequirePhone,
-	asksTermsVersion,
-	hasChannel,
-	passwordLocksOut,
-	termsSchema,
-} from "#/lib/login";
+import { hasChannel, planPolicySave, termsSchema } from "#/lib/login";
+import { channelsQuery, useSavePolicy } from "#/lib/queries";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { SaveBar, Section } from "#/routes/console/-components/section";
-import { ChannelsLink, channelsQuery } from "./channels";
-import { usePolicy, useSavePolicy } from "./policy";
+import { ChannelsLink } from "./channels";
+import { usePolicy } from "./policy";
 
 const codeKinds = [
 	{ kind: "phone", label: "手机号", channel: "短信" },
@@ -178,7 +173,8 @@ function PasswordLogin({ current, editable }: SectionProps) {
 										field.handleChange(on ? "on" : "off")
 									}
 								/>
-								{passwordLocksOut(field.state.value) && (
+								{planPolicySave(current, { passwordLogin: field.state.value })
+									.warn.passwordLocksOut && (
 									<Alert variant="warning">
 										<AlertDescription>
 											仅有用户名的用户将无法登录，也无法在账号中心设置密码。
@@ -241,7 +237,7 @@ function RequirePhone({
 	const form = useForm({
 		defaultValues: { requirePhone: current.requirePhone },
 		onSubmit: ({ value }) =>
-			asksRequirePhone(current.requirePhone, value.requirePhone)
+			planPolicySave(current, value).confirm
 				? setAsking(true)
 				: save.mutate(value),
 	});
@@ -316,7 +312,7 @@ function Terms({ current, editable }: SectionProps) {
 				privacyUrlEn: value.privacyUrlEn.trim(),
 				termsVersion: value.termsVersion.trim(),
 			};
-			if (asksTermsVersion(current.termsVersion, t.termsVersion)) {
+			if (planPolicySave(current, t).confirm) {
 				setPending(t);
 			} else {
 				save.mutate(t);

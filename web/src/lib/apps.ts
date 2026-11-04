@@ -1,6 +1,10 @@
 // Application list and detail logic. Pure TypeScript: tested with node --test.
 import { z } from "zod";
-import type { AndroidApp, Application } from "./console-api.ts";
+import type {
+	AndroidApp,
+	Application,
+	ApplicationSettings,
+} from "./console-api.ts";
 import { lines } from "./onboarding.ts";
 
 // onlyBuiltin reports whether the list holds nothing but built-in
@@ -177,3 +181,43 @@ export const nativeSchema = z.object({
 		}
 	}),
 });
+
+// notSent is what PUT /applications/{id} must not get back: what is only
+// read (typed, so a new one fails typecheck until listed here), the
+// write-only webhook key, and the Application 公钥, which have their own
+// operations: a cached set sent back would undo a newer one.
+const notSent: Record<
+	| Exclude<keyof Application, keyof ApplicationSettings>
+	| "webhookSecret"
+	| "jwks",
+	true
+> = {
+	clientId: true,
+	type: true,
+	builtin: true,
+	tokenAuthMethod: true,
+	createdAt: true,
+	webhookSecretUpdatedAt: true,
+	noLoginMethod: true,
+	webhookSecret: true,
+	jwks: true,
+};
+
+// settingsOf is what PUT /applications/{id} takes back to leave a as it
+// is; a setting added later goes back without being listed anywhere.
+export const settingsOf = (a: Application) =>
+	Object.fromEntries(
+		Object.entries(a).filter(([k]) => !(k in notSent)),
+	) as ApplicationSettings;
+
+// replaceApplication is the list with clientId's Application changed by f.
+export const replaceApplication = (
+	d: { applications: Application[] } | undefined,
+	clientId: string,
+	f: (a: Application) => Application,
+) =>
+	d && {
+		applications: d.applications.map((a) =>
+			a.clientId === clientId ? f(a) : a,
+		),
+	};

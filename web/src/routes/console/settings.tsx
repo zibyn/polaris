@@ -6,10 +6,10 @@ import {
 } from "@tanstack/react-router";
 import { z } from "zod";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "#/components/ui/tabs";
+import { channelsQuery, policyQuery } from "#/lib/queries";
 import { BrandTab } from "./-settings/brand";
-import { ChannelsTab, channelsQuery } from "./-settings/channels";
+import { ChannelsTab } from "./-settings/channels";
 import { LoginTab } from "./-settings/login";
-import { policyQuery } from "./-settings/policy";
 import { SecurityTab, signingKeysQuery } from "./-settings/security";
 
 const defaults = { tab: "login" } as const;

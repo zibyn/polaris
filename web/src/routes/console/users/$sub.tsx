@@ -49,7 +49,6 @@ import { UserAvatar } from "#/components/user-avatar";
 import { nicknameSchema } from "#/lib/account";
 import {
 	APIError,
-	type Application,
 	api,
 	type ExternalIdentity,
 	type Identifier,
@@ -59,6 +58,7 @@ import {
 } from "#/lib/console-api";
 import { deviceLabel } from "#/lib/device";
 import type { Passkey } from "#/lib/passkey";
+import { applicationsQuery, invalidateUser } from "#/lib/queries";
 import {
 	identifierKinds,
 	kindName,
@@ -429,8 +429,7 @@ function DeleteUser({
 }) {
 	const can = useCan();
 	const apps = useQuery({
-		queryKey: ["applications"],
-		queryFn: () => api<{ applications: Application[] }>("/applications"),
+		...applicationsQuery,
 		enabled: can("applications:read"),
 	});
 	const notifies = apps.data?.applications.some((a) => a.webhookUrl);
@@ -473,7 +472,7 @@ function ChangeIdentifier({
 				body: { value },
 			}),
 		onSuccess: async () => {
-			await client.invalidateQueries();
+			await invalidateUser(client, sub);
 			saved();
 			onClose();
 		},
@@ -566,7 +565,7 @@ function EditNickname({
 				body: { nickname },
 			}),
 		onSuccess: async () => {
-			await client.invalidateQueries();
+			await invalidateUser(client, sub);
 			saved();
 			onClose();
 		},
@@ -639,7 +638,7 @@ function useUserAction(sub: string) {
 			if (a.leave) {
 				navigate({ to: "/console/users" });
 			}
-			return client.invalidateQueries();
+			return invalidateUser(client, sub);
 		},
 		onError: (e, a) => failed(a.what)(e),
 	});
@@ -1038,7 +1037,7 @@ function APIRoles({
 				method: "PUT",
 				body: { api: apiID, roles: keys },
 			}),
-		onSuccess: () => client.invalidateQueries(),
+		onSuccess: () => invalidateUser(client, user.sub),
 	});
 	const form = useForm({
 		defaultValues: { roles: held },

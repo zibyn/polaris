@@ -14,7 +14,8 @@ import {
 	EmptyTitle,
 } from "#/components/ui/empty";
 import { onlyBuiltin, typeName } from "#/lib/apps";
-import { type Application, api } from "#/lib/console-api";
+import type { Application } from "#/lib/console-api";
+import { applicationsQuery } from "#/lib/queries";
 import { apisQuery } from "#/routes/console/apis/index";
 import { type Header, useCan } from "#/routes/console/route";
 import { CreateAppSheet } from "./-components/create-app";
@@ -30,11 +31,6 @@ export const Route = createFileRoute("/console/apps/")({
 		]),
 	component: Applications,
 });
-
-export const applicationsQuery = {
-	queryKey: ["applications"],
-	queryFn: () => api<{ applications: Application[] }>("/applications"),
-};
 
 // useCreate is the one create button, or false without the Permission.
 // When there are no apps of your own, the empty state carries it instead

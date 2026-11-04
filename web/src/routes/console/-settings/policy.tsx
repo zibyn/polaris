@@ -1,25 +1,14 @@
 import { revalidateLogic, useForm } from "@tanstack/react-form";
-import {
-	queryOptions,
-	useMutation,
-	useQueryClient,
-	useSuspenseQuery,
-} from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
-import { FormField, saved } from "#/components/form";
+import { FormField } from "#/components/form";
 import { Input } from "#/components/ui/input";
-import { api, type Policy } from "#/lib/console-api";
-import { numberSchema } from "#/lib/login";
+import type { Policy } from "#/lib/console-api";
+import { numberSchema, type PolicyPlan, planPolicySave } from "#/lib/login";
+import { policyQuery, useSavePolicy } from "#/lib/queries";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { SaveBar, Section } from "#/routes/console/-components/section";
 import { useCan } from "#/routes/console/route";
-
-const settingsKey = ["settings"];
-
-export const policyQuery = queryOptions({
-	queryKey: settingsKey,
-	queryFn: () => api<Policy>("/settings"),
-});
 
 export function usePolicy() {
 	const can = useCan();
@@ -27,29 +16,9 @@ export function usePolicy() {
 	return { policy, editable: can("config:write") };
 }
 
-// useSavePolicy saves one section: PUT /settings takes the whole Policy, so
-// the rest goes back as it was, read from the cache. A save writes what it
-// sent into the cache at once, so another section's save before the refetch
-// doesn't undo it. It toasts 已保存 itself.
-export function useSavePolicy() {
-	const client = useQueryClient();
-	return useMutation({
-		mutationFn: async (patch: Partial<Policy>) => {
-			const body = { ...client.getQueryData<Policy>(settingsKey), ...patch };
-			await api("/settings", { method: "PUT", body });
-			return body;
-		},
-		onSuccess: (body) => {
-			client.setQueryData(settingsKey, body);
-			saved();
-			return client.invalidateQueries({ queryKey: settingsKey });
-		},
-	});
-}
-
 // PolicyNumber edits one numeric setting in its own section. warning shows
-// under the field as it is typed; confirm, when it applies to the change,
-// asks before saving.
+// under the field as it is typed; confirm asks before saving when
+// planPolicySave says the change needs a question.
 type PolicyNumberProps = {
 	title: string;
 	field: "dailySendLimit" | "auditRetentionDays";
@@ -57,9 +26,8 @@ type PolicyNumberProps = {
 	suffix: string;
 	help: string;
 	min: number;
-	warning?: (value: number) => ReactNode;
+	warning?: (plan: PolicyPlan) => ReactNode;
 	confirm?: {
-		when: (before: number, after: number) => boolean;
 		title: string;
 		action: string;
 		body: ReactNode;
@@ -68,13 +36,11 @@ type PolicyNumberProps = {
 
 export function PolicyNumber(props: PolicyNumberProps) {
 	const { policy, editable } = usePolicy();
-	return (
-		<NumberForm {...props} current={policy[props.field]} editable={editable} />
-	);
+	return <NumberForm {...props} policy={policy} editable={editable} />;
 }
 
 function NumberForm({
-	current,
+	policy,
 	editable,
 	title,
 	field,
@@ -85,10 +51,12 @@ function NumberForm({
 	warning,
 	confirm,
 }: PolicyNumberProps & {
-	current: number;
+	policy: Policy;
 	editable: boolean;
 }) {
 	const save = useSavePolicy();
+	const current = policy[field];
+	const plan = (n: number) => planPolicySave(policy, { [field]: n });
 	const [asking, setAsking] = useState<number>();
 	const write = (n: number) => save.mutate({ [field]: n });
 	const form = useForm({
@@ -97,7 +65,7 @@ function NumberForm({
 		validators: { onDynamic: numberSchema(min) },
 		onSubmit: ({ value }) => {
 			const next = Number(value.value.trim());
-			if (confirm?.when(current, next)) {
+			if (confirm && plan(next).confirm) {
 				setAsking(next);
 			} else {
 				write(next);
@@ -125,7 +93,7 @@ function NumberForm({
 									/>
 									<span className="text-sm">{suffix}</span>
 								</div>
-								{f.state.value !== "" && warning?.(Number(f.state.value))}
+								{f.state.value !== "" && warning?.(plan(Number(f.state.value)))}
 							</>
 						)}
 					</FormField>

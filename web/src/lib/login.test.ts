@@ -1,18 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { Policy } from "./console-api.ts";
 import {
-	asksRequirePhone,
-	asksShorterRetention,
-	asksTermsVersion,
 	channelSchema,
 	disableImpact,
 	hasChannel,
 	lastRotation,
 	numberSchema,
-	passwordLocksOut,
+	planPolicySave,
 	providerSchema,
 	rotatedRecently,
-	sendsNothing,
 	smsLocked,
 	termsSchema,
 	testSchema,
@@ -193,52 +190,95 @@ test("a test code goes to an email or a phone number", () => {
 	});
 });
 
+const policy: Policy = {
+	passwordLogin: "on",
+	requirePhone: false,
+	dailySendLimit: 100,
+	termsUrl: "",
+	privacyUrl: "",
+	termsVersion: "",
+	auditRetentionDays: 180,
+	adminsNeedTwoFactor: false,
+	passkeyLogin: true,
+	openRegistration: true,
+};
+const asks = (before: Partial<Policy>, patch: Partial<Policy>) =>
+	planPolicySave({ ...policy, ...before }, patch).confirm;
+const warns = (patch: Partial<Policy>) => planPolicySave(policy, patch).warn;
+
 test("turning 必须绑定手机号 on asks first", () => {
-	assert.equal(asksRequirePhone(false, true), true);
+	assert.equal(asks({}, { requirePhone: true }), "requirePhone");
 });
 
 test("leaving 必须绑定手机号 as it was or turning it off doesn't ask", () => {
-	assert.equal(asksRequirePhone(true, true), false);
-	assert.equal(asksRequirePhone(true, false), false);
-	assert.equal(asksRequirePhone(false, false), false);
+	assert.equal(asks({ requirePhone: true }, { requirePhone: true }), undefined);
+	assert.equal(
+		asks({ requirePhone: true }, { requirePhone: false }),
+		undefined,
+	);
+	assert.equal(asks({}, { requirePhone: false }), undefined);
 });
 
 test("a new terms version asks first, the first one too", () => {
 	// All users agree again on their next login.
-	assert.equal(asksTermsVersion("2026-01", "2026-10"), true);
-	assert.equal(asksTermsVersion("", "2026-10"), true);
+	assert.equal(
+		asks({ termsVersion: "2026-01" }, { termsVersion: "2026-10" }),
+		"termsVersion",
+	);
+	assert.equal(asks({}, { termsVersion: "2026-10" }), "termsVersion");
 });
 
 test("the same terms version, or none, doesn't ask", () => {
-	assert.equal(asksTermsVersion("2026-10", "2026-10"), false);
-	assert.equal(asksTermsVersion("2026-10", ""), false);
+	assert.equal(
+		asks({ termsVersion: "2026-10" }, { termsVersion: "2026-10" }),
+		undefined,
+	);
+	assert.equal(
+		asks({ termsVersion: "2026-10" }, { termsVersion: "" }),
+		undefined,
+	);
 });
 
 test("a shorter audit retention asks first", () => {
 	// Older events are deleted within the hour.
-	assert.equal(asksShorterRetention(180, 30), true);
+	assert.equal(asks({}, { auditRetentionDays: 30 }), "shorterRetention");
 });
 
 test("the same or a longer audit retention doesn't ask", () => {
-	assert.equal(asksShorterRetention(180, 180), false);
-	assert.equal(asksShorterRetention(30, 180), false);
+	assert.equal(asks({}, { auditRetentionDays: 180 }), undefined);
+	assert.equal(
+		asks({ auditRetentionDays: 30 }, { auditRetentionDays: 180 }),
+		undefined,
+	);
+});
+
+test("a section saving other settings asks nothing of the ones it leaves", () => {
+	// The instance already requires a phone and has a version: unrelated
+	// saves go straight through.
+	assert.equal(
+		asks(
+			{ requirePhone: true, termsVersion: "2026-10" },
+			{ passkeyLogin: false },
+		),
+		undefined,
+	);
 });
 
 test("password login off warns", () => {
 	// Username-only users can't sign in; the account center can't set one.
-	assert.equal(passwordLocksOut("off"), true);
+	assert.equal(warns({ passwordLogin: "off" }).passwordLocksOut, true);
 });
 
 test("password login on doesn't warn", () => {
-	assert.equal(passwordLocksOut("on"), false);
+	assert.equal(warns({ passwordLogin: "on" }).passwordLocksOut, false);
 });
 
 test("a daily send limit of 0 warns", () => {
-	assert.equal(sendsNothing(0), true);
+	assert.equal(warns({ dailySendLimit: 0 }).sendsNothing, true);
 });
 
 test("a daily send limit above 0 doesn't warn", () => {
-	assert.equal(sendsNothing(1), false);
+	assert.equal(warns({ dailySendLimit: 1 }).sendsNothing, false);
 });
 
 const rotatedAt = "2026-10-07T08:00:00Z";

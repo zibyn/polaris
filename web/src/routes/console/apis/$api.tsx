@@ -53,11 +53,11 @@ import {
 	apiPath,
 	type RoleDef,
 } from "#/lib/console-api";
+import { applicationsQuery } from "#/lib/queries";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { FormSheet } from "#/routes/console/-components/form-sheet";
 import { DangerZone, IdLine } from "#/routes/console/-components/section";
 import { apisQuery } from "#/routes/console/apis/index";
-import { applicationsQuery } from "#/routes/console/apps/index";
 import { type Header, useCan } from "#/routes/console/route";
 
 const defaults = { tab: "permissions" } as const;

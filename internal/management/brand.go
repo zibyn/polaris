@@ -117,15 +117,10 @@ func (s *Service) removeInstanceLogo(ctx context.Context, _ *struct{}) (*struct{
 // brandable is an Application that may have a 品牌 of its own, or why not.
 func (s *Service) brandable(ctx context.Context, clientID string) error {
 	app, err := s.application(ctx, clientID)
-	switch {
-	case err != nil:
+	if err != nil {
 		return err
-	case app.Builtin:
-		return huma.Error422UnprocessableEntity("内置 Application 的品牌跟随实例")
-	case app.Type == "m2m":
-		return huma.Error422UnprocessableEntity("M2M Application 不登录,没有品牌")
 	}
-	return nil
+	return invalid(noOwn(app.Builtin, app.Type, "品牌"))
 }
 
 type appLogoInput struct {

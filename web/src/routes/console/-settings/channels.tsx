@@ -1,6 +1,5 @@
 import { revalidateLogic, useForm } from "@tanstack/react-form";
 import {
-	queryOptions,
 	type UseMutationResult,
 	useMutation,
 	useQueryClient,
@@ -27,23 +26,13 @@ import {
 	type ChannelPlugin,
 	type ChannelSettings,
 } from "#/lib/console-api";
-import {
-	channelSchema,
-	sendsNothing,
-	smsLocked,
-	testSchema,
-} from "#/lib/login";
+import { channelSchema, smsLocked, testSchema } from "#/lib/login";
+import { channelsQuery } from "#/lib/queries";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { FormSheet } from "#/routes/console/-components/form-sheet";
 import { SectionHeading } from "#/routes/console/-components/section";
 import { useCan } from "#/routes/console/route";
 import { PolicyNumber, usePolicy } from "./policy";
-
-export const channelsQuery = queryOptions({
-	queryKey: ["channels"],
-	queryFn: () =>
-		api<{ plugins: ChannelPlugin[]; channels: ChannelSettings[] }>("/channels"),
-});
 
 // ChannelsLink leads to the 通道 Tab from a hint that needs a channel.
 export function ChannelsLink({
@@ -87,8 +76,8 @@ export function ChannelsTab() {
 				suffix="条"
 				help="达到上限后当天停止发送验证码。"
 				min={0}
-				warning={(n) =>
-					sendsNothing(n) && (
+				warning={(plan) =>
+					plan.warn.sendsNothing && (
 						<Alert variant="warning">
 							<AlertDescription>
 								设为 0 将停止发送所有验证码，包括登录和绑定手机号。
@@ -150,7 +139,7 @@ function Channel({
 	const [testing, setTesting] = useState(false);
 	const remove = useMutation({
 		mutationFn: () => api(`/channels/${kind}`, { method: "DELETE" }),
-		onSuccess: () => client.invalidateQueries({ queryKey: ["channels"] }),
+		onSuccess: () => client.invalidateQueries(channelsQuery),
 		onError: failed(`停用${label}通道失败`),
 	});
 	const pluginName = plugins.find((p) => p.key === current?.plugin)?.name;
@@ -276,7 +265,7 @@ function ChannelForm({
 			// Toast here, not in mutate(): the form unmounts as the sheet closes.
 			saved();
 			onSaved();
-			return client.invalidateQueries({ queryKey: ["channels"] });
+			return client.invalidateQueries(channelsQuery);
 		},
 	});
 	return (

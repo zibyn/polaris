@@ -63,9 +63,9 @@ import {
 	type Part,
 } from "#/lib/audit";
 import { type AuditEvent, api, type User } from "#/lib/console-api";
+import { applicationsQuery } from "#/lib/queries";
 import { primaryIdentifier } from "#/lib/users";
 import { apisQuery } from "#/routes/console/apis/index";
-import { applicationsQuery } from "#/routes/console/apps/index";
 import { useCan } from "#/routes/console/route";
 
 const text = z.string().default("").catch("");
