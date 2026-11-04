@@ -38,6 +38,9 @@ type Application struct {
 	Jwks                   []byte
 	SessionMaxLifetime     pgtype.Interval
 	LoginMethods           []string
+	BrandName              pgtype.Text
+	BrandLogo              pgtype.Text
+	BrandColor             pgtype.Text
 }
 
 type ApplicationRole struct {
@@ -295,6 +298,11 @@ type Setting struct {
 	AdminsNeedTwoFactor bool
 	PasskeyLogin        bool
 	OpenRegistration    bool
+	TermsUrlEn          string
+	PrivacyUrlEn        string
+	BrandName           string
+	BrandLogo           string
+	BrandColor          string
 }
 
 type SigningKey struct {

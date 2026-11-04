@@ -18,27 +18,27 @@ func (s *Service) setupPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	} else if open == "" {
-		page(w, http.StatusNotFound, "message", identity.ErrSetupClosed.Error())
+		s.page(w, r, pickLang(r, ""), "", http.StatusNotFound, "message", identity.ErrSetupClosed.Error())
 		return
 	}
-	page(w, http.StatusOK, "setup", setupForm{Token: r.URL.Query().Get("token")})
+	s.page(w, r, pickLang(r, ""), "", http.StatusOK, "setup", setupForm{Token: r.URL.Query().Get("token")})
 }
 
 func (s *Service) setup(w http.ResponseWriter, r *http.Request) {
 	form := setupForm{Token: r.PostFormValue("token"), Username: r.PostFormValue("username")}
 	if err := s.origin.Check(r); err != nil {
 		form.Error = "请从引导页提交"
-		page(w, http.StatusForbidden, "setup", form)
+		s.page(w, r, pickLang(r, ""), "", http.StatusForbidden, "setup", form)
 		return
 	}
 	_, err := s.ids.Bootstrap(r.Context(), form.Token, form.Username, r.PostFormValue("password"))
 	var invalid identity.Invalid
 	switch {
 	case errors.Is(err, identity.ErrSetupClosed):
-		page(w, http.StatusNotFound, "message", err.Error())
+		s.page(w, r, pickLang(r, ""), "", http.StatusNotFound, "message", err.Error())
 	case errors.As(err, &invalid):
 		form.Error = invalid.Error()
-		page(w, http.StatusOK, "setup", form)
+		s.page(w, r, pickLang(r, ""), "", http.StatusOK, "setup", form)
 	case err != nil:
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	default:

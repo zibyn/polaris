@@ -25,22 +25,30 @@ const isHTTPS = (u: string) => {
 };
 
 // termsSchema stops a terms save the backend would reject: a version
-// needs both URLs, and every URL must be https.
+// needs both URLs, and every URL must be https. The English ones are
+// optional: English login pages fall back to the Chinese.
 export const termsSchema = z
 	.object({
 		termsUrl: z.string().trim(),
 		privacyUrl: z.string().trim(),
+		termsUrlEn: z.string().trim(),
+		privacyUrlEn: z.string().trim(),
 		termsVersion: z.string().trim().max(64, "协议版本最多 64 个字符。"),
 	})
 	.superRefine((t, ctx) => {
-		for (const k of ["termsUrl", "privacyUrl"] as const) {
+		for (const k of [
+			"termsUrl",
+			"privacyUrl",
+			"termsUrlEn",
+			"privacyUrlEn",
+		] as const) {
 			if (t[k] && !isHTTPS(t[k])) {
 				ctx.addIssue({
 					code: "custom",
 					path: [k],
 					message: "请填写 https 开头的地址。认证服务只接受 https 链接。",
 				});
-			} else if (!t[k] && t.termsVersion) {
+			} else if (!t[k] && t.termsVersion && !k.endsWith("En")) {
 				ctx.addIssue({
 					code: "custom",
 					path: [k],

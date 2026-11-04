@@ -335,3 +335,29 @@ func TestCleanupKeepsAuditForTheRetentionPeriod(t *testing.T) {
 		t.Errorf("left %v, want [recent]", events)
 	}
 }
+
+// The English terms links are optional, https like the Chinese ones, and
+// read back as saved.
+func TestEnglishTermsSettings(t *testing.T) {
+	e := start(t)
+	owner := e.token(e.owner, nil)
+	type withEN struct {
+		settings
+		TermsURLEn   string `json:"termsUrlEn,omitempty"`
+		PrivacyURLEn string `json:"privacyUrlEn,omitempty"`
+	}
+	policy := withEN{settings: settings{PasswordLogin: "on", DailySendLimit: 1000, AuditRetentionDays: 180, PasskeyLogin: true,
+		TermsURL: "https://example.com/terms", PrivacyURL: "https://example.com/privacy", TermsVersion: "v1"},
+		TermsURLEn: "http://example.com/en/terms"}
+	if code := e.call("PUT", owner, "/settings", policy, nil); code != 422 {
+		t.Errorf("http English terms: %d, want 422", code)
+	}
+	policy.TermsURLEn, policy.PrivacyURLEn = "https://example.com/en/terms", "https://example.com/en/privacy"
+	if code := e.call("PUT", owner, "/settings", policy, nil); code != 204 {
+		t.Fatalf("save: %d", code)
+	}
+	var got withEN
+	if code := e.get(owner, "/settings", &got); code != 200 || got != policy {
+		t.Errorf("read back: %d %+v", code, got)
+	}
+}

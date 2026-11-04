@@ -208,6 +208,19 @@ func (q *Queries) DeleteRole(ctx context.Context, arg DeleteRoleParams) (int64, 
 	return result.RowsAffected(), nil
 }
 
+const deleteUnusedLogos = `-- name: DeleteUnusedLogos :exec
+DELETE FROM blobs WHERE key LIKE 'brand/%'
+    AND key NOT IN (SELECT brand_logo FROM settings
+                    UNION ALL SELECT brand_logo FROM applications WHERE brand_logo IS NOT NULL)
+`
+
+// Deletes the Logo blobs no brand names any more: the one a new upload,
+// a cleared Logo or a deleted Application left behind.
+func (q *Queries) DeleteUnusedLogos(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteUnusedLogos)
+	return err
+}
+
 const deleteUser = `-- name: DeleteUser :execrows
 WITH gone AS (
     DELETE FROM users WHERE users.id = $2 RETURNING users.id
@@ -241,7 +254,8 @@ func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) (int64, 
 
 const getSettings = `-- name: GetSettings :one
 SELECT password_login, require_phone, daily_send_limit, terms_url, privacy_url, terms_version, audit_retention_days,
-       admins_need_two_factor, passkey_login, open_registration
+       admins_need_two_factor, passkey_login, open_registration, terms_url_en, privacy_url_en,
+       brand_name, brand_logo, brand_color
 FROM settings
 `
 
@@ -256,6 +270,11 @@ type GetSettingsRow struct {
 	AdminsNeedTwoFactor bool
 	PasskeyLogin        bool
 	OpenRegistration    bool
+	TermsUrlEn          string
+	PrivacyUrlEn        string
+	BrandName           string
+	BrandLogo           string
+	BrandColor          string
 }
 
 func (q *Queries) GetSettings(ctx context.Context) (GetSettingsRow, error) {
@@ -272,6 +291,11 @@ func (q *Queries) GetSettings(ctx context.Context) (GetSettingsRow, error) {
 		&i.AdminsNeedTwoFactor,
 		&i.PasskeyLogin,
 		&i.OpenRegistration,
+		&i.TermsUrlEn,
+		&i.PrivacyUrlEn,
+		&i.BrandName,
+		&i.BrandLogo,
+		&i.BrandColor,
 	)
 	return i, err
 }
@@ -410,7 +434,7 @@ SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_re
        COALESCE(extract(epoch FROM session_max_lifetime), 0)::int AS session_max_lifetime,
        refresh_tokens, require_role, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
        COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps,
-       token_auth_method, jwks, login_methods
+       token_auth_method, jwks, login_methods, brand_name, brand_logo, brand_color
 FROM applications
 WHERE $1::text = '' OR client_id = $1
 ORDER BY builtin DESC, created_at, client_id
@@ -437,6 +461,9 @@ type ListApplicationsRow struct {
 	TokenAuthMethod        string
 	Jwks                   []byte
 	LoginMethods           []string
+	BrandName              pgtype.Text
+	BrandLogo              pgtype.Text
+	BrandColor             pgtype.Text
 }
 
 // One Application, or all of them for an empty client_id.
@@ -470,6 +497,9 @@ func (q *Queries) ListApplications(ctx context.Context, clientID string) ([]List
 			&i.TokenAuthMethod,
 			&i.Jwks,
 			&i.LoginMethods,
+			&i.BrandName,
+			&i.BrandLogo,
+			&i.BrandColor,
 		); err != nil {
 			return nil, err
 		}
@@ -672,6 +702,31 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 	return items, nil
 }
 
+const lockApplicationLogo = `-- name: LockApplicationLogo :one
+SELECT COALESCE(brand_logo, '')::text FROM applications WHERE client_id = $1 FOR UPDATE
+`
+
+// An Application's own Logo (” for none), locked as LockInstanceLogo.
+func (q *Queries) LockApplicationLogo(ctx context.Context, clientID string) (string, error) {
+	row := q.db.QueryRow(ctx, lockApplicationLogo, clientID)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const lockInstanceLogo = `-- name: LockInstanceLogo :one
+SELECT brand_logo FROM settings FOR UPDATE
+`
+
+// The instance's Logo, locked until the transaction ends: a save checks
+// the Logo it sends back against this, not one an upload just replaced.
+func (q *Queries) LockInstanceLogo(ctx context.Context) (string, error) {
+	row := q.db.QueryRow(ctx, lockInstanceLogo)
+	var brand_logo string
+	err := row.Scan(&brand_logo)
+	return brand_logo, err
+}
+
 const m2MCaller = `-- name: M2MCaller :one
 SELECT EXISTS (SELECT 1 FROM applications a WHERE a.client_id = $1 AND a.type = 'm2m') AS is_m2m_application,
        count(*) > 0 AS admin,
@@ -841,6 +896,25 @@ func (q *Queries) RoleUsers(ctx context.Context, arg RoleUsersParams) (RoleUsers
 	return i, err
 }
 
+const setApplicationLogo = `-- name: SetApplicationLogo :execrows
+UPDATE applications SET brand_logo = $1
+WHERE client_id = $2 AND NOT builtin AND type <> 'm2m'
+`
+
+type SetApplicationLogoParams struct {
+	Logo     pgtype.Text
+	ClientID string
+}
+
+// Replaces an Application's own Logo; NULL follows the instance's.
+func (q *Queries) SetApplicationLogo(ctx context.Context, arg SetApplicationLogoParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setApplicationLogo, arg.Logo, arg.ClientID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setApplicationRoles = `-- name: SetApplicationRoles :exec
 WITH gone AS (
     DELETE FROM application_roles
@@ -897,6 +971,23 @@ func (q *Queries) SetApplicationSecret(ctx context.Context, arg SetApplicationSe
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const setInstanceLogo = `-- name: SetInstanceLogo :exec
+WITH u AS (UPDATE settings SET brand_logo = $2)
+INSERT INTO audit_log (event, sub, detail)
+VALUES ('settings.updated', NULL, jsonb_build_object('by', $1::text))
+`
+
+type SetInstanceLogoParams struct {
+	By   string
+	Logo string
+}
+
+// Replaces the instance's Logo; audited with who did it.
+func (q *Queries) SetInstanceLogo(ctx context.Context, arg SetInstanceLogoParams) error {
+	_, err := q.db.Exec(ctx, setInstanceLogo, arg.By, arg.Logo)
+	return err
 }
 
 const setRolePermissions = `-- name: SetRolePermissions :exec
@@ -1044,8 +1135,11 @@ UPDATE applications SET
     apple_app_ids = $12,
     android_apps = $13,
     jwks = COALESCE($14, jwks),
-    login_methods = $15
-WHERE client_id = $16 AND NOT builtin
+    login_methods = $15,
+    brand_name = $16,
+    brand_logo = $17,
+    brand_color = $18
+WHERE client_id = $19 AND NOT builtin
 `
 
 type UpdateApplicationParams struct {
@@ -1064,6 +1158,9 @@ type UpdateApplicationParams struct {
 	AndroidApps            []byte
 	Jwks                   []byte
 	LoginMethods           []string
+	BrandName              pgtype.Text
+	BrandLogo              pgtype.Text
+	BrandColor             pgtype.Text
 	ClientID               string
 }
 
@@ -1087,6 +1184,9 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 		arg.AndroidApps,
 		arg.Jwks,
 		arg.LoginMethods,
+		arg.BrandName,
+		arg.BrandLogo,
+		arg.BrandColor,
 		arg.ClientID,
 	)
 	if err != nil {
@@ -1101,7 +1201,8 @@ WITH u AS (
         daily_send_limit = $4, terms_url = $5, privacy_url = $6,
         terms_version = $7, audit_retention_days = $8,
         admins_need_two_factor = $9, passkey_login = $10,
-        open_registration = $11
+        open_registration = $11, terms_url_en = $12, privacy_url_en = $13,
+        brand_name = $14, brand_logo = $15, brand_color = $16
 )
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('settings.updated', NULL, jsonb_build_object('by', $1::text))
@@ -1119,6 +1220,11 @@ type UpdateSettingsParams struct {
 	AdminsNeedTwoFactor bool
 	PasskeyLogin        bool
 	OpenRegistration    bool
+	TermsUrlEn          string
+	PrivacyUrlEn        string
+	BrandName           string
+	BrandLogo           string
+	BrandColor          string
 }
 
 // Changes the login policy; audited with who did it.
@@ -1135,6 +1241,11 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.AdminsNeedTwoFactor,
 		arg.PasskeyLogin,
 		arg.OpenRegistration,
+		arg.TermsUrlEn,
+		arg.PrivacyUrlEn,
+		arg.BrandName,
+		arg.BrandLogo,
+		arg.BrandColor,
 	)
 	return err
 }

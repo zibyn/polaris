@@ -5,6 +5,7 @@ import {
 	useSearch,
 } from "@tanstack/react-router";
 import { z } from "zod";
+import { BrandTab } from "./-settings/brand";
 import { ChannelsTab, channelsQuery } from "./-settings/channels";
 import { LoginTab } from "./-settings/login";
 import { policyQuery } from "./-settings/policy";
@@ -13,7 +14,7 @@ import { SecurityTab, signingKeysQuery } from "./-settings/security";
 const defaults = { tab: "login" } as const;
 const search = z.object({
 	tab: z
-		.enum(["login", "channels", "security"])
+		.enum(["login", "brand", "channels", "security"])
 		.default(defaults.tab)
 		.catch(defaults.tab),
 });
@@ -24,6 +25,11 @@ const categories = [
 		tab: "login",
 		label: "登录方式",
 		hint: "密码、Passkey、验证码和用户协议",
+	},
+	{
+		tab: "brand",
+		label: "品牌",
+		hint: "登录页的品牌名、Logo 和主色",
 	},
 	{
 		tab: "channels",
@@ -55,7 +61,7 @@ export const Route = createFileRoute("/console/settings")({
 	component: Settings,
 });
 
-// Settings picks one category from a rail on the left, so the three areas
+// Settings picks one category from a rail on the left, so the areas
 // stay in view instead of turning into tabs that hide each other.
 function Settings() {
 	const { tab } = useSearch({ from: "/console/settings" });
@@ -89,6 +95,7 @@ function Settings() {
 			</nav>
 			<div className="max-w-3xl min-w-0">
 				{tab === "login" && <LoginTab />}
+				{tab === "brand" && <BrandTab />}
 				{tab === "channels" && <ChannelsTab />}
 				{tab === "security" && <SecurityTab />}
 			</div>

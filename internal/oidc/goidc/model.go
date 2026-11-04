@@ -588,6 +588,7 @@ type AuthorizationParameters struct {
 	ClientNotificationToken string              `json:"client_notification_token,omitempty"`
 	BindingMessage          string              `json:"binding_message,omitempty"`
 	RequestedExpiry         *int                `json:"requested_expiry,omitempty"`
+	UILocales               string              `json:"ui_locales,omitempty"`
 }
 
 // Audiences is a list of strings that marshals as a single string when it

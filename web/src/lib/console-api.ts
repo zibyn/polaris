@@ -125,12 +125,19 @@ export type Policy = {
 	dailySendLimit: number;
 	termsUrl: string;
 	privacyUrl: string;
+	termsUrlEn?: string; // English login pages link it; absent, the Chinese one
+	privacyUrlEn?: string;
 	termsVersion: string;
 	auditRetentionDays: number;
 	adminsNeedTwoFactor: boolean;
 	passkeyLogin: boolean;
 	openRegistration: boolean;
+	brand?: Brand; // absent for none: the 「星云」 look
 };
+// Brand is a 品牌 (ADR 0028): the instance's, or an Application's own items
+// over it. logo is a reference the upload returned, served at
+// /brand-logos/{logo}.
+export type Brand = { name?: string; logo?: string; color?: string };
 export type SigningKey = { kid: string; createdAt: string; current: boolean };
 
 export type AndroidApp = {
@@ -153,6 +160,7 @@ export type ApplicationSettings = {
 	androidApps: AndroidApp[];
 	jwks?: { keys: unknown[] }; // Application 公钥; absent keeps the stored set
 	loginMethods?: LoginMethods; // absent follows the instance (ADR 0027)
+	brand?: Brand; // its own items; absent ones follow the instance (ADR 0028)
 };
 // LoginMethods are an Application's own 登录方式; it offers those the
 // instance has on too.

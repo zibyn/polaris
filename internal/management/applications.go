@@ -47,6 +47,7 @@ type ApplicationSettings struct {
 	// nothing, so a client can deploy them first (ADR 0023).
 	JWKS         json.RawMessage `json:"jwks,omitempty" doc:"Application 公钥 checking its private_key_jwt assertions, as a JWKS of public RSA (2048 bits or more) and EC P-256 keys, each with a distinct kid, at most 5; replaces the registered set, absent keeps it. Not for public Applications."`
 	LoginMethods *LoginMethods   `json:"loginMethods,omitempty" doc:"The login methods it offers (ADR 0027). Absent follows the instance, the default: whatever the instance has on, Providers added later included. Set, only these, as far as the instance has them on; 单点登录 from a Session signed in another way asks for a new login. Not for the built-in or M2M Applications"`
+	Brand        *Brand          `json:"brand,omitempty" doc:"Its own 品牌 items on its hosted pages (ADR 0028); an item left out, or the whole brand absent, follows the instance's. Its Logo is uploaded with set-application-logo. Not for the built-in or M2M Applications"`
 }
 
 // LoginMethods are an Application's own login methods; it offers those the
@@ -152,7 +153,7 @@ func (s *Service) applications(ctx context.Context, clientID string) ([]Applicat
 				Name: r.Name, RedirectURIs: r.RedirectUris, PostLogoutRedirectURIs: r.PostLogoutRedirectUris,
 				DefaultAPI: r.DefaultApi, SessionIdleTimeout: r.SessionIdleTimeout, SessionMaxLifetime: r.SessionMaxLifetime, RefreshTokens: r.RefreshTokens,
 				RequireRole: r.RequireRole, WebhookURL: r.WebhookUrl, BackchannelLogoutURI: r.BackchannelLogoutUri, AppleAppIDs: r.AppleAppIds,
-				JWKS: r.Jwks, LoginMethods: loginMethodsOf(r.LoginMethods),
+				JWKS: r.Jwks, LoginMethods: loginMethodsOf(r.LoginMethods), Brand: brandOf(r.BrandName, r.BrandLogo, r.BrandColor),
 			},
 			TokenAuthMethod: r.TokenAuthMethod,
 		}
@@ -230,6 +231,9 @@ func (s *Service) updateApplication(ctx context.Context, in *struct {
 	if app.Builtin && in.Body.LoginMethods != nil {
 		return nil, huma.Error422UnprocessableEntity("内置 Application 的登录方式跟随实例")
 	}
+	if app.Builtin && in.Body.Brand != nil {
+		return nil, huma.Error422UnprocessableEntity("内置 Application 的品牌跟随实例")
+	}
 	if app.Builtin {
 		return nil, errBuiltinApplication
 	}
@@ -299,6 +303,9 @@ func (st *ApplicationSettings) validate(typ string) error {
 		if st.LoginMethods != nil {
 			return identity.Invalid("M2M Application 不登录,没有登录方式")
 		}
+		if st.Brand != nil {
+			return identity.Invalid("M2M Application 不登录,没有品牌")
+		}
 	}
 	if m := st.LoginMethods; m != nil && len(m.Methods)+len(m.Providers) == 0 {
 		return identity.Invalid("指定登录方式时至少选一种")
@@ -367,9 +374,17 @@ func (st *ApplicationSettings) validate(typ string) error {
 }
 
 // saveSettings writes an Application's settings; 0 rows for a built-in or
-// missing one.
+// missing one. A Logo left out is deleted.
 func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, typ string, st *ApplicationSettings) (int64, error) {
 	if err := invalid(st.validate(typ)); err != nil {
+		return 0, err
+	}
+	logo, err := q.LockApplicationLogo(ctx, clientID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) { // none yet: being created
+		return 0, err
+	}
+	b := cmp.Or(st.Brand, &Brand{})
+	if err := invalid(b.check(logoRef(logo))); err != nil {
 		return 0, err
 	}
 	if st.LoginMethods != nil {
@@ -400,6 +415,7 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 		RequireRole: st.RequireRole, WebhookUrl: st.WebhookURL, WebhookSecret: secret, BackchannelLogoutUri: st.BackchannelLogoutURI,
 		AppleAppIds: append([]string{}, st.AppleAppIDs...), AndroidApps: android, Jwks: st.JWKS,
 		LoginMethods: st.LoginMethods.column(),
+		BrandName:    nullable(b.Name), BrandLogo: nullable(logoKey(b.Logo)), BrandColor: nullable(b.Color),
 	})
 	var pg *pgconn.PgError
 	switch {
@@ -409,15 +425,24 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 		return 0, huma.Error422UnprocessableEntity("webhook 需要签名密钥")
 	case errors.As(err, &pg) && pg.ConstraintName == "applications_jwks_check": // switched to private_key_jwt meanwhile
 		return 0, huma.Error422UnprocessableEntity("私钥签名认证时不能清空 Application 公钥")
+	case err != nil:
+		return 0, err
 	}
-	return n, err
+	return n, q.DeleteUnusedLogos(ctx)
 }
 
 func (s *Service) deleteApplication(ctx context.Context, in *clientIDPath) (*struct{}, error) {
 	if err := s.notBuiltin(ctx, in.ClientID); err != nil {
 		return nil, err
 	}
-	return nil, s.q.DeleteApplication(ctx, sqlc.DeleteApplicationParams{ClientID: in.ClientID, By: callerSub(ctx)})
+	// Its own Logo goes with it.
+	return nil, pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		if err := q.DeleteApplication(ctx, sqlc.DeleteApplicationParams{ClientID: in.ClientID, By: callerSub(ctx)}); err != nil {
+			return err
+		}
+		return q.DeleteUnusedLogos(ctx)
+	})
 }
 
 // ApplicationRoles are the Roles an M2M Application holds on its default API;

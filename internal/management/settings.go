@@ -1,11 +1,13 @@
 package management
 
 import (
+	"cmp"
 	"context"
 	"net/url"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zibyn/polaris/internal/db/sqlc"
@@ -18,21 +20,28 @@ type Policy struct {
 	DailySendLimit      int32  `json:"dailySendLimit" minimum:"0" doc:"Codes the instance sends a day at most"`
 	TermsURL            string `json:"termsUrl" doc:"用户协议; https"`
 	PrivacyURL          string `json:"privacyUrl" doc:"隐私政策; https"`
+	TermsURLEn          string `json:"termsUrlEn,omitempty" doc:"English 用户协议 the English hosted pages link to; https, empty for the Chinese one"`
+	PrivacyURLEn        string `json:"privacyUrlEn,omitempty" doc:"English 隐私政策 the English hosted pages link to; https, empty for the Chinese one"`
 	TermsVersion        string `json:"termsVersion" maxLength:"64" doc:"Users agree to this version on their next login after it changes; empty for no terms"`
 	AuditRetentionDays  int32  `json:"auditRetentionDays" minimum:"1"`
 	AdminsNeedTwoFactor bool   `json:"adminsNeedTwoFactor" doc:"管理员必须启用两步验证或 Passkey: Users holding a Management API Role can't use it without 两步验证 or a Passkey; only an admin who has either turns it on"`
 	PasskeyLogin        bool   `json:"passkeyLogin" doc:"The instance offers Passkey login (default true): off hides every Passkey entry, refuses every ceremony, and stops Passkeys from satisfying 管理员必须启用两步验证或 Passkey, while keeping the added ones"`
 	OpenRegistration    bool   `json:"openRegistration" doc:"开放注册 (default true): off, a code login or External Identity no User holds is refused instead of signing a new User up; admins and 注册邀请 still add Users"`
+	Brand               *Brand `json:"brand,omitempty" doc:"The instance's 品牌 on the hosted pages (ADR 0028), every Application's default; absent for none: the 「星云」 look. Its Logo is uploaded with set-instance-logo"`
 }
 
 type policyBody struct{ Body Policy }
 
 func (s *Service) getSettings(ctx context.Context, _ *struct{}) (*policyBody, error) {
 	r, err := s.q.GetSettings(ctx)
+	var b *Brand
+	if r.BrandName != "" || r.BrandLogo != "" || r.BrandColor != "" {
+		b = &Brand{Name: r.BrandName, Logo: logoRef(r.BrandLogo), Color: r.BrandColor}
+	}
 	return &policyBody{Body: Policy{
 		PasswordLogin: r.PasswordLogin, RequirePhone: r.RequirePhone, DailySendLimit: r.DailySendLimit,
-		TermsURL: r.TermsUrl, PrivacyURL: r.PrivacyUrl, TermsVersion: r.TermsVersion, AuditRetentionDays: r.AuditRetentionDays,
-		AdminsNeedTwoFactor: r.AdminsNeedTwoFactor, PasskeyLogin: r.PasskeyLogin, OpenRegistration: r.OpenRegistration,
+		TermsURL: r.TermsUrl, PrivacyURL: r.PrivacyUrl, TermsURLEn: r.TermsUrlEn, PrivacyURLEn: r.PrivacyUrlEn, TermsVersion: r.TermsVersion, AuditRetentionDays: r.AuditRetentionDays,
+		AdminsNeedTwoFactor: r.AdminsNeedTwoFactor, PasskeyLogin: r.PasskeyLogin, OpenRegistration: r.OpenRegistration, Brand: b,
 	}}, err
 }
 
@@ -41,7 +50,7 @@ func (s *Service) putSettings(ctx context.Context, in *policyBody) (*struct{}, e
 	if b.TermsVersion != "" && (b.TermsURL == "" || b.PrivacyURL == "") {
 		return nil, huma.Error422UnprocessableEntity("填写协议版本时,须同时填写用户协议和隐私政策的 URL")
 	}
-	for _, u := range []string{b.TermsURL, b.PrivacyURL} {
+	for _, u := range []string{b.TermsURL, b.PrivacyURL, b.TermsURLEn, b.PrivacyURLEn} {
 		if u != "" && !isHTTPS(u) {
 			return nil, huma.Error422UnprocessableEntity("协议 URL 须为 https")
 		}
@@ -70,10 +79,26 @@ func (s *Service) putSettings(ctx context.Context, in *policyBody) (*struct{}, e
 	if !b.PasskeyLogin && b.AdminsNeedTwoFactor && c.satisfied && !c.totp {
 		return nil, huma.Error422UnprocessableEntity("请先为自己开启两步验证")
 	}
-	return nil, s.q.UpdateSettings(ctx, sqlc.UpdateSettingsParams{
-		By: c.sub, PasswordLogin: b.PasswordLogin, RequirePhone: b.RequirePhone, DailySendLimit: b.DailySendLimit,
-		TermsUrl: b.TermsURL, PrivacyUrl: b.PrivacyURL, TermsVersion: b.TermsVersion, AuditRetentionDays: b.AuditRetentionDays,
-		AdminsNeedTwoFactor: b.AdminsNeedTwoFactor, PasskeyLogin: b.PasskeyLogin, OpenRegistration: b.OpenRegistration,
+	// Leaving the Logo out removes it; the transaction deletes its blob.
+	return nil, pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		logo, err := q.LockInstanceLogo(ctx)
+		if err != nil {
+			return err
+		}
+		own := cmp.Or(b.Brand, &Brand{})
+		if err := invalid(own.check(logoRef(logo))); err != nil {
+			return err
+		}
+		if err := q.UpdateSettings(ctx, sqlc.UpdateSettingsParams{
+			By: c.sub, PasswordLogin: b.PasswordLogin, RequirePhone: b.RequirePhone, DailySendLimit: b.DailySendLimit,
+			TermsUrl: b.TermsURL, PrivacyUrl: b.PrivacyURL, TermsUrlEn: b.TermsURLEn, PrivacyUrlEn: b.PrivacyURLEn, TermsVersion: b.TermsVersion, AuditRetentionDays: b.AuditRetentionDays,
+			AdminsNeedTwoFactor: b.AdminsNeedTwoFactor, PasskeyLogin: b.PasskeyLogin, OpenRegistration: b.OpenRegistration,
+			BrandName: own.Name, BrandLogo: logoKey(own.Logo), BrandColor: own.Color,
+		}); err != nil {
+			return err
+		}
+		return q.DeleteUnusedLogos(ctx)
 	})
 }
 

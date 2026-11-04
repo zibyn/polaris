@@ -4,6 +4,7 @@
 package login
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -23,6 +24,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/zibyn/polaris/internal/brand"
 	"github.com/zibyn/polaris/internal/channel"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db/sqlc"
@@ -41,8 +43,6 @@ import (
 
 //go:embed pages.html altcha challenge.openapi.json passkey.js
 var pagesFS embed.FS
-
-var pages = template.Must(template.ParseFS(pagesFS, "pages.html"))
 
 const (
 	sessionCookie = "__Host-session"
@@ -197,15 +197,15 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 		oidcop.WithUserInfoClaims(s.userClaims),
 		oidcop.WithLogout(oidcop.LogoutConfig{
 			Manager: store,
-			HandleFunc: func(w http.ResponseWriter, _ *http.Request, _ *goidc.LogoutSession) error {
-				page(w, http.StatusOK, "message", "已退出登录")
+			HandleFunc: func(w http.ResponseWriter, r *http.Request, ls *goidc.LogoutSession) error {
+				s.page(w, r, pickLang(r, ls.UILocales), ls.ClientID, http.StatusOK, "message", "已退出登录")
 				return nil
 			},
 		}, oidcop.WithLogoutPolicies(goidc.NewLogoutPolicy("session",
 			func(*http.Request, *goidc.LogoutSession) bool { return true },
 			s.logout)), oidcop.WithBackChannelLogout()),
 		oidcop.WithTokenHandler(countToken),
-		oidcop.WithErrorRenderer(renderError),
+		oidcop.WithErrorRenderer(s.renderError),
 		oidcop.WithErrorHandler(func(_ context.Context, err error) { slog.Info("oidc", "err", err) }),
 	)
 	if err != nil {
@@ -232,6 +232,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 		http.ServeFileFS(w, r, pagesFS, "passkey.js")
 	})
 	s.profiles.Register(mux)
+	brand.Serve(mux, s.q)
 	mux.HandleFunc("POST "+ChallengePath, s.challenge)
 	mux.HandleFunc("GET /v1/auth/terms", s.terms)
 	mux.HandleFunc("GET /v1/auth/openapi.json", func(w http.ResponseWriter, r *http.Request) {
@@ -320,7 +321,7 @@ func DeleteOldSessions(ctx context.Context, pool *pgxpool.Pool) error {
 func (s *Service) authenticate(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession, c *goidc.Client) (goidc.Status, error) {
 	// A login past its first factor goes on only in its own browser.
 	if _, ok := as.Store[storeBindSub]; ok && !sameBinder(r, as.Store[storeBinder]) {
-		page(w, http.StatusForbidden, "message", "登录已在其他浏览器中进行,请返回应用重新登录")
+		s.page(w, r, pickLang(r, as.UILocales), c.ID, http.StatusForbidden, "message", "登录已在其他浏览器中进行,请返回应用重新登录")
 		return goidc.StatusPending, nil
 	}
 	// Only the login form posts to the callback; the authorization request
@@ -442,7 +443,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			return fail(err)
 		}
 		as.Store = nil
-		page(w, http.StatusOK, "message", "账号已注销")
+		s.page(w, r, pickLang(r, as.UILocales), c.ID, http.StatusOK, "message", "账号已注销")
 		return goidc.StatusPending, nil
 
 	case "set-password":
@@ -746,7 +747,7 @@ func (s *Service) complete(w http.ResponseWriter, r *http.Request, as *goidc.Aut
 			return goidc.StatusFailure, goidc.NewError(goidc.ErrorCodeAccessDenied, errNoRole)
 		}
 		as.Store = nil
-		page(w, http.StatusForbidden, "denied", loginPage{Client: c.Name, Action: "/authorize/" + as.ID})
+		s.page(w, r, pickLang(r, as.UILocales), c.ID, http.StatusForbidden, "denied", loginPage{Client: c.Name, Action: "/authorize/" + as.ID})
 		return goidc.StatusPending, nil
 	}
 	grant(as, session, sub, authTime, amr)
@@ -810,7 +811,9 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request, ls *goidc.Logou
 	confirmed := r.Method == http.MethodPost && r.PathValue("callback") != "" &&
 		r.PostFormValue("logout") == "1" && s.origin.Check(r) == nil
 	if !hinted && !confirmed {
-		page(w, http.StatusOK, "logout", "/logout/"+ls.ID)
+		// It names the brand the User knows the Session by.
+		b := s.brand(r.Context(), ls.ClientID)
+		page(w, pickLang(r, ls.UILocales), b, http.StatusOK, "logout", logoutPage{Action: "/logout/" + ls.ID, Name: b.Name})
 		return goidc.StatusPending, nil
 	}
 	if err := s.q.EndBrowserSession(r.Context(), hash(cookie.Value)); err != nil {
@@ -819,6 +822,8 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request, ls *goidc.Logou
 	setSessionCookie(w, "", -1)
 	return goidc.StatusSuccess, nil
 }
+
+type logoutPage struct{ Action, Name string }
 
 // codeAMR is how a code to an Identifier of kind proves the User (RFC 8176).
 func codeAMR(kind string) goidc.AMR {
@@ -1047,6 +1052,12 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 	if err != nil {
 		return goidc.StatusFailure, err
 	}
+	l := pickLang(r, as.UILocales)
+	// English pages link the English terms where there are any; the version
+	// agreed to is the same.
+	if l == langEN {
+		terms.TermsUrl, terms.PrivacyUrl = cmp.Or(terms.TermsUrlEn, terms.TermsUrl), cmp.Or(terms.PrivacyUrlEn, terms.PrivacyUrl)
+	}
 	p.Terms = terms
 	// What the first step offers is what this Application allows (ADR 0027);
 	// binding a phone number is not a login method, and goes on regardless.
@@ -1055,7 +1066,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		return goidc.StatusFailure, err
 	}
 	if m.none() && p.firstStep() {
-		page(w, http.StatusForbidden, "message", errNoMethod)
+		s.page(w, r, l, c.ID, http.StatusForbidden, "message", errNoMethod)
 		return goidc.StatusPending, nil
 	}
 	setting, err := s.q.PasswordLogin(ctx)
@@ -1113,7 +1124,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			p.Passkey = template.JS(options)
 		}
 	}
-	page(w, http.StatusOK, "login", p)
+	s.page(w, r, l, c.ID, http.StatusOK, "login", p)
 	return goidc.StatusPending, nil
 }
 
@@ -1127,21 +1138,65 @@ func (p loginPage) firstStep() bool {
 
 // renderError shows an authorization error that cannot go back to the
 // Application (unknown client, bad redirect_uri).
-func renderError(w http.ResponseWriter, _ *http.Request, err error) error {
+func (s *Service) renderError(w http.ResponseWriter, r *http.Request, err error) error {
 	msg := "请求无效"
 	var oidcErr goidc.Error
 	if errors.As(err, &oidcErr) {
 		msg = oidcErr.Description
 	}
-	page(w, http.StatusBadRequest, "message", msg)
+	s.page(w, r, pickLang(r, ""), "", http.StatusBadRequest, "message", msg)
 	return nil
 }
 
-func page(w http.ResponseWriter, status int, name string, data any) {
+// page renders the hosted page name in l, under the 品牌 of the
+// Application clientID ("" for the instance's).
+func (s *Service) page(w http.ResponseWriter, r *http.Request, l lang, clientID string, status int, name string, data any) {
+	page(w, l, s.brand(r.Context(), clientID), status, name, data)
+}
+
+// chrome is what a hosted page shows around its form: its title and the
+// 品牌 (ADR 0028). The zero brand, with Name Polaris, is the 「星云」 one.
+type chrome struct {
+	Title, Name string
+	// Branded: some item of the brand is set, and the nebula, the star and
+	// 「由 Polaris 提供安全登录」 go.
+	Branded bool
+	Logo    string // the Logo's path, also the favicon
+	Palette template.CSS
+}
+
+// titles are the pages' titles; the message page's is the brand name.
+var titles = map[string]string{"login": "登录", "setup": "首次引导", "invite": "设置密码", "denied": "没有权限", "logout": "退出登录"}
+
+// brand is the chrome of the Application clientID's pages. One it cannot
+// read is the 「星云」 one: the page still shows.
+func (s *Service) brand(ctx context.Context, clientID string) chrome {
+	b, err := s.q.Brand(ctx, clientID)
+	if err != nil {
+		slog.Error("brand", "err", err)
+	}
+	c := chrome{Name: cmp.Or(b.Name, "Polaris"), Branded: b != sqlc.BrandRow{}}
+	if b.Logo != "" {
+		c.Logo = brand.LogoPath(strings.TrimPrefix(b.Logo, brand.KeyPrefix))
+	}
+	if b.Color != "" {
+		c.Palette = brand.Palette(b.Color)
+	}
+	return c
+}
+
+func page(w http.ResponseWriter, l lang, c chrome, status int, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 	w.WriteHeader(status)
-	if err := pages.ExecuteTemplate(w, name, data); err != nil {
-		slog.Error("render", "page", name, "err", err)
+	c.Title = cmp.Or(l.text(titles[name]), c.Name)
+	for _, t := range []struct {
+		name string
+		data any
+	}{{"head", c}, {name, data}, {"foot", c}} {
+		if err := pages[l].ExecuteTemplate(w, t.name, t.data); err != nil {
+			slog.Error("render", "page", name, "err", err)
+			return
+		}
 	}
 }

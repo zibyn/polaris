@@ -48,6 +48,7 @@ type env struct {
 	pool   *pgxpool.Pool
 	inbox  *inbox
 	ua     string // the User-Agent the browser sends, if set
+	lang   string // the Accept-Language the browser sends, if set
 }
 
 // start runs the whole HTTP surface against a fresh database, with one public
@@ -122,6 +123,9 @@ func (e *env) do(method, path string, form url.Values) (*http.Response, string) 
 	}
 	if e.ua != "" {
 		req.Header.Set("User-Agent", e.ua)
+	}
+	if e.lang != "" {
+		req.Header.Set("Accept-Language", e.lang)
 	}
 	resp, err := e.client.Do(req)
 	if err != nil {

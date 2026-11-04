@@ -328,19 +328,27 @@ func (q *Queries) SetUserPending(ctx context.Context, id string) error {
 }
 
 const terms = `-- name: Terms :one
-SELECT terms_url, privacy_url, terms_version FROM settings
+SELECT terms_url, privacy_url, terms_version, terms_url_en, privacy_url_en FROM settings
 `
 
 type TermsRow struct {
 	TermsUrl     string
 	PrivacyUrl   string
 	TermsVersion string
+	TermsUrlEn   string
+	PrivacyUrlEn string
 }
 
 func (q *Queries) Terms(ctx context.Context) (TermsRow, error) {
 	row := q.db.QueryRow(ctx, terms)
 	var i TermsRow
-	err := row.Scan(&i.TermsUrl, &i.PrivacyUrl, &i.TermsVersion)
+	err := row.Scan(
+		&i.TermsUrl,
+		&i.PrivacyUrl,
+		&i.TermsVersion,
+		&i.TermsUrlEn,
+		&i.PrivacyUrlEn,
+	)
 	return i, err
 }
 

@@ -48,6 +48,8 @@ test("a terms version needs both URLs", () => {
 			termsSchema.safeParse({
 				termsUrl: terms,
 				privacyUrl: "",
+				termsUrlEn: "",
+				privacyUrlEn: "",
 				termsVersion: "2026-10",
 			}),
 		),
@@ -64,10 +66,15 @@ test("a terms URL must be https", () => {
 			termsSchema.safeParse({
 				termsUrl: "http://shop.example.com/terms",
 				privacyUrl: privacy,
-				termsVersion: "",
+				termsUrlEn: "http://shop.example.com/en/terms",
+				privacyUrlEn: "",
+				termsVersion: "2026-10",
 			}),
 		),
-		{ termsUrl: "请填写 https 开头的地址。认证服务只接受 https 链接。" },
+		{
+			termsUrl: "请填写 https 开头的地址。认证服务只接受 https 链接。",
+			termsUrlEn: "请填写 https 开头的地址。认证服务只接受 https 链接。",
+		},
 	);
 });
 
@@ -76,13 +83,20 @@ test("https URLs with a version, or no version and no URLs, save", () => {
 		termsSchema.safeParse({
 			termsUrl: terms,
 			privacyUrl: privacy,
+			termsUrlEn: "",
+			privacyUrlEn: "",
 			termsVersion: "2026-10",
 		}).success,
 		true,
 	);
 	assert.equal(
-		termsSchema.safeParse({ termsUrl: "", privacyUrl: "", termsVersion: "" })
-			.success,
+		termsSchema.safeParse({
+			termsUrl: "",
+			privacyUrl: "",
+			termsUrlEn: "",
+			privacyUrlEn: "",
+			termsVersion: "",
+		}).success,
 		true,
 	);
 });

@@ -103,6 +103,19 @@ func TestEveryWriteIsAudited(t *testing.T) {
 		{op: "put-settings", call: call("PUT", "/settings", settings{PasswordLogin: "on", DailySendLimit: 1000, AuditRetentionDays: 180, PasskeyLogin: true}),
 			event: "settings.updated"},
 		{op: "rotate-signing-keys", call: call("POST", "/signing-keys/rotate", nil), event: "keys.rotated"},
+		{op: "set-instance-logo", call: func() int { code, _ := e.upload(owner, "/settings/brand/logo", pngLogo); return code }, event: "settings.updated"},
+		{op: "remove-instance-logo", call: call("DELETE", "/settings/brand/logo", nil), event: "settings.updated"},
+		{op: "set-application-logo", setup: func() {
+			var created struct{ Application application }
+			e.call("POST", owner, "/applications", map[string]any{"type": "public", "settings": map[string]any{
+				"name": "商城", "redirectUris": []string{"https://shop.example/cb"}, "postLogoutRedirectUris": []string{},
+				"refreshTokens": true, "appleAppIds": []string{}, "androidApps": []any{},
+			}}, &created)
+			clientID = created.Application.ClientID
+		}, call: func() int { code, _ := e.upload(owner, "/applications/"+clientID+"/brand/logo", pngLogo); return code },
+			event: "application.updated", ofApp: true},
+		{op: "remove-application-logo", call: func() int { return e.call("DELETE", owner, "/applications/"+clientID+"/brand/logo", nil, nil) },
+			event: "application.updated", ofApp: true},
 	}
 
 	// Every write in the API has a row.
