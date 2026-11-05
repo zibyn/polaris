@@ -401,7 +401,7 @@
           "error": {"type": "string", "enum": ["invalid_request", "invalid_grant", "access_denied", "application_access_denied", "invalid_client", "unauthorized_client", "invalid_scope", "invalid_session", "insufficient_authorization", "registration_closed", "login_method_not_allowed", "no_login_method", "server_error"]},
           "error_description": {"type": "string"},
           "auth_session": {"type": "string"},
-          "next": {"type": "string", "enum": ["code", "phone", "totp"], "description": "Sent with `insufficient_authorization` only (non-standard, ADR 0010): the step to take. `code`: enter the code just sent. `phone`: bind a phone number (send a code to one, then enter it). `totp`: the User has 两步验证 on; send `totp` or `recovery_code` (comes before `phone`). Values are only ever added, never renamed or removed; treat one you do not know as a failure (ask the User to update the App)."}
+          "next": {"type": "string", "enum": ["code", "phone", "totp", "password"], "description": "Sent with `insufficient_authorization` only (non-standard, ADR 0010): the step to take. `code`: enter the code just sent. `password`: the account is 待激活; send the User's new `password` (comes first). `phone`: bind a phone number (send a code to one, then enter it). `totp`: the User has 两步验证 on; send `totp` or `recovery_code` (comes before `phone`). Values are only ever added, never renamed or removed; treat one you do not know as a failure (ask the User to update the App)."}
         }
       }
     }
