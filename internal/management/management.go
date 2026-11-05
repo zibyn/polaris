@@ -90,7 +90,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 
 	get(api, "me", "", "/me", "The caller and their Permissions", s.me)
 	get(api, "list-users", "users:read", "/users", "Search Users", s.listUsers)
-	op(api, http.MethodPost, "create-user", "users:write", "/users", "Create a User for an admin to hand over: 待激活 until they set their own password", s.createUser)
+	op(api, http.MethodPost, "create-user", "users:write", "/users", "Create a User: 待激活 with an initial password or a 注册邀请, or normal when imported with just an Identifier and optionally a password hash", s.createUser)
 	get(api, "get-user", "users:read", "/users/{sub}", "A User's details", s.getUser)
 	// 注册邀请: one admin-sent link that sets the User's own password. A send
 	// that fails leaves the User made but with no usable link.

@@ -121,14 +121,15 @@ func TestCreateUserWithAnInvite(t *testing.T) {
 	}
 }
 
-// 「初始密码」与「发注册邀请」互斥, 而且必须选一个: 都没有的待激活账号除了
-// 注销按钮没有任何入口。
-func TestCreateUserNeedsExactlyOneWayIn(t *testing.T) {
+// 「初始密码」「发注册邀请」「密码哈希」两两互斥 (ADR 0033): 三者都不带
+// 是导入, 见 TestImportUsers。
+func TestCreateUserWaysExcludeEachOther(t *testing.T) {
 	e := start(t)
 	owner := e.token(e.owner, nil)
 	for name, body := range map[string]map[string]any{
-		"both":    {"identifier": "a@example.com", "password": "password1", "invite": true},
-		"neither": {"identifier": "a@example.com"},
+		"password + invite": {"identifier": "a@example.com", "password": "password1", "invite": true},
+		"password + hash":   {"identifier": "a@example.com", "password": "password1", "password_hash": testBcrypt},
+		"invite + hash":     {"identifier": "a@example.com", "invite": true, "password_hash": testBcrypt},
 	} {
 		var problem struct{ Detail string }
 		if code := e.call("POST", owner, "/users", body, &problem); code != 422 || problem.Detail == "" {

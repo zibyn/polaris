@@ -204,6 +204,17 @@ func (s *Store) CheckPassword(ctx context.Context, a Attempt, identifier, passwo
 	if setting == "off" {
 		return "", ErrBadCredentials
 	}
+	// An imported bcrypt hash becomes argon2id now that the password is at
+	// hand. Only if unchanged: a password set meanwhile is not overwritten.
+	if isBcrypt(row.Hash) {
+		hash, err := hashPassword(password)
+		if err != nil {
+			return "", err
+		}
+		if err := s.q.RehashPassword(ctx, sqlc.RehashPasswordParams{UserID: row.UserID, Old: row.Hash, New: hash}); err != nil {
+			return "", err
+		}
+	}
 	return row.UserID, nil
 }
 
@@ -325,7 +336,7 @@ func (s *Store) CreatePendingUser(ctx context.Context, identifier, password stri
 	if err != nil {
 		return "", err
 	}
-	return s.createPending(ctx, kind, value, func(q *sqlc.Queries, sub string) error {
+	return s.create(ctx, kind, value, true, func(q *sqlc.Queries, sub string) error {
 		return q.SetPassword(ctx, sqlc.SetPasswordParams{UserID: sub, Hash: hash})
 	})
 }
@@ -343,13 +354,40 @@ func (s *Store) CreateInvitedUser(ctx context.Context, identifier string) (strin
 	}
 	// No credential to write: an invited User has nothing to sign in with
 	// until the link is accepted.
-	return s.createPending(ctx, kind, value, func(*sqlc.Queries, string) error { return nil })
+	return s.create(ctx, kind, value, true, func(*sqlc.Queries, string) error { return nil })
 }
 
-// createPending makes a User with one Identifier, in 待激活, running write for
-// the credential in the same transaction: a User never outlives a failed
-// Identifier, and a credential never lands on an account that stayed active.
-func (s *Store) createPending(ctx context.Context, kind, value string, write func(*sqlc.Queries, string) error) (string, error) {
+// ErrUsernameNeedsHash: a username alone is no way in — it takes no codes.
+const ErrUsernameNeedsHash Invalid = "只有用户名时须附带密码哈希,否则这个账号没有任何登录途径"
+
+// CreateUser makes a normal User, not 待激活, for a 集成方 importing its
+// users (ADR 0033): one Identifier, taken as verified, and optionally
+// the password hash they had there, argon2id or bcrypt, which the first
+// sign-in with it turns into argon2id.
+func (s *Store) CreateUser(ctx context.Context, identifier, hash string) (string, error) {
+	kind, value, err := ParseCreateIdentifier(identifier)
+	if err != nil {
+		return "", err
+	}
+	if hash == "" {
+		if kind == "username" {
+			return "", ErrUsernameNeedsHash
+		}
+	} else if err := checkImportedHash(hash); err != nil {
+		return "", err
+	}
+	return s.create(ctx, kind, value, false, func(q *sqlc.Queries, sub string) error {
+		if hash == "" {
+			return nil
+		}
+		return q.SetPassword(ctx, sqlc.SetPasswordParams{UserID: sub, Hash: hash})
+	})
+}
+
+// create makes a User with one Identifier, 待激活 if pending, running write
+// for the credential in the same transaction: a User never outlives a failed
+// Identifier.
+func (s *Store) create(ctx context.Context, kind, value string, pending bool, write func(*sqlc.Queries, string) error) (string, error) {
 	sub := rand.Text()
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
@@ -364,6 +402,9 @@ func (s *Store) createPending(ctx context.Context, kind, value string, write fun
 		}
 		if err := write(q, sub); err != nil {
 			return err
+		}
+		if !pending {
+			return nil
 		}
 		// CreateUser leaves the User active (it means "signed up"), so this
 		// is the step that makes them 待激活.

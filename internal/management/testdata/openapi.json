@@ -517,16 +517,20 @@
         "additionalProperties": false,
         "properties": {
           "identifier": {
-            "description": "+86 phone number, email or username; stored normalised. An admin-typed phone number or email counts as verified at once: no code is sent (ADR 0016)",
+            "description": "+86 phone number, email or username; stored normalised. An admin-typed phone number or email counts as verified at once: no code is sent (ADR 0016). Already held by another User: 409, with that User's sub in the body, and nothing is written",
             "type": "string"
           },
           "invite": {
-            "description": "Send a 注册邀请 instead of setting an initial password: the User sets their own, so the admin never knows it. 互斥 with password, and the Identifier must be an email. An invite that fails to send leaves the User made but with no usable link: re-send it from the User's page",
+            "description": "Send a 注册邀请 instead of setting an initial password: the User is made 待激活 and sets their own, so the admin never knows it. 互斥 with password and password_hash, and the Identifier must be an email. An invite that fails to send leaves the User made but with no usable link: re-send it from the User's page",
             "type": "boolean"
           },
           "password": {
-            "description": "The initial password the admin hands over; the User must replace it at first sign-in before they get any token. 互斥 with invite, and one of the two is required",
+            "description": "The initial password the admin hands over: the User is made 待激活 and must replace it at first sign-in before they get any token. 互斥 with invite and password_hash",
             "minLength": 8,
+            "type": "string"
+          },
+          "password_hash": {
+            "description": "Import the User with the password hash they had in the 集成方's old user store (ADR 0033): argon2id in PHC string format, or bcrypt ($2a$, $2b$, $2y$); any other format is a 422. The User is made normal, not 待激活, and their first sign-in with it re-stores it as argon2id. 互斥 with password and invite. With none of the three, the User is made normal with just the Identifier and signs in by code, so a username alone is refused. password, invite and password_hash are each a 422 while 密码登录 is off; the Identifier alone is not",
             "type": "string"
           }
         },
@@ -4980,7 +4984,7 @@
             "description": "Internal Server Error"
           }
         },
-        "summary": "Create a User for an admin to hand over: 待激活 until they set their own password"
+        "summary": "Create a User: 待激活 with an initial password or a 注册邀请, or normal when imported with just an Identifier and optionally a password hash"
       }
     },
     "/users/{sub}": {

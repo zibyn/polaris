@@ -66,6 +66,10 @@ SELECT count(*) FROM user_roles ur JOIN users u ON u.id = ur.user_id
 WHERE ur.api = 'urn:polaris:management-api' AND ur.role = 'owner'
   AND u.disabled_at IS NULL AND u.status = 'active';
 
+-- name: RehashPassword :exec
+-- Not a password change: the same password, stored as argon2id.
+UPDATE passwords SET hash = @new WHERE user_id = @user_id AND hash = @old;
+
 -- name: PasswordByIdentifier :one
 SELECT i.user_id, p.hash, (u.disabled_at IS NOT NULL)::boolean AS disabled
 FROM identifiers i JOIN passwords p USING (user_id) JOIN users u ON u.id = i.user_id

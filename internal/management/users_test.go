@@ -622,6 +622,101 @@ func TestCreateUserNeedsPasswordLogin(t *testing.T) {
 	}
 }
 
+// testBcrypt is bcrypt("old-password") at cost 4, as a PHP store writes it.
+const testBcrypt = "$2y$04$e.quc6ERC0CMyeHUePjR6eYSgMVWxtE4dpONbO85Mwjc0wcBEwoV2"
+
+// 导入 User (ADR 0033): 只带标识符或再加原密码哈希, 建出来就是正常 User;
+// 标识符撞上已有 User 时 409 带上那人的 sub, 什么也不写。
+func TestImportUsers(t *testing.T) {
+	e := start(t)
+	owner := e.token(e.owner, nil)
+	create := func(body map[string]any, out any) int {
+		return e.call("POST", owner, "/users", body, out)
+	}
+
+	var u pendingUser
+	if code := create(map[string]any{"identifier": "Alice@Example.com"}, &u); code != 200 {
+		t.Fatalf("email alone: %d", code)
+	}
+	if u.Pending || u.HasPassword || len(u.Identifiers) != 1 || u.Identifiers[0].Value != "alice@example.com" {
+		t.Errorf("email alone: %+v", u)
+	}
+	alice := u.Sub
+	u = pendingUser{}
+	if code := create(map[string]any{"identifier": "138 0000 3333"}, &u); code != 200 || u.Pending ||
+		len(u.Identifiers) != 1 || u.Identifiers[0].Value != "+8613800003333" {
+		t.Errorf("phone alone: %d %+v", code, u)
+	}
+	u = pendingUser{}
+	if code := create(map[string]any{"identifier": "bob", "password_hash": testBcrypt}, &u); code != 200 {
+		t.Fatalf("username + bcrypt: %d", code)
+	}
+	if u.Pending || !u.HasPassword {
+		t.Errorf("username + bcrypt: %+v", u)
+	}
+	if ev := e.audited("user.created"); ev.Sub != u.Sub || ev.Detail["by"] != e.owner {
+		t.Errorf("audit: %+v", ev)
+	}
+
+	var list struct{ Users []user }
+	e.get(owner, "/users", &list)
+	before := len(list.Users)
+	for name, body := range map[string]map[string]any{
+		"username alone": {"identifier": "carol"},
+		"md5-crypt":      {"identifier": "carol", "password_hash": "$1$salt$hash"},
+		"plain text":     {"identifier": "carol@example.com", "password_hash": "old-password"},
+	} {
+		var problem struct{ Detail string }
+		if code := create(body, &problem); code != 422 || problem.Detail == "" {
+			t.Errorf("%s: %d %+v", name, code, problem)
+		}
+	}
+
+	// 冲突: 409, body 带已有 User 的 sub, 不论走哪种方式。
+	for _, body := range []map[string]any{
+		{"identifier": "ALICE@example.com"},
+		{"identifier": "alice@example.com", "password_hash": testBcrypt},
+		{"identifier": "alice@example.com", "password": "password1"},
+	} {
+		var conflict struct {
+			Status int
+			Sub    string
+		}
+		if code := create(body, &conflict); code != 409 || conflict.Sub != alice {
+			t.Errorf("%v: %d %+v, want 409 with %s", body, code, conflict, alice)
+		}
+	}
+	e.get(owner, "/users", &list)
+	if len(list.Users) != before {
+		t.Errorf("%d Users, want %d: a rejected create wrote something", len(list.Users), before)
+	}
+}
+
+// 密码登录关闭时只有带密码类凭据的请求被拒; 只带标识符照常导入, 否则只用
+// 验证码的实例导入不了老用户 (ADR 0033)。
+func TestImportWithPasswordLoginOff(t *testing.T) {
+	e := start(t)
+	owner := e.token(e.owner, nil)
+	if code := e.call("PUT", owner, "/users/"+e.owner+"/identifiers/email", map[string]string{"value": "owner@example.com"}, nil); code != 204 {
+		t.Fatalf("bind email: %d", code)
+	}
+	if code := e.call("PUT", owner, "/settings", settings{PasswordLogin: "off", DailySendLimit: 1000, AuditRetentionDays: 180}, nil); code != 204 {
+		t.Fatalf("turn password login off: %d", code)
+	}
+	for _, body := range []map[string]any{
+		{"identifier": "new@example.com", "password_hash": testBcrypt},
+		{"identifier": "new@example.com", "invite": true},
+	} {
+		if code := e.call("POST", owner, "/users", body, nil); code != 422 {
+			t.Errorf("%v with password login off: %d", body, code)
+		}
+	}
+	var u pendingUser
+	if code := e.call("POST", owner, "/users", map[string]any{"identifier": "new@example.com"}, &u); code != 200 || u.Pending {
+		t.Errorf("identifier alone with password login off: %d %+v", code, u)
+	}
+}
+
 // 部署脚本与业务后端以 M2M Application 的身份开号 (ADR 0015 + 0016):
 // 审计的操作人是那个 Application, 不是某个 User。
 func TestM2MApplicationCreatesAUser(t *testing.T) {

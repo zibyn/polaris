@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
@@ -22,9 +23,10 @@ type subPath struct {
 
 type createUserInput struct {
 	Body struct {
-		Identifier string `json:"identifier" doc:"+86 phone number, email or username; stored normalised. An admin-typed phone number or email counts as verified at once: no code is sent (ADR 0016)"`
-		Password   string `json:"password,omitempty" minLength:"8" doc:"The initial password the admin hands over; the User must replace it at first sign-in before they get any token. 互斥 with invite, and one of the two is required"`
-		Invite     bool   `json:"invite,omitempty" doc:"Send a 注册邀请 instead of setting an initial password: the User sets their own, so the admin never knows it. 互斥 with password, and the Identifier must be an email. An invite that fails to send leaves the User made but with no usable link: re-send it from the User's page"`
+		Identifier   string `json:"identifier" doc:"+86 phone number, email or username; stored normalised. An admin-typed phone number or email counts as verified at once: no code is sent (ADR 0016). Already held by another User: 409, with that User's sub in the body, and nothing is written"`
+		Password     string `json:"password,omitempty" minLength:"8" doc:"The initial password the admin hands over: the User is made 待激活 and must replace it at first sign-in before they get any token. 互斥 with invite and password_hash"`
+		Invite       bool   `json:"invite,omitempty" doc:"Send a 注册邀请 instead of setting an initial password: the User is made 待激活 and sets their own, so the admin never knows it. 互斥 with password and password_hash, and the Identifier must be an email. An invite that fails to send leaves the User made but with no usable link: re-send it from the User's page"`
+		PasswordHash string `json:"password_hash,omitempty" doc:"Import the User with the password hash they had in the 集成方's old user store (ADR 0033): argon2id in PHC string format, or bcrypt ($2a$, $2b$, $2y$); any other format is a 422. The User is made normal, not 待激活, and their first sign-in with it re-stores it as argon2id. 互斥 with password and invite. With none of the three, the User is made normal with just the Identifier and signs in by code, so a username alone is refused. password, invite and password_hash are each a 422 while 密码登录 is off; the Identifier alone is not"`
 	}
 }
 
@@ -32,47 +34,63 @@ type createUserOutput struct {
 	Body UserDetail
 }
 
-// createUser makes a User for an admin to hand over (ADR 0016). It starts
-// 待激活: they can sign in with the initial password, but get no
-// authorization code — hence no token — until they replace it, so no
-// Application ever sees this state. The admin-typed Identifier is taken as
-// verified, the same as GitLab's admin-created accounts and Keycloak's Email
-// Verified checkbox; typed wrong, the account lands with whoever holds that
-// address, which the admin checks offline.
+// identifierTaken is the 409 for an Identifier another User holds, naming
+// that User so an importing 集成方 can link to them (ADR 0033).
+type identifierTaken struct {
+	huma.ErrorModel
+	Sub string `json:"sub" doc:"The User who holds the Identifier"`
+}
+
+// createUser makes a User (ADR 0016, 0033), in one of three ways:
 //
-// 初始密码 and 发注册邀请 are the two ways in and exclude each other: the first
-// has the admin choose a password the User must replace, the second lets the
-// User choose from the start. One of them has to be picked — a 待激活 account
-// with neither has no way in at all but the 注销 button.
+//   - 初始密码 or 发注册邀请 make a User for an admin to hand over. It starts
+//     待激活: they can sign in, but get no authorization code — hence no
+//     token — until they set a password of their own, so no Application ever
+//     sees this state. Both end in a password, so 密码登录 must be on.
+//   - The Identifier alone, or with an imported password hash, makes a
+//     normal User: an Application bringing its existing users over.
+//
+// The admin-typed Identifier is taken as verified either way, the same as
+// GitLab's admin-created accounts and Keycloak's Email Verified checkbox;
+// typed wrong, the account lands with whoever holds that address, which the
+// caller checks offline.
 func (s *Service) createUser(ctx context.Context, in *createUserInput) (*createUserOutput, error) {
-	switch {
-	case in.Body.Invite && in.Body.Password != "":
-		return nil, huma.Error422UnprocessableEntity("「初始密码」与「发注册邀请」只能选一个")
-	case !in.Body.Invite && in.Body.Password == "":
-		return nil, huma.Error422UnprocessableEntity("请二选一:给一个「初始密码」,或「发注册邀请」")
+	b := &in.Body
+	ways := 0
+	for _, set := range []bool{b.Password != "", b.Invite, b.PasswordHash != ""} {
+		if set {
+			ways++
+		}
 	}
-	// 密码登录 is this feature's precondition: both ways end in a password the
-	// User signs in with, so with the switch off neither is worth setting up.
-	// The console disables the entry and says why.
-	setting, err := s.q.PasswordLogin(ctx)
-	if err != nil {
-		return nil, err
+	if ways > 1 {
+		return nil, huma.Error422UnprocessableEntity("「初始密码」「发注册邀请」「密码哈希」只能选一个")
 	}
-	if setting == "off" {
-		return nil, huma.Error422UnprocessableEntity("密码登录已关闭,不能创建要设密码的账号")
+	if ways == 1 {
+		// The console disables the entry and says why.
+		setting, err := s.q.PasswordLogin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if setting == "off" {
+			return nil, huma.Error422UnprocessableEntity("密码登录已关闭,不能创建要设密码的账号")
+		}
 	}
 	var sub string
-	if in.Body.Invite {
-		sub, err = s.ids.CreateInvitedUser(ctx, in.Body.Identifier)
-	} else {
-		sub, err = s.ids.CreatePendingUser(ctx, in.Body.Identifier, in.Body.Password)
+	var err error
+	switch {
+	case b.Invite:
+		sub, err = s.ids.CreateInvitedUser(ctx, b.Identifier)
+	case b.Password != "":
+		sub, err = s.ids.CreatePendingUser(ctx, b.Identifier, b.Password)
+	default:
+		sub, err = s.ids.CreateUser(ctx, b.Identifier, b.PasswordHash)
 	}
 	// ErrIdentifierTaken is itself an identity.Invalid, so it is named first:
 	// a taken Identifier is a 409, not the 422 the other Invalid errors get.
 	var bad identity.Invalid
 	switch {
 	case errors.Is(err, identity.ErrIdentifierTaken):
-		return nil, huma.Error409Conflict(err.Error())
+		return nil, s.identifierTaken(ctx, b.Identifier, err)
 	case errors.As(err, &bad):
 		return nil, huma.Error422UnprocessableEntity(bad.Error())
 	case err != nil:
@@ -106,6 +124,20 @@ func (s *Service) createUser(ctx context.Context, in *createUserInput) (*createU
 		return nil, err
 	}
 	return &createUserOutput{Body: u}, nil
+}
+
+func (s *Service) identifierTaken(ctx context.Context, identifier string, taken error) error {
+	_, value, err := identity.ParseCreateIdentifier(identifier)
+	if err != nil {
+		return err
+	}
+	u, err := s.q.UserByIdentifier(ctx, value)
+	if errors.Is(err, pgx.ErrNoRows) { // the holder went away since
+		return huma.Error409Conflict(taken.Error())
+	} else if err != nil {
+		return err
+	}
+	return &identifierTaken{huma.ErrorModel{Title: "Conflict", Status: http.StatusConflict, Detail: taken.Error()}, u.UserID}
 }
 
 // ensureUser is the 404 for a User a path names who is not.

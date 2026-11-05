@@ -234,6 +234,22 @@ func (q *Queries) RegistrationOpen(ctx context.Context) (bool, error) {
 	return open_registration, err
 }
 
+const rehashPassword = `-- name: RehashPassword :exec
+UPDATE passwords SET hash = $1 WHERE user_id = $2 AND hash = $3
+`
+
+type RehashPasswordParams struct {
+	New    string
+	UserID string
+	Old    string
+}
+
+// Not a password change: the same password, stored as argon2id.
+func (q *Queries) RehashPassword(ctx context.Context, arg RehashPasswordParams) error {
+	_, err := q.db.Exec(ctx, rehashPassword, arg.New, arg.UserID, arg.Old)
+	return err
+}
+
 const replaceIdentifier = `-- name: ReplaceIdentifier :execrows
 WITH put AS (
     INSERT INTO identifiers (user_id, kind, value)

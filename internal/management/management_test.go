@@ -169,9 +169,10 @@ func (e *env) call(method, token, path string, in, out any) int {
 	}
 	defer resp.Body.Close() //nolint:errcheck
 	raw, _ := io.ReadAll(resp.Body)
-	// A 422 carries its explanation in the problem document's detail field;
-	// callers decode it by asking for a struct with one.
-	if out != nil && (resp.StatusCode == 200 || resp.StatusCode == 422) {
+	// A 422 carries its explanation in the problem document's detail field,
+	// a 409 may name who holds what was taken; callers decode either by
+	// asking for a struct with the field.
+	if out != nil && (resp.StatusCode == 200 || resp.StatusCode == 422 || resp.StatusCode == 409) {
 		if err := json.Unmarshal(raw, out); err != nil && resp.StatusCode == 200 {
 			e.t.Fatalf("%s: %v\n%s", path, err, raw)
 		}
