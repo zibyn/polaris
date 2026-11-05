@@ -44,6 +44,14 @@ _Avoid_: 主题, 皮肤, 外观, Branding
 Application 选配的一个地址,Polaris 向它推送 User 的变更(注销或删除、禁用或恢复、Identifier、用户资料、Role);不含 Session 终止,那由 Back-Channel Logout 通知。
 _Avoid_: 回调, 事件订阅, 通知地址
 
+**API 集成模式**:
+Application 的运营方在自己的后台界面里管理 User,背后以 M2M Application 调用 Management API;User 登录仍由 Polaris 完成。
+_Avoid_: Headless 模式, 嵌入模式, 后台集成
+
+**托管集成模式**:
+Application 自己不做任何用户相关界面:User 登录与自助管理跳到托管页和账号中心,管理员直接用 Polaris 管理端。
+_Avoid_: 直接集成, 托管模式, 标准模式
+
 **First-party Application**:
 由该实例的运营方自己开发和运营的 Application;当前所有 Application 都属于此类。
 _Avoid_: 内部应用, 自有客户端
