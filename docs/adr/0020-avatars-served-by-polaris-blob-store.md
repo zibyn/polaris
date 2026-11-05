@@ -4,7 +4,7 @@
 
 ## Considered Options
 
-- **只存 URL,图片由 Application 自存**:Polaris 零存储,但每个接入方都得自备存储,账号中心也改不了头像。
+- **只存 URL,图片由 Application 自存**:Polaris 零存储,但每个集成方都得自备存储,账号中心也改不了头像。
 - **直接接 RustFS,`picture` 指向公开 bucket**:要多跑一个服务、bucket 公开读;没配存储的部署要么关闭头像,要么退回填 URL,两条路径都得维护。
 - **预签名 PUT 直传存储**:省 Polaris 带宽,但无法校验内容,EXIF(含 GPS)原样保留。
 
