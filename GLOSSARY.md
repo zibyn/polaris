@@ -97,8 +97,8 @@ User 用来登录的手机号、邮箱或用户名,在用户池内唯一;手机�
 _Avoid_: 账号, 用户名, 联系方式
 
 **用户资料**(Profile):
-User 对外展示的昵称、头像和详细资料(姓名、性别、生日、网站、时区、语言、地址等 OIDC 标准 claim),跨所有 Application 是同一份;不唯一、不验证、不能用来登录。昵称不是用户名:用户名是 Identifier。
-_Avoid_: 个人信息, 身份, 用户名
+User 对外展示的昵称、头像和详细资料(姓名、性别、生日、网站、时区、语言、地址等 OIDC 标准 claim),跨所有 Application 是同一份;不唯一、不验证、不能用来登录。昵称不是用户名:用户名是 Identifier。不含 Application 的业务数据(会员等级、工号等),那些由 Application 自己保存。
+_Avoid_: 个人信息, 身份, 用户名, 自定义数据, metadata
 
 **External Identity**:
 某个 Provider 认定的一个用户(Provider + 其侧用户 ID,如微信 openid、Apple `sub`),绑定在某个 User 上。
