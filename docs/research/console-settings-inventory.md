@@ -14,7 +14,7 @@
 - **D 缺"为什么"**:只说是什么,不说为什么要配、不配会怎样。
 - 另记 **R 读者错位**:身份、审计页面向运营,却出现了协议词(sub、aud、client_id 等)。它不属于四类,但 #40 的"读者按分组区分"会碰到。
 
-**谁来配**:开发者 = 接入方工程师(懂 OAuth);运营 = 运营 / 客服 / 实例负责人。
+**谁来配**:开发者 = 集成方工程师(懂 OAuth);运营 = 运营 / 客服 / 实例负责人。
 
 **未验证**:代码里找不到消费方,或者效果取决于运行环境、无法只靠读代码确认的项。
 
@@ -79,7 +79,7 @@
 | 分区 | Role:按 API 分组的复选框,每组单独"保存" | `PUT /users/{sub}/roles`,对该 API **整组替换**;撤下最后一个所有者时返回 409(rbac.go:26-66);写审计 `roles.assigned` | 普通 API 需 `roles:assign`;Management API 需 `admin-roles:assign` | **Role 只在某个 Application 以它所属 API 为默认 API 时才会出现在 access token 里**(login.go:173-191)。见第 6 节 | C;D:没说勾上以后对用户有什么效果 |
 | 操作 | 禁用 | `POST /disable`:User 不能再登录,所有 Session 立即结束(management.sql:185-197);不能禁用最后一个所有者(users.go:41-57) | 运营;`users:write` | — | 确认框写得好:"禁用后该 User 无法登录,所有 Session 立即下线" |
 | 操作 | 恢复 | `POST /enable` | 同上 | 已结束的 Session 不会恢复 | — |
-| 操作 | 删除 | `DELETE /users/{sub}`:连带删除该 User 的所有数据;**并向每个设了 webhook 的 Application 排队发送 user.deleted**(management.sql:200-214);写审计 `user.deleted` | 运营;`users:write` | 与各 Application 的 webhook 配置相关 | 确认框没提会通知接入方 |
+| 操作 | 删除 | `DELETE /users/{sub}`:连带删除该 User 的所有数据;**并向每个设了 webhook 的 Application 排队发送 user.deleted**(management.sql:200-214);写审计 `user.deleted` | 运营;`users:write` | 与各 Application 的 webhook 配置相关 | 确认框没提会通知集成方 |
 | 规格有、界面无 | 重置 2FA、外部身份 | consoles.md 有写;代码里没有 2FA 和 Provider 的实现 | — | — | 规格与界面不一致 |
 
 ---
