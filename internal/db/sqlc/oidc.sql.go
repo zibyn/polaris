@@ -303,9 +303,11 @@ func (q *Queries) GraceRotateRefreshToken(ctx context.Context, arg GraceRotateRe
 const grant = `-- name: Grant :one
 SELECT id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id FROM oidc_grants
 WHERE oidc_grants.id = $1 AND (expires_at IS NULL OR expires_at > now())
-  AND (session_id IS NULL OR session_id IN (SELECT l.id FROM live_sessions l))
+  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM live_sessions l WHERE l.id = oidc_grants.session_id))
 `
 
+// The Session check is a correlated EXISTS: OR with IN (SELECT ...) plans as
+// a hashed SubPlan that reads every live Session.
 func (q *Queries) Grant(ctx context.Context, id string) (OidcGrant, error) {
 	row := q.db.QueryRow(ctx, grant, id)
 	var i OidcGrant
@@ -323,7 +325,7 @@ func (q *Queries) Grant(ctx context.Context, id string) (OidcGrant, error) {
 const grantByAuthCodeHash = `-- name: GrantByAuthCodeHash :one
 SELECT id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id FROM oidc_grants
 WHERE auth_code_hash = $1 AND (expires_at IS NULL OR expires_at > now())
-  AND (session_id IS NULL OR session_id IN (SELECT l.id FROM live_sessions l))
+  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM live_sessions l WHERE l.id = oidc_grants.session_id))
 `
 
 func (q *Queries) GrantByAuthCodeHash(ctx context.Context, authCodeHash []byte) (OidcGrant, error) {
@@ -343,7 +345,7 @@ func (q *Queries) GrantByAuthCodeHash(ctx context.Context, authCodeHash []byte) 
 const grantByRefreshTokenHash = `-- name: GrantByRefreshTokenHash :one
 SELECT id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id FROM oidc_grants
 WHERE refresh_token_hash = $1 AND (expires_at IS NULL OR expires_at > now())
-  AND (session_id IS NULL OR session_id IN (SELECT l.id FROM live_sessions l))
+  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM live_sessions l WHERE l.id = oidc_grants.session_id))
 `
 
 func (q *Queries) GrantByRefreshTokenHash(ctx context.Context, refreshTokenHash []byte) (OidcGrant, error) {

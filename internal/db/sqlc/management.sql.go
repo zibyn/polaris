@@ -512,9 +512,16 @@ SELECT id, at, event, COALESCE(sub, '')::text AS sub, detail,
                  ORDER BY array_position(ARRAY['phone', 'email', 'username'], i.kind) LIMIT 1), '')::text AS user_identifier,
        COALESCE((SELECT i.value FROM identifiers i WHERE i.user_id = audit_log.detail ->> 'by'
                  ORDER BY array_position(ARRAY['phone', 'email', 'username'], i.kind) LIMIT 1), '')::text AS by_identifier
-FROM audit_log
-WHERE ($1::text = '' OR event = $1)
-  AND ($2::text = '' OR sub = $2 OR detail ->> 'by' = $2)
+FROM ((SELECT id, at, event, sub, detail FROM audit_log a WHERE $1::text = ''
+         AND ($2::text = '' OR a.event = $2)
+         AND ($3::timestamptz IS NULL OR a.at >= $3)
+         AND ($4::timestamptz IS NULL OR a.at < $4)
+         AND ($5::bigint = 0 OR a.id < $5)
+       ORDER BY a.id DESC LIMIT $6)
+      UNION ALL SELECT id, at, event, sub, detail FROM audit_log a WHERE $1::text <> '' AND a.sub = $1
+      UNION ALL SELECT id, at, event, sub, detail FROM audit_log a WHERE $1::text <> '' AND a.detail ->> 'by' = $1
+                                          AND a.sub IS DISTINCT FROM $1) audit_log
+WHERE ($2::text = '' OR event = $2)
   AND ($3::timestamptz IS NULL OR at >= $3)
   AND ($4::timestamptz IS NULL OR at < $4)
   AND ($5::bigint = 0 OR id < $5)
@@ -523,8 +530,8 @@ LIMIT $6
 `
 
 type ListAuditParams struct {
-	Event  string
 	Sub    string
+	Event  string
 	Since  pgtype.Timestamptz
 	Until  pgtype.Timestamptz
 	Before int64
@@ -546,10 +553,14 @@ type ListAuditRow struct {
 // before pages by id; empty filters match all. user_identifier and
 // by_identifier are their primary Identifiers (phone, email, username),
 // empty once the User is gone (always for an Application, which has none).
+// sub = @sub OR by = @sub as two indexed branches: the OR alone can use
+// neither index and scans the whole log for a User with few events. The
+// unfiltered branch keeps its own filters, ORDER BY and LIMIT, so it still
+// walks the primary key backwards and stops at lim.
 func (q *Queries) ListAudit(ctx context.Context, arg ListAuditParams) ([]ListAuditRow, error) {
 	rows, err := q.db.Query(ctx, listAudit,
-		arg.Event,
 		arg.Sub,
+		arg.Event,
 		arg.Since,
 		arg.Until,
 		arg.Before,

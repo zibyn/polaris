@@ -359,9 +359,20 @@ SELECT id, at, event, COALESCE(sub, '')::text AS sub, detail,
                  ORDER BY array_position(ARRAY['phone', 'email', 'username'], i.kind) LIMIT 1), '')::text AS user_identifier,
        COALESCE((SELECT i.value FROM identifiers i WHERE i.user_id = audit_log.detail ->> 'by'
                  ORDER BY array_position(ARRAY['phone', 'email', 'username'], i.kind) LIMIT 1), '')::text AS by_identifier
-FROM audit_log
+-- sub = @sub OR by = @sub as two indexed branches: the OR alone can use
+-- neither index and scans the whole log for a User with few events. The
+-- unfiltered branch keeps its own filters, ORDER BY and LIMIT, so it still
+-- walks the primary key backwards and stops at lim.
+FROM ((SELECT * FROM audit_log a WHERE @sub::text = ''
+         AND (@event::text = '' OR a.event = @event)
+         AND (sqlc.narg(since)::timestamptz IS NULL OR a.at >= sqlc.narg(since))
+         AND (sqlc.narg(until)::timestamptz IS NULL OR a.at < sqlc.narg(until))
+         AND (@before::bigint = 0 OR a.id < @before)
+       ORDER BY a.id DESC LIMIT @lim)
+      UNION ALL SELECT * FROM audit_log a WHERE @sub::text <> '' AND a.sub = @sub
+      UNION ALL SELECT * FROM audit_log a WHERE @sub::text <> '' AND a.detail ->> 'by' = @sub
+                                          AND a.sub IS DISTINCT FROM @sub) audit_log
 WHERE (@event::text = '' OR event = @event)
-  AND (@sub::text = '' OR sub = @sub OR detail ->> 'by' = @sub)
   AND (sqlc.narg(since)::timestamptz IS NULL OR at >= sqlc.narg(since))
   AND (sqlc.narg(until)::timestamptz IS NULL OR at < sqlc.narg(until))
   AND (@before::bigint = 0 OR id < @before)

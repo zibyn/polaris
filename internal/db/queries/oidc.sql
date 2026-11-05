@@ -89,19 +89,21 @@ WITH spent AS (
 INSERT INTO oidc_spent_refresh_tokens (hash, grant_id) SELECT g.old_hash, g.id FROM g;
 
 -- name: Grant :one
+-- The Session check is a correlated EXISTS: OR with IN (SELECT ...) plans as
+-- a hashed SubPlan that reads every live Session.
 SELECT * FROM oidc_grants
 WHERE oidc_grants.id = $1 AND (expires_at IS NULL OR expires_at > now())
-  AND (session_id IS NULL OR session_id IN (SELECT l.id FROM live_sessions l));
+  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM live_sessions l WHERE l.id = oidc_grants.session_id));
 
 -- name: GrantByAuthCodeHash :one
 SELECT * FROM oidc_grants
 WHERE auth_code_hash = $1 AND (expires_at IS NULL OR expires_at > now())
-  AND (session_id IS NULL OR session_id IN (SELECT l.id FROM live_sessions l));
+  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM live_sessions l WHERE l.id = oidc_grants.session_id));
 
 -- name: GrantByRefreshTokenHash :one
 SELECT * FROM oidc_grants
 WHERE refresh_token_hash = $1 AND (expires_at IS NULL OR expires_at > now())
-  AND (session_id IS NULL OR session_id IN (SELECT l.id FROM live_sessions l));
+  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM live_sessions l WHERE l.id = oidc_grants.session_id));
 
 -- name: SaveAuthnSession :exec
 INSERT INTO oidc_authn_sessions (id, expires_at, data) VALUES ($1, $2, $3)

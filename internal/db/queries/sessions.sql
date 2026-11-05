@@ -41,7 +41,7 @@ SELECT 'session.ended', ended.user_id, jsonb_build_object('session', ended.id, '
 SELECT s.id, (s.id_hash IS NULL)::boolean AS app, s.client_id, COALESCE(a.name, s.client_id, '')::text AS application_name,
        s.auth_time, s.amr, s.last_seen_at, s.ip, s.user_agent,
        session_lapses_at(s)::timestamptz AS expires_at, s.ended_at,
-       (s.id IN (SELECT l.id FROM live_sessions l))::boolean AS active
+       EXISTS (SELECT 1 FROM live_sessions l WHERE l.id = s.id)::boolean AS active
 FROM sessions s LEFT JOIN applications a USING (client_id) WHERE s.user_id = $1
 ORDER BY s.last_seen_at DESC;
 
