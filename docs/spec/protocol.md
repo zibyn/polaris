@@ -18,7 +18,7 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
 - **客户端类型**:public(必须 PKCE)与 confidential 都支持。
 - **同意页**:不做,也没有 Consent 概念,请求的 scope 直接授予。`prompt=consent` 接受但忽略;`offline_access` 接受但不改变行为。
 - **已有浏览器 Session 时**:静默通过,直接带 code 跳回。一个浏览器 Session 对应一个 User,所以不做账号选择器。`prompt=select_account` 按 `login` 处理;`prompt=none` / `login` 与 `max_age` 按 Core 实现。
-- **`client_credentials`**:只开给 M2M Application(ADR 0015),让它以自身身份调用 API,不签发 refresh token;scope 被忽略,令牌的 `aud` 固定为它的默认 API。接入见 [Management API 接入指南](../management-api.md)。
+- **`client_credentials`**:只开给 M2M Application(ADR 0015),让它以自身身份调用 API,不签发 refresh token;scope 被忽略,令牌的 `aud` 固定为它的默认 API。接入见 [集成方接入指南](../management-api.md)。
 
 ### Back-Channel Logout
 

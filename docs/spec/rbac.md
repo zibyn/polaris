@@ -35,7 +35,7 @@ API (aud)
 
 ## Management API
 
-Polaris 自带的内置 API,是一套 REST 接口。管理端前端只调用它;业务后端以 M2M Application 的身份调用,接入步骤见 [Management API 接入指南](../management-api.md)。
+Polaris 自带的内置 API,是一套 REST 接口。管理端前端只调用它;业务后端以 M2M Application 的身份调用,接入步骤见 [集成方接入指南](../management-api.md)。
 
 - **标识符**:`urn:polaris:management-api`,即它签发的 access token 的 `aud`。
 - **调用凭证**:

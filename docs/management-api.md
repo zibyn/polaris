@@ -1,8 +1,23 @@
-# Management API 接入指南
+# 集成方接入指南
 
-业务后端以 **M2M Application** 的身份调用 Management API:管理 User、Application、API 资源、Role 与配置。本指南讲怎么创建这样一个 Application、换令牌、需要哪些 Permission;端点、请求体与响应字段的权威定义在 `{issuer}/v1/management/openapi.json`。
+Application 接入 Polaris 有两种集成模式:
+
+- **API 集成模式**:运营方在自己的后台里管理 User,背后以 **M2M Application** 的身份调用 Management API:管理 User、Application、API 资源、Role 与配置。本指南的大部分内容讲这种模式:怎么创建这样一个 Application、换令牌、需要哪些 Permission、常见需求怎么做。
+- **托管集成模式**:Application 自己不做用户相关界面,登录和自助管理交给托管页与账号中心,管理员直接用 Polaris 管理端,见[托管集成模式](#托管集成模式)。
+
+两种模式下 User 登录都由 Polaris 完成。端点、请求体与响应字段的权威定义在 `{issuer}/v1/management/openapi.json`。
 
 概念见 [rbac.md](spec/rbac.md) 与 [GLOSSARY.md](../GLOSSARY.md);管理端界面是同一套接口的另一个调用方,见 [consoles.md](spec/consoles.md)。
+
+## 信任边界
+
+**Management API 上的 Role 是实例级的**(ADR 0031):持有它的 M2M Application 看到、操作的是**整个用户池**,不只是"自己那个 Application 的 User"。Polaris 没有"User 属于某个 Application"的关系,也就没有按 Application 收窄的授权或 `?application=` 筛选。给集成方的 M2M Application 授予 Management API Role,就等于把整个用户池托付给它。
+
+- **只授最小 Permission**。只要查人就只给 `users:read`;别默认给「管理员」。
+- `users:write` 是一个整体:它包含替换 Identifier(`PUT /users/{sub}/identifiers/{kind}`),也就等于能接管任意非管理员账号(对管理员动手还需 `admin-roles:assign`)。
+- `roles:assign` 能分配任何业务 API 上的 Role,包括别的集成方的 API。
+- 全局禁用、删除会影响该 User 在**所有** Application 的使用;其他 Application 通过 Webhook 的 `user.disabled` / `user.deleted` 得知。只想在一个 Application 里挡住某人,见[常见做法](#常见做法)。
+- 需要不同集成方之间真正隔离,就另起一个 Polaris 实例。
 
 ## 创建 M2M Application
 
@@ -158,6 +173,115 @@ curl -X DELETE "$ISSUER/v1/management/users/$SUB/invite" -H "Authorization: Bear
 
 「业务 API 的默认 Role」只在 User 创建时授予,不作用于 Application;M2M Application 拿到的 Role 全靠显式分配。
 
+## 常见做法
+
+### 用 Role 表达会员等级等业务分级
+
+Polaris 不存 Application 的业务数据(ADR 0032):没有 `app_metadata` 式的自定义字段,也没有往 token 里塞任意 claim 的模板。工号这类自由文本,集成方以 `sub` 为键存在自己库里。
+
+**分级或资格类**字段(会员等级、是否内测用户)则建成集成方自建 API 上的 Role:它会出现在发给该 API 的 access token 的 `roles` 里,能按它查人,变更也会触发 Webhook(`user.updated`,`changed` 含 `roles`)。
+
+```bash
+# 注册自己的 API 和一个 Role(需要 applications:write)
+curl -X PUT "$ISSUER/v1/management/apis/urn:acme:shop" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name": "商城"}'
+curl -X PUT "$ISSUER/v1/management/apis/urn:acme:shop/roles/gold" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name": "金卡会员", "permissions": []}'
+
+# 给 User 定级(需要 roles:assign);整体替换,该 API 上没列出的 Role 会被收回
+curl -X PUT "$ISSUER/v1/management/users/$SUB/roles" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" -H "Content-Type: application/json" \
+  -d '{"api": "urn:acme:shop", "roles": ["gold"]}'
+
+# 查所有金卡会员(需要 users:read)
+curl -H "Authorization: Bearer $ACCESS_TOKEN" \
+  "$ISSUER/v1/management/users?api=urn:acme:shop&role=gold"
+```
+
+API 标识符放进路径时要 URL 转义(`https://api.acme.com` 写成 `https%3A%2F%2Fapi.acme.com`)。
+
+### 只在一个 Application 里禁用 User
+
+全局禁用(`POST /users/{sub}/disable`)会挡住这个人的所有 Application。只想挡在一个 Application 外面:
+
+1. 给该 Application 设默认 API,并开启「要求持 Role」(`ApplicationSettings` 的 `requireRole: true`)。
+2. 用 `PUT /users/{sub}/roles` 收回这个 User 在该 API 上的全部 Role(`"roles": []`)。
+
+收回后他拿不到授权码,refresh token 下次刷新时被拒;已签发的 access token 到期前仍有效。重新授予 Role 即恢复。不另设"按 Application 禁用"的接口。
+
+### 「用户管理员」式的自定义 Role
+
+托管集成模式下,集成方的运营人员要登录 Polaris 管理端管人、但不该碰实例配置时,在 Management API 上建一个自定义 Role:
+
+```bash
+# 需要 applications:write 和 admin-roles:assign
+curl -X PUT "$ISSUER/v1/management/apis/urn:polaris:management-api/roles/user-admin" \
+  -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name": "用户管理员", "permissions": ["users:read", "users:write", "roles:assign"]}'
+```
+
+再用 `PUT /users/{sub}/roles`(`"api": "urn:polaris:management-api"`)分给运营人员,同样需要 `admin-roles:assign`。管理端按 Permission 显示导航,持这个 Role 的人只看得到概览和用户页。
+
+要清楚它的边界:它**看得到、改得了整个用户池**,不只是某个 Application 的 User;`roles:assign` 能分配任何业务 API 上的 Role。它没有 `admin-roles:assign`,所以动不了其他管理员(在 Management API 上持有 Role 的 User),也给不了别人 Management API 上的 Role。Polaris 不按 Application 委派管理员,需要隔离就另起实例。
+
+## 导入已有用户
+
+> 本节描述的全部行为(只带 Identifier 或附带密码哈希建号、`409` 的 body 带 `sub`)随 [#151](https://github.com/zibyn/polaris/issues/151) 上线;在那之前 `POST /users` 只能按上文建待激活 User,`409` 也不带 `sub`。
+
+把原系统的用户搬进 Polaris,就是对每个人调一次 `POST /users`(ADR 0033),不设批量接口:几万用户逐个调也只要几分钟。
+
+- 只带 `identifier`:建出的是**正常** User,不进待激活,他用验证码登录即可。
+- 再附带原密码哈希:他还能用原密码登录。只收 argon2id(PHC 字符串)和 bcrypt(`$2a$`/`$2b$`/`$2y$`),别的格式整个请求 `422`;首次凭它登录成功后 Polaris 转存为 argon2id。
+- 代填的手机号、邮箱直接算已验证,由调用方担保。
+- 只有用户名的 User 必须带哈希,否则他没有任何可登录途径。
+- 密码登录关闭时,带哈希的请求 `422`;只带 Identifier 的照常建。
+
+Identifier 已被占用时返回 `409`,body 里带已有 User 的 `sub`,整个请求不写入任何东西。这通常是那个人已经自己在 Polaris 登录过:直接用这个 `sub` 完成关联即可。
+
+**`sub` 由集成方自己保存**。Polaris 不记集成方原系统的用户 ID(没有 `external_id`),把"旧 ID → `sub`"的对应关系存在你的库里。
+
+## 把 User 同步到你的系统
+
+Webhook 是薄事件(ADR 0022):只告诉你"哪个 `sub` 变了",不带新值。推荐做法:
+
+1. **首次全量**:用 `GET /users?limit=200&offset=…` 翻页,直到 `hasMore` 为 `false`。
+2. **收到事件就按 `sub` 回拉**:`GET /users/{sub}` 取当前状态;`404` 说明已删除。`user.updated` 的 `changed` 告诉你哪几项变了,可以只更新这几项。
+3. **丢弃过时事件**:投递不保证顺序,重试也可能迟到。为每个 `sub` 记下处理过的最新 `timestamp`,更早的事件直接丢掉。`timestamp` 精确到秒,同一秒的事件照常处理(反正是回拉当前状态)。
+4. **定期对账**:投递失败约一天后放弃,所以隔一段时间重跑一遍全量,兜住漏掉的事件。
+
+接收方必须忽略不认识的事件 `type`。Session 终止不走 Webhook,走 Back-Channel Logout,见下一节。
+
+Polaris 不提供 SCIM:入站 SCIM 在各家都是挂在 organization 上的 B2B 功能,而 Polaris 只有一个用户池;Management API 加 Webhook 已能完成同样的同步。
+
+## 托管集成模式
+
+Application 只负责把 User 送到 Polaris 的页面,再接回来。
+
+- **登录**:标准 OIDC authorization code flow,托管页套用 Application 的品牌(见上文[品牌](#品牌))。
+- **账号中心**:放一个普通链接 `{issuer}/account?client_id=<client_id>`(ADR 0034)。User 本就经 Polaris 登录,Session 还在就直接进入,过期了照常再登录一次。带 `client_id` 时账号中心用该 Application 的品牌;`client_id` 不存在就按没带处理,不报错。Polaris 不提供可嵌入组件,托管页也不允许被 iframe 嵌入。
+- **首页地址**:在 `ApplicationSettings` 的 `homeUrl` 填上(须 https,本机可用 http),账号中心就显示「返回 <Application 名>」链到这里;不填就没有返回入口。账号中心不接受任意的返回地址参数。
+- **退出**:把 User 送到 `{issuer}/logout?id_token_hint=<ID token>&post_logout_redirect_uri=<地址>`(RP-Initiated Logout)。`post_logout_redirect_uri` 必须登记在 `postLogoutRedirectUris` 里。
+- **Back-Channel Logout**:Session 被主动终止时(User 退出、管理员终止 Session 或禁用、删除 User 等),Polaris 向 Application 的后端 `POST` 一个 `logout_token`,让它同时清掉自己的会话。只有 Web(confidential)Application 能配:在 `ApplicationSettings` 的 `backchannelLogoutUri` 填一个 http(s) 地址,管理端的 Application 编辑页也能设。收到后按 OIDC Back-Channel Logout 1.0 验证 JWT(用 JWKS 验签,核对 `iss`、`aud`、`events`,`exp` 未过期),再结束本地与 `sid` 对应的会话;`sid` 总会带上,与这个 Session 签发的 ID token 里的一致。返回 2xx 视为收到,否则会退避重试。细节见 [protocol.md](spec/protocol.md#back-channel-logout)。
+
+## 生成 client
+
+Polaris 不发布服务端 SDK。spec 由服务端从代码生成,跟实现同步;用工具生成 client 即可:
+
+```bash
+# TypeScript 类型
+npx openapi-typescript "$ISSUER/v1/management/openapi.json" -o polaris.d.ts
+
+# Go:oapi-codegen 对 OpenAPI 3.1 支持不全,用同一份 spec 的 3.0 版本
+curl -o polaris-openapi.json "$ISSUER/v1/management/openapi-3.0.json"
+go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest \
+  -generate types,client -package polaris -o polaris.gen.go polaris-openapi.json
+```
+
 ## 版本与兼容
 
-**0.x 期间不承诺兼容**:接口、请求体、Permission 都可能在任何小版本里变。升级前先看 [Releases](https://github.com/zibyn/polaris/releases) 的 changelog。1.0 起接口冻结。
+- **`/v1` 内只做加法**:新增端点、新增可选字段、新增枚举值。删字段、改语义这类破坏性变更只会出在 `/v2`。
+- 集成方要**容忍未知的枚举值和响应里新增的字段**:别用拒收未知字段的严格反序列化,遇到不认识的枚举值按"其他"处理。
+- **Account API(`/v1/account`)是内部接口**,只供 Polaris 自己的账号中心调用,随时可能变,不在承诺范围内。
+- 升级前看 [Releases](https://github.com/zibyn/polaris/releases) 的 changelog。
