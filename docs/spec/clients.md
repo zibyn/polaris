@@ -25,7 +25,7 @@ SDK 只管协议,不带任何界面。原生登录界面由 App 自己实现。�
 - 计算 ALTCHA PoW;
 - 透传所同意的协议版本号;
 - 兑换 code、刷新、登出、注销账号;
-- **single-flight 刷新**:同一时间只有一个刷新请求,其余请求等待它的结果。服务端没有宽限窗口,不用 SDK 的接入方必须自己做到这一点;
+- **single-flight 刷新**:同一时间只有一个刷新请求,其余请求等待它的结果。服务端没有宽限窗口,不用 SDK 的集成方必须自己做到这一点;
 - **令牌存储**:默认自己存(iOS Keychain、Android Keystore 加密存储),对外暴露存储接口,可以替换;
 - **Passkey**(二期):调用系统凭证 API;在大陆 Android 上先探测能力,不可用时由 App 隐藏入口;要求 App 已声明关联(iOS 的 `webcredentials:`、Android 的 `assetlinks.json`,由管理端登记生成);
 - **Provider 客户端令牌**:只转交令牌,不内置任何服务商的 SDK;Apple 转交的是 `authorization_code`(ADR 0011)。

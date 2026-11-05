@@ -1,6 +1,6 @@
 # SDK 行为说明
 
-所有官方 SDK 都按这份说明实现;不用 SDK、自己调 HTTP API 的接入方也必须做到其中标 **必须** 的几条。端点细节见 `/v1/auth/openapi.json`。
+所有官方 SDK 都按这份说明实现;不用 SDK、自己调 HTTP API 的集成方也必须做到其中标 **必须** 的几条。端点细节见 `/v1/auth/openapi.json`。
 
 ## 登录
 

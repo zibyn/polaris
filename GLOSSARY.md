@@ -33,7 +33,7 @@ _Avoid_: 邀请码, 激活邮件, 注册链接
 _Avoid_: 自助注册, 注册开关, 仅邀请
 
 **Application**:
-在 Polaris 注册的一个接入方:委托 Polaris 认证 User(App、小程序或 Web 端),或以自己的身份调用 API(M2M Application)。
+在 Polaris 注册的一个应用:委托 Polaris 认证 User(App、小程序或 Web 端),或以自己的身份调用 API(M2M Application)。
 _Avoid_: Client, 租户, 项目
 
 **托管页**:
