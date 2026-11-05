@@ -88,6 +88,9 @@ WITH spent AS (
     WHERE s.hash = @old_hash AND s.spent_at > now() - make_interval(secs => @grace_secs::int)
       AND s.spent_at = (SELECT max(t.spent_at) FROM oidc_spent_refresh_tokens t WHERE t.grant_id = s.grant_id)
 ), cur AS (
+    -- FOR UPDATE, held only within this statement (ADR 0030): a concurrent
+    -- rotation makes it read the token current after that one, the old_hash
+    -- spent below; a plain read would spend a hash already spent.
     SELECT g.id, g.refresh_token_hash FROM oidc_grants g WHERE g.id = (SELECT spent.grant_id FROM spent) FOR UPDATE
 ), g AS (
     UPDATE oidc_grants SET refresh_token_hash = @new_hash, expires_at = @expires_at, sealed = @sealed
@@ -158,13 +161,15 @@ WITH g AS (DELETE FROM oidc_grants WHERE oidc_grants.expires_at < now()),
 DELETE FROM oidc_logout_sessions WHERE oidc_logout_sessions.expires_at < now();
 
 -- name: InsertSigningKey :exec
-INSERT INTO signing_keys (kid, sealed) VALUES ($1, $2);
+-- generation is the newest key's read plus one: a replica that rotated
+-- meanwhile took it already, and the unique key refuses the second.
+INSERT INTO signing_keys (kid, sealed, generation) VALUES ($1, $2, $3);
 
 -- name: SigningKeys :many
 -- The published keys: the current one, plus each older key whose successor
 -- came less than @retention ago. A newer key past that age means the next
 -- key after this one is too.
-SELECT kid, created_at, sealed FROM signing_keys k
+SELECT kid, created_at, sealed, generation FROM signing_keys k
 WHERE NOT EXISTS (
     SELECT 1 FROM signing_keys n
     WHERE n.created_at > k.created_at AND n.created_at <= now() - @retention::interval
@@ -176,9 +181,6 @@ DELETE FROM signing_keys k WHERE EXISTS (
     SELECT 1 FROM signing_keys n
     WHERE n.created_at > k.created_at AND n.created_at <= now() - @retention::interval
 );
-
--- name: LockSigningKeys :exec
-SELECT pg_advisory_xact_lock(hashtext('signing_keys'));
 
 -- name: SetRedirectURIs :exec
 UPDATE applications SET redirect_uris = $2, post_logout_redirect_uris = $3 WHERE client_id = $1;

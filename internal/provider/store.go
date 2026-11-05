@@ -23,6 +23,7 @@ import (
 
 	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 )
@@ -120,9 +121,9 @@ func (s *Store) Create(ctx context.Context, id, typ, name string, config map[str
 // empty secret field keeps the stored value; an Immutable field must stay as
 // it is.
 func (s *Store) Update(ctx context.Context, id, name string, config map[string]string, by audit.Actor) error {
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	return db.Retry(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		r, err := q.GetProviderForUpdate(ctx, id)
+		r, err := q.GetProvider(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		} else if err != nil {
@@ -140,8 +141,10 @@ func (s *Store) Update(ctx context.Context, id, name string, config map[string]s
 		if err != nil {
 			return err
 		}
-		if err := q.UpdateProvider(ctx, sqlc.UpdateProviderParams{ID: id, Name: strings.TrimSpace(name), Config: plain}); err != nil {
+		if n, err := q.UpdateProvider(ctx, sqlc.UpdateProviderParams{ID: id, Name: strings.TrimSpace(name), Config: plain, Version: r.Version}); err != nil {
 			return err
+		} else if n == 0 {
+			return db.ErrConflict // saved or deleted since GetProvider
 		}
 		if err := s.putSecrets(ctx, q, id, fresh); err != nil {
 			return err

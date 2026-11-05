@@ -11,27 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const lockUserProfile = `-- name: LockUserProfile :one
-SELECT COALESCE(avatar, '')::text AS avatar FROM users WHERE id = $1 FOR UPDATE
-`
-
-// The User's avatar key, with the row locked for the change that replaces it.
-func (q *Queries) LockUserProfile(ctx context.Context, id string) (string, error) {
-	row := q.db.QueryRow(ctx, lockUserProfile, id)
-	var avatar string
-	err := row.Scan(&avatar)
-	return avatar, err
-}
-
 const setAvatar = `-- name: SetAvatar :execrows
 WITH put AS (
     UPDATE users SET avatar = NULLIF($1::text, ''),
         profile_updated_at = CASE WHEN users.avatar IS DISTINCT FROM NULLIF($1::text, '') THEN now() ELSE users.profile_updated_at END
-    WHERE users.id = $2 RETURNING users.id
+    WHERE users.id = $2 AND COALESCE(users.avatar, '') = $3::text RETURNING users.id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM users u, user_event('user.updated', u.id, '{profile}') e
-    WHERE u.id = $2 AND u.avatar IS DISTINCT FROM NULLIF($1::text, '')
+    SELECT e.client_id, e.payload FROM put, users u, user_event('user.updated', u.id, '{profile}') e
+    WHERE u.id = put.id AND u.avatar IS DISTINCT FROM NULLIF($1::text, '')
 )
 SELECT 1 FROM put
 `
@@ -39,11 +27,14 @@ SELECT 1 FROM put
 type SetAvatarParams struct {
 	Avatar string
 	UserID string
+	Old    string
 }
 
-// Queues user.updated (changed: profile) when the avatar changes.
+// Queues user.updated (changed: profile) when the avatar changes. No row
+// when the avatar is no longer old, the one read (ADR 0030): replaced
+// meanwhile, whose blob the caller would otherwise leave behind.
 func (q *Queries) SetAvatar(ctx context.Context, arg SetAvatarParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setAvatar, arg.Avatar, arg.UserID)
+	result, err := q.db.Exec(ctx, setAvatar, arg.Avatar, arg.UserID, arg.Old)
 	if err != nil {
 		return 0, err
 	}
@@ -94,6 +85,18 @@ func (q *Queries) SetProfile(ctx context.Context, arg SetProfileParams) (int64, 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const userAvatar = `-- name: UserAvatar :one
+SELECT COALESCE(avatar, '')::text AS avatar FROM users WHERE id = $1
+`
+
+// The User's avatar key, for the change that replaces it (SetAvatar).
+func (q *Queries) UserAvatar(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, userAvatar, id)
+	var avatar string
+	err := row.Scan(&avatar)
+	return avatar, err
 }
 
 const userProfile = `-- name: UserProfile :one

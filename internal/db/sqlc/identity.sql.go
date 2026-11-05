@@ -90,13 +90,17 @@ func (q *Queries) BindIdentifier(ctx context.Context, arg BindIdentifierParams) 
 	return err
 }
 
-const closeSetup = `-- name: CloseSetup :exec
-UPDATE settings SET setup_token = NULL, setup_done = true
+const closeSetup = `-- name: CloseSetup :execrows
+UPDATE settings SET setup_token = NULL, setup_done = true WHERE NOT setup_done
 `
 
-func (q *Queries) CloseSetup(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, closeSetup)
-	return err
+// No row when another Bootstrap closed it first: only one owner comes of it.
+func (q *Queries) CloseSetup(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, closeSetup)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const countOwners = `-- name: CountOwners :one
@@ -139,22 +143,6 @@ SELECT pg_advisory_xact_lock(hashtext('owners'))
 func (q *Queries) LockOwners(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, lockOwners)
 	return err
-}
-
-const lockSetup = `-- name: LockSetup :one
-SELECT setup_token, setup_done FROM settings FOR UPDATE
-`
-
-type LockSetupRow struct {
-	SetupToken []byte
-	SetupDone  bool
-}
-
-func (q *Queries) LockSetup(ctx context.Context) (LockSetupRow, error) {
-	row := q.db.QueryRow(ctx, lockSetup)
-	var i LockSetupRow
-	err := row.Scan(&i.SetupToken, &i.SetupDone)
-	return i, err
 }
 
 const maySignUp = `-- name: MaySignUp :one
@@ -309,13 +297,17 @@ func (q *Queries) SetPassword(ctx context.Context, arg SetPasswordParams) error 
 	return err
 }
 
-const setSetupToken = `-- name: SetSetupToken :exec
-UPDATE settings SET setup_token = $1
+const setSetupToken = `-- name: SetSetupToken :execrows
+UPDATE settings SET setup_token = $1 WHERE setup_token IS NULL AND NOT setup_done
 `
 
-func (q *Queries) SetSetupToken(ctx context.Context, setupToken []byte) error {
-	_, err := q.db.Exec(ctx, setSetupToken, setupToken)
-	return err
+// No row when a token was made meanwhile, or setup closed.
+func (q *Queries) SetSetupToken(ctx context.Context, setupToken []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, setSetupToken, setupToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setUserPending = `-- name: SetUserPending :exec
@@ -327,6 +319,22 @@ UPDATE users SET status = 'pending' WHERE id = $1
 func (q *Queries) SetUserPending(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, setUserPending, id)
 	return err
+}
+
+const setup = `-- name: Setup :one
+SELECT setup_token, setup_done FROM settings
+`
+
+type SetupRow struct {
+	SetupToken []byte
+	SetupDone  bool
+}
+
+func (q *Queries) Setup(ctx context.Context) (SetupRow, error) {
+	row := q.db.QueryRow(ctx, setup)
+	var i SetupRow
+	err := row.Scan(&i.SetupToken, &i.SetupDone)
+	return i, err
 }
 
 const terms = `-- name: Terms :one

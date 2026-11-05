@@ -16,19 +16,18 @@ FROM providers p
 ORDER BY p.created_at;
 
 -- name: GetProvider :one
-SELECT type, name, enabled, config FROM providers WHERE id = $1;
-
--- name: GetProviderForUpdate :one
-SELECT type, config FROM providers WHERE id = $1 FOR UPDATE;
+SELECT type, name, enabled, config, version FROM providers WHERE id = $1;
 
 -- name: EnabledProviders :many
 SELECT id, type, name FROM providers WHERE enabled ORDER BY created_at;
 
 -- name: InsertProvider :exec
-INSERT INTO providers (id, type, name, config) VALUES ($1, $2, $3, $4);
+INSERT INTO providers (id, type, name, config, version) VALUES ($1, $2, $3, $4, 1);
 
--- name: UpdateProvider :exec
-UPDATE providers SET name = $2, config = $3 WHERE id = $1;
+-- name: UpdateProvider :execrows
+-- No row when another save got there first since version was read (ADR 0030).
+UPDATE providers SET name = @name, config = @config, version = version + 1
+WHERE id = @id AND version = @version;
 
 -- name: SetProviderEnabled :execrows
 -- Audited with who did it.

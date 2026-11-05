@@ -64,19 +64,26 @@ func (q *Queries) BeginTOTP(ctx context.Context, arg BeginTOTPParams) (int64, er
 	return result.RowsAffected(), nil
 }
 
-const confirmTOTP = `-- name: ConfirmTOTP :exec
-UPDATE totp_credentials SET confirmed_at = now(), last_step = $1 WHERE user_id = $2
+const confirmTOTP = `-- name: ConfirmTOTP :execrows
+UPDATE totp_credentials SET confirmed_at = now(), last_step = $1
+WHERE user_id = $2 AND confirmed_at IS NULL AND secret = $3 AND last_step < $1
 `
 
 type ConfirmTOTPParams struct {
 	Step   int64
 	UserID string
+	Secret []byte
 }
 
-// Turns 两步验证 on with the step of the code that confirmed it.
-func (q *Queries) ConfirmTOTP(ctx context.Context, arg ConfirmTOTPParams) error {
-	_, err := q.db.Exec(ctx, confirmTOTP, arg.Step, arg.UserID)
-	return err
+// Turns 两步验证 on with the step of the code that confirmed it, if the TOTP
+// is still the one the code was checked against (ADR 0030): no row when it
+// was confirmed, begun again or used meanwhile.
+func (q *Queries) ConfirmTOTP(ctx context.Context, arg ConfirmTOTPParams) (int64, error) {
+	result, err := q.db.Exec(ctx, confirmTOTP, arg.Step, arg.UserID, arg.Secret)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteRecoveryCodes = `-- name: DeleteRecoveryCodes :exec
@@ -88,31 +95,31 @@ func (q *Queries) DeleteRecoveryCodes(ctx context.Context, userID string) error 
 	return err
 }
 
-const deleteTOTP = `-- name: DeleteTOTP :exec
-DELETE FROM totp_credentials WHERE user_id = $1
+const deleteTOTP = `-- name: DeleteTOTP :execrows
+DELETE FROM totp_credentials WHERE user_id = $1 AND confirmed_at IS NOT NULL
 `
 
-func (q *Queries) DeleteTOTP(ctx context.Context, userID string) error {
-	_, err := q.db.Exec(ctx, deleteTOTP, userID)
-	return err
+// Turns 两步验证 off; no row when it is not on.
+func (q *Queries) DeleteTOTP(ctx context.Context, userID string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteTOTP, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const lockTOTP = `-- name: LockTOTP :one
-SELECT secret, confirmed_at, last_step FROM totp_credentials WHERE user_id = $1 FOR UPDATE
+const keepTOTPOn = `-- name: KeepTOTPOn :execrows
+UPDATE totp_credentials SET last_step = last_step WHERE user_id = $1 AND confirmed_at IS NOT NULL
 `
 
-type LockTOTPRow struct {
-	Secret      []byte
-	ConfirmedAt pgtype.Timestamptz
-	LastStep    int64
-}
-
-// Serialises changes to a User's 两步验证.
-func (q *Queries) LockTOTP(ctx context.Context, userID string) (LockTOTPRow, error) {
-	row := q.db.QueryRow(ctx, lockTOTP, userID)
-	var i LockTOTPRow
-	err := row.Scan(&i.Secret, &i.ConfirmedAt, &i.LastStep)
-	return i, err
+// Holds 两步验证 on for the rest of the transaction: a no-op write that
+// finds it on, so a concurrent DeleteTOTP waits for this one. No row: off.
+func (q *Queries) KeepTOTPOn(ctx context.Context, userID string) (int64, error) {
+	result, err := q.db.Exec(ctx, keepTOTPOn, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const tOTP = `-- name: TOTP :one

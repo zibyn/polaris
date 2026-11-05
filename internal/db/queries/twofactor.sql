@@ -5,10 +5,6 @@ INSERT INTO totp_credentials (user_id, secret) VALUES (@user_id, @secret)
 ON CONFLICT (user_id) DO UPDATE SET secret = EXCLUDED.secret, last_step = 0
 WHERE totp_credentials.confirmed_at IS NULL;
 
--- name: LockTOTP :one
--- Serialises changes to a User's 两步验证.
-SELECT secret, confirmed_at, last_step FROM totp_credentials WHERE user_id = $1 FOR UPDATE;
-
 -- name: TOTP :one
 SELECT secret, confirmed_at, last_step FROM totp_credentials WHERE user_id = $1;
 
@@ -16,12 +12,21 @@ SELECT secret, confirmed_at, last_step FROM totp_credentials WHERE user_id = $1;
 -- Accepts a code for step: once, and never after a later one.
 UPDATE totp_credentials SET last_step = @step WHERE user_id = @user_id AND last_step < @step;
 
--- name: ConfirmTOTP :exec
--- Turns 两步验证 on with the step of the code that confirmed it.
-UPDATE totp_credentials SET confirmed_at = now(), last_step = @step WHERE user_id = @user_id;
+-- name: ConfirmTOTP :execrows
+-- Turns 两步验证 on with the step of the code that confirmed it, if the TOTP
+-- is still the one the code was checked against (ADR 0030): no row when it
+-- was confirmed, begun again or used meanwhile.
+UPDATE totp_credentials SET confirmed_at = now(), last_step = @step
+WHERE user_id = @user_id AND confirmed_at IS NULL AND secret = @secret AND last_step < @step;
 
--- name: DeleteTOTP :exec
-DELETE FROM totp_credentials WHERE user_id = $1;
+-- name: KeepTOTPOn :execrows
+-- Holds 两步验证 on for the rest of the transaction: a no-op write that
+-- finds it on, so a concurrent DeleteTOTP waits for this one. No row: off.
+UPDATE totp_credentials SET last_step = last_step WHERE user_id = $1 AND confirmed_at IS NOT NULL;
+
+-- name: DeleteTOTP :execrows
+-- Turns 两步验证 off; no row when it is not on.
+DELETE FROM totp_credentials WHERE user_id = $1 AND confirmed_at IS NOT NULL;
 
 -- name: DeleteRecoveryCodes :exec
 DELETE FROM recovery_codes WHERE user_id = $1;

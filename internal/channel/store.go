@@ -16,6 +16,7 @@ import (
 
 	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 )
@@ -73,14 +74,12 @@ func (s *Store) Put(ctx context.Context, kind, plugin string, config map[string]
 	if !slices.Contains(p.Kinds, kind) {
 		return identity.Invalid(p.Name + " 不能投递到这类 Identifier")
 	}
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	return db.Retry(ctx, s.pool, func(tx pgx.Tx) error {
 		q := sqlc.New(tx)
-		if err := q.LockChannels(ctx); err != nil {
-			return err
-		}
 		var old string
+		var version int64 // 0: not saved yet
 		if r, err := q.GetChannel(ctx, kind); err == nil {
-			old = r.Plugin
+			old, version = r.Plugin, r.Version
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
@@ -124,8 +123,10 @@ func (s *Store) Put(ctx context.Context, kind, plugin string, config map[string]
 		if err != nil {
 			return err
 		}
-		if err := q.PutChannel(ctx, sqlc.PutChannelParams{Kind: kind, Plugin: plugin, Config: js}); err != nil {
+		if n, err := q.SaveChannel(ctx, sqlc.SaveChannelParams{Kind: kind, Plugin: plugin, Config: js, Version: version}); err != nil {
 			return err
+		} else if n == 0 {
+			return db.ErrConflict // the secrets read above may be another plugin's now
 		}
 		for k, v := range fresh {
 			sealed, err := s.keyring.Seal([]byte(v), aad(kind, plugin, k))

@@ -32,6 +32,7 @@ import (
 
 	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/blob"
+	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 )
 
@@ -338,10 +339,10 @@ func (s *Store) RemoveAvatar(ctx context.Context, sub string, by audit.Actor) er
 }
 
 func (s *Store) replaceAvatar(ctx context.Context, sub, key string, put func(blob.Store) error, event string, by audit.Actor) error {
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	return db.Retry(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		store := blob.NewPG(q)
-		old, err := q.LockUserProfile(ctx, sub)
+		old, err := q.UserAvatar(ctx, sub)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNoUser
 		} else if err != nil {
@@ -350,8 +351,10 @@ func (s *Store) replaceAvatar(ctx context.Context, sub, key string, put func(blo
 		if err := put(store); err != nil {
 			return err
 		}
-		if _, err := q.SetAvatar(ctx, sqlc.SetAvatarParams{UserID: sub, Avatar: key}); err != nil {
+		if n, err := q.SetAvatar(ctx, sqlc.SetAvatarParams{UserID: sub, Avatar: key, Old: old}); err != nil {
 			return err
+		} else if n == 0 {
+			return db.ErrConflict // replaced or deleted since UserAvatar; rolls back the new blob
 		}
 		if old != "" {
 			if err := store.Delete(ctx, old); err != nil {

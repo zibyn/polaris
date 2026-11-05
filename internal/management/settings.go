@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 )
 
@@ -80,9 +81,9 @@ func (s *Service) putSettings(ctx context.Context, in *policyBody) (*struct{}, e
 		return nil, huma.Error422UnprocessableEntity("请先为自己开启两步验证")
 	}
 	// Leaving the Logo out removes it; the transaction deletes its blob.
-	return nil, pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	return nil, db.Retry(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		logo, err := q.LockInstanceLogo(ctx)
+		logo, err := q.InstanceLogo(ctx)
 		if err != nil {
 			return err
 		}
@@ -90,13 +91,15 @@ func (s *Service) putSettings(ctx context.Context, in *policyBody) (*struct{}, e
 		if err := invalid(own.check(logoRef(logo))); err != nil {
 			return err
 		}
-		if err := q.UpdateSettings(ctx, sqlc.UpdateSettingsParams{
+		if n, err := q.UpdateSettings(ctx, sqlc.UpdateSettingsParams{CurrentLogo: logo,
 			ByID: callerActor(ctx).ID, ByType: callerActor(ctx).Type, PasswordLogin: b.PasswordLogin, RequirePhone: b.RequirePhone, DailySendLimit: b.DailySendLimit,
 			TermsUrl: b.TermsURL, PrivacyUrl: b.PrivacyURL, TermsUrlEn: b.TermsURLEn, PrivacyUrlEn: b.PrivacyURLEn, TermsVersion: b.TermsVersion, AuditRetentionDays: b.AuditRetentionDays,
 			AdminsNeedTwoFactor: b.AdminsNeedTwoFactor, PasskeyLogin: b.PasskeyLogin, OpenRegistration: b.OpenRegistration,
 			BrandName: own.Name, BrandLogo: logoKey(own.Logo), BrandColor: own.Color,
 		}); err != nil {
 			return err
+		} else if n == 0 {
+			return db.ErrConflict // check the Logo sent back against the new one
 		}
 		return q.DeleteUnusedLogos(ctx)
 	})

@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 )
 
@@ -66,30 +67,39 @@ var setupAAD = []byte("setup_token")
 
 // SetupToken returns the one-time token that opens the setup page, creating
 // it on first call; "" once the first owner exists.
+//
+// Replicas starting together may each make one; only the first is stored,
+// and the others read it back when they try again.
 func (s *Store) SetupToken(ctx context.Context) (string, error) {
-	tx, err := s.pool.Begin(ctx)
+	var token string
+	err := db.Retry(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		setup, err := q.Setup(ctx)
+		if err != nil || setup.SetupDone {
+			token = ""
+			return err
+		}
+		if setup.SetupToken != nil {
+			plain, err := s.keyring.Open(setup.SetupToken, setupAAD)
+			token = string(plain)
+			return err
+		}
+		token = rand.Text()
+		sealed, err := s.keyring.Seal([]byte(token), setupAAD)
+		if err != nil {
+			return err
+		}
+		if n, err := q.SetSetupToken(ctx, sealed); err != nil {
+			return err
+		} else if n == 0 {
+			return db.ErrConflict
+		}
+		return nil
+	})
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
-	q := s.q.WithTx(tx)
-	setup, err := q.LockSetup(ctx)
-	if err != nil || setup.SetupDone {
-		return "", err
-	}
-	if setup.SetupToken != nil {
-		token, err := s.keyring.Open(setup.SetupToken, setupAAD)
-		return string(token), err
-	}
-	token := rand.Text()
-	sealed, err := s.keyring.Seal([]byte(token), setupAAD)
-	if err != nil {
-		return "", err
-	}
-	if err := q.SetSetupToken(ctx, sealed); err != nil {
-		return "", err
-	}
-	return token, tx.Commit(ctx)
+	return token, nil
 }
 
 // Bootstrap creates the first owner with a username and password, then closes
@@ -101,7 +111,7 @@ func (s *Store) Bootstrap(ctx context.Context, token, username, password string)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
 	q := s.q.WithTx(tx)
-	setup, err := q.LockSetup(ctx) // serialises concurrent bootstraps
+	setup, err := q.Setup(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -122,6 +132,13 @@ func (s *Store) Bootstrap(ctx context.Context, token, username, password string)
 	if err != nil {
 		return "", err
 	}
+	// Closing setup first claims it: of two Bootstraps at once, the second
+	// finds it closed and rolls back, making no second owner.
+	if n, err := q.CloseSetup(ctx); err != nil {
+		return "", err
+	} else if n == 0 {
+		return "", ErrSetupClosed
+	}
 	sub := rand.Text()
 	if err := q.CreateUser(ctx, sub); err != nil {
 		return "", err
@@ -133,9 +150,6 @@ func (s *Store) Bootstrap(ctx context.Context, token, username, password string)
 		return "", err
 	}
 	if err := q.AssignRole(ctx, sqlc.AssignRoleParams{UserID: sub, Api: ManagementAPI, Role: "owner"}); err != nil {
-		return "", err
-	}
-	if err := q.CloseSetup(ctx); err != nil {
 		return "", err
 	}
 	return sub, tx.Commit(ctx)

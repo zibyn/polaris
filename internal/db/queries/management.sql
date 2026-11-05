@@ -235,7 +235,8 @@ INSERT INTO applications (client_id, name, type, secret_hash) VALUES ($1, '', $2
 -- name: UpdateApplication :execrows
 -- An empty webhook_url turns the webhook off; a NULL webhook_secret keeps
 -- the stored one, as does a NULL jwks. idle_secs / max_secs 0 mean the
--- default.
+-- default. No row either when the Logo is no longer current_logo, the one
+-- read (an upload replaced it meanwhile).
 UPDATE applications SET
     name = @name,
     redirect_uris = @redirect_uris,
@@ -258,7 +259,8 @@ UPDATE applications SET
     brand_name = sqlc.narg(brand_name),
     brand_logo = sqlc.narg(brand_logo),
     brand_color = sqlc.narg(brand_color)
-WHERE client_id = @client_id AND NOT builtin;
+WHERE client_id = @client_id AND NOT builtin
+  AND COALESCE(brand_logo, '') = @current_logo::text;
 
 -- name: SetApplicationSecret :execrows
 -- Audited with who did it.
@@ -298,8 +300,9 @@ SELECT password_login, require_phone, daily_send_limit, terms_url, privacy_url, 
        brand_name, brand_logo, brand_color
 FROM settings;
 
--- name: UpdateSettings :exec
--- Changes the login policy; audited with who did it.
+-- name: UpdateSettings :execrows
+-- Changes the login policy; audited with who did it. No row when the Logo
+-- is no longer current_logo, the one read (an upload replaced it meanwhile).
 WITH u AS (
     UPDATE settings SET password_login = @password_login, require_phone = @require_phone,
         daily_send_limit = @daily_send_limit, terms_url = @terms_url, privacy_url = @privacy_url,
@@ -307,9 +310,11 @@ WITH u AS (
         admins_need_two_factor = @admins_need_two_factor, passkey_login = @passkey_login,
         open_registration = @open_registration, terms_url_en = @terms_url_en, privacy_url_en = @privacy_url_en,
         brand_name = @brand_name, brand_logo = @brand_logo, brand_color = @brand_color
+    WHERE settings.brand_logo = @current_logo
+    RETURNING 1
 )
 INSERT INTO audit_log (event, sub, detail)
-VALUES ('settings.updated', NULL, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, '')));
+SELECT 'settings.updated', NULL, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM u;
 
 -- name: SetUserDisabled :execrows
 -- Disables or restores a User; disabling ends all their Sessions, queuing
@@ -419,11 +424,11 @@ DELETE FROM blobs WHERE key LIKE 'brand/%'
     AND key NOT IN (SELECT brand_logo FROM settings
                     UNION ALL SELECT brand_logo FROM applications WHERE brand_logo IS NOT NULL);
 
--- name: LockInstanceLogo :one
--- The instance's Logo, locked until the transaction ends: a save checks
--- the Logo it sends back against this, not one an upload just replaced.
-SELECT brand_logo FROM settings FOR UPDATE;
+-- name: InstanceLogo :one
+-- The instance's Logo: a save checks the Logo it sends back against this,
+-- and writes only while it is still current (UpdateSettings).
+SELECT brand_logo FROM settings;
 
--- name: LockApplicationLogo :one
--- An Application's own Logo ('' for none), locked as LockInstanceLogo.
-SELECT COALESCE(brand_logo, '')::text FROM applications WHERE client_id = @client_id FOR UPDATE;
+-- name: ApplicationLogo :one
+-- An Application's own Logo ('' for none), checked as InstanceLogo.
+SELECT COALESCE(brand_logo, '')::text FROM applications WHERE client_id = @client_id;

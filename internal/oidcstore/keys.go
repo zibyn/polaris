@@ -11,11 +11,14 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
@@ -42,66 +45,53 @@ func NewKeys(pool *pgxpool.Pool, keyring *crypt.Keyring) *Keys {
 	return &Keys{pool: pool, q: sqlc.New(pool), keyring: keyring}
 }
 
-// Ensure creates the first signing key if there is none. A lock keeps
-// replicas starting together from each adding one.
+// Ensure creates the first signing key if there is none. Replicas starting
+// together may all try; the first key's generation lets one in.
 func (k *Keys) Ensure(ctx context.Context) error {
-	tx, err := k.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
-	q := k.q.WithTx(tx)
-	if err := q.LockSigningKeys(ctx); err != nil {
-		return err
-	}
-	keys, err := q.SigningKeys(ctx, keyRetention)
-	if err != nil || len(keys) > 0 {
-		return err
-	}
-	if err := add(ctx, q, k.keyring); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return db.Retry(ctx, k.pool, func(tx pgx.Tx) error {
+		q := k.q.WithTx(tx)
+		keys, err := q.SigningKeys(ctx, keyRetention)
+		if err != nil || len(keys) > 0 {
+			return err
+		}
+		return add(ctx, q, k.keyring, 1)
+	})
 }
 
 // Rotate makes a new key current and audits it as done by by. The old ones
 // retire by age (see KeyRetention); the hourly cleanup deletes them.
 func (k *Keys) Rotate(ctx context.Context, by audit.Actor) error {
-	tx, err := k.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
-	if err := k.rotate(ctx, k.q.WithTx(tx), by); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return db.Retry(ctx, k.pool, func(tx pgx.Tx) error {
+		q := k.q.WithTx(tx)
+		keys, err := q.SigningKeys(ctx, keyRetention)
+		if err != nil {
+			return err
+		}
+		return k.rotate(ctx, q, keys, by)
+	})
 }
 
 // RotateDue makes a new key current once the newest is KeyLifetime old, and
-// audits it. Every replica runs it hourly; the lock and recheck keep it to one.
+// audits it. Every replica runs it hourly; the generation keeps it to one,
+// and the others find a fresh key when they try again.
 func (k *Keys) RotateDue(ctx context.Context) error {
-	tx, err := k.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
-	q := k.q.WithTx(tx)
-	if err := q.LockSigningKeys(ctx); err != nil {
-		return err
-	}
-	keys, err := q.SigningKeys(ctx, keyRetention)
-	if err != nil || len(keys) == 0 || time.Since(keys[0].CreatedAt.Time) < KeyLifetime {
-		return err
-	}
-	if err := k.rotate(ctx, q, audit.System); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return db.Retry(ctx, k.pool, func(tx pgx.Tx) error {
+		q := k.q.WithTx(tx)
+		keys, err := q.SigningKeys(ctx, keyRetention)
+		if err != nil || len(keys) == 0 || time.Since(keys[0].CreatedAt.Time) < KeyLifetime {
+			return err
+		}
+		return k.rotate(ctx, q, keys, audit.System)
+	})
 }
 
-func (k *Keys) rotate(ctx context.Context, q *sqlc.Queries, by audit.Actor) error {
-	if err := add(ctx, q, k.keyring); err != nil {
+// rotate adds the successor of keys[0], the newest of the published keys.
+func (k *Keys) rotate(ctx context.Context, q *sqlc.Queries, keys []sqlc.SigningKey, by audit.Actor) error {
+	next := int64(1)
+	if len(keys) > 0 {
+		next = keys[0].Generation + 1
+	}
+	if err := add(ctx, q, k.keyring, next); err != nil {
 		return err
 	}
 	detail := by.Detail(nil)
@@ -141,7 +131,9 @@ func (k *Keys) JWKS(ctx context.Context) (goidc.JSONWebKeySet, error) {
 	return jwks, nil
 }
 
-func add(ctx context.Context, q *sqlc.Queries, keyring *crypt.Keyring) error {
+// add inserts a new key as generation; db.ErrConflict when another replica
+// took that generation first.
+func add(ctx context.Context, q *sqlc.Queries, keyring *crypt.Keyring, generation int64) error {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return err
@@ -155,7 +147,11 @@ func add(ctx context.Context, q *sqlc.Queries, keyring *crypt.Keyring) error {
 	if err != nil {
 		return err
 	}
-	return q.InsertSigningKey(ctx, sqlc.InsertSigningKeyParams{Kid: kid, Sealed: sealed})
+	err = q.InsertSigningKey(ctx, sqlc.InsertSigningKeyParams{Kid: kid, Sealed: sealed, Generation: generation})
+	if pg := (*pgconn.PgError)(nil); errors.As(err, &pg) && pg.ConstraintName == "signing_keys_generation_key" {
+		return db.ErrConflict
+	}
+	return err
 }
 
 func keyAAD(kid string) []byte { return []byte("signing_key:" + kid) }

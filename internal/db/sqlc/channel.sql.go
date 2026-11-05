@@ -94,18 +94,19 @@ func (q *Queries) DeleteChannelSecrets(ctx context.Context, kind string) error {
 }
 
 const getChannel = `-- name: GetChannel :one
-SELECT plugin, config FROM channels WHERE kind = $1
+SELECT plugin, config, version FROM channels WHERE kind = $1
 `
 
 type GetChannelRow struct {
-	Plugin string
-	Config []byte
+	Plugin  string
+	Config  []byte
+	Version int64
 }
 
 func (q *Queries) GetChannel(ctx context.Context, kind string) (GetChannelRow, error) {
 	row := q.db.QueryRow(ctx, getChannel, kind)
 	var i GetChannelRow
-	err := row.Scan(&i.Plugin, &i.Config)
+	err := row.Scan(&i.Plugin, &i.Config, &i.Version)
 	return i, err
 }
 
@@ -151,32 +152,6 @@ func (q *Queries) ListChannels(ctx context.Context) ([]ListChannelsRow, error) {
 	return items, nil
 }
 
-const lockChannels = `-- name: LockChannels :exec
-LOCK TABLE channels IN SHARE ROW EXCLUSIVE MODE
-`
-
-// Serialises writers, including two first saves of a kind (no row to lock yet).
-func (q *Queries) LockChannels(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, lockChannels)
-	return err
-}
-
-const putChannel = `-- name: PutChannel :exec
-INSERT INTO channels (kind, plugin, config) VALUES ($1, $2, $3)
-ON CONFLICT (kind) DO UPDATE SET plugin = excluded.plugin, config = excluded.config, updated_at = now()
-`
-
-type PutChannelParams struct {
-	Kind   string
-	Plugin string
-	Config []byte
-}
-
-func (q *Queries) PutChannel(ctx context.Context, arg PutChannelParams) error {
-	_, err := q.db.Exec(ctx, putChannel, arg.Kind, arg.Plugin, arg.Config)
-	return err
-}
-
 const putChannelSecret = `-- name: PutChannelSecret :exec
 INSERT INTO channel_secrets (kind, field, value) VALUES ($1, $2, $3)
 ON CONFLICT (kind, field) DO UPDATE SET value = excluded.value, updated_at = now()
@@ -191,4 +166,33 @@ type PutChannelSecretParams struct {
 func (q *Queries) PutChannelSecret(ctx context.Context, arg PutChannelSecretParams) error {
 	_, err := q.db.Exec(ctx, putChannelSecret, arg.Kind, arg.Field, arg.Value)
 	return err
+}
+
+const saveChannel = `-- name: SaveChannel :execrows
+INSERT INTO channels (kind, plugin, config, version) VALUES ($1, $2, $3, 1)
+ON CONFLICT (kind) DO UPDATE SET plugin = excluded.plugin, config = excluded.config, updated_at = now(),
+    version = channels.version + 1
+WHERE channels.version = $4
+`
+
+type SaveChannelParams struct {
+	Kind    string
+	Plugin  string
+	Config  []byte
+	Version int64
+}
+
+// Saves kind if it is still at version, the one read (0: there was none);
+// no row when another save got there first (ADR 0030).
+func (q *Queries) SaveChannel(ctx context.Context, arg SaveChannelParams) (int64, error) {
+	result, err := q.db.Exec(ctx, saveChannel,
+		arg.Kind,
+		arg.Plugin,
+		arg.Config,
+		arg.Version,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

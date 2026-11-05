@@ -260,6 +260,9 @@ WITH spent AS (
     WHERE s.hash = $1 AND s.spent_at > now() - make_interval(secs => $2::int)
       AND s.spent_at = (SELECT max(t.spent_at) FROM oidc_spent_refresh_tokens t WHERE t.grant_id = s.grant_id)
 ), cur AS (
+    -- FOR UPDATE, held only within this statement (ADR 0030): a concurrent
+    -- rotation makes it read the token current after that one, the old_hash
+    -- spent below; a plain read would spend a hash already spent.
     SELECT g.id, g.refresh_token_hash FROM oidc_grants g WHERE g.id = (SELECT spent.grant_id FROM spent) FOR UPDATE
 ), g AS (
     UPDATE oidc_grants SET refresh_token_hash = $3, expires_at = $4, sealed = $5
@@ -372,25 +375,19 @@ func (q *Queries) GrantByRefreshTokenHash(ctx context.Context, refreshTokenHash 
 }
 
 const insertSigningKey = `-- name: InsertSigningKey :exec
-INSERT INTO signing_keys (kid, sealed) VALUES ($1, $2)
+INSERT INTO signing_keys (kid, sealed, generation) VALUES ($1, $2, $3)
 `
 
 type InsertSigningKeyParams struct {
-	Kid    string
-	Sealed []byte
+	Kid        string
+	Sealed     []byte
+	Generation int64
 }
 
+// generation is the newest key's read plus one: a replica that rotated
+// meanwhile took it already, and the unique key refuses the second.
 func (q *Queries) InsertSigningKey(ctx context.Context, arg InsertSigningKeyParams) error {
-	_, err := q.db.Exec(ctx, insertSigningKey, arg.Kid, arg.Sealed)
-	return err
-}
-
-const lockSigningKeys = `-- name: LockSigningKeys :exec
-SELECT pg_advisory_xact_lock(hashtext('signing_keys'))
-`
-
-func (q *Queries) LockSigningKeys(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, lockSigningKeys)
+	_, err := q.db.Exec(ctx, insertSigningKey, arg.Kid, arg.Sealed, arg.Generation)
 	return err
 }
 
@@ -596,7 +593,7 @@ func (q *Queries) SetRedirectURIs(ctx context.Context, arg SetRedirectURIsParams
 }
 
 const signingKeys = `-- name: SigningKeys :many
-SELECT kid, created_at, sealed FROM signing_keys k
+SELECT kid, created_at, sealed, generation FROM signing_keys k
 WHERE NOT EXISTS (
     SELECT 1 FROM signing_keys n
     WHERE n.created_at > k.created_at AND n.created_at <= now() - $1::interval
@@ -616,7 +613,12 @@ func (q *Queries) SigningKeys(ctx context.Context, retention pgtype.Interval) ([
 	var items []SigningKey
 	for rows.Next() {
 		var i SigningKey
-		if err := rows.Scan(&i.Kid, &i.CreatedAt, &i.Sealed); err != nil {
+		if err := rows.Scan(
+			&i.Kid,
+			&i.CreatedAt,
+			&i.Sealed,
+			&i.Generation,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

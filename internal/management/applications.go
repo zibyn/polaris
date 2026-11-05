@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/oidcstore"
@@ -200,7 +201,7 @@ func (s *Service) createApplication(ctx context.Context, in *createApplicationIn
 		out.Body.Secret = rand.Text()
 		secretHash = oidcstore.SecretHash(out.Body.Secret)
 	}
-	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	err := db.Retry(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if err := q.InsertApplication(ctx, sqlc.InsertApplicationParams{ClientID: clientID, Type: in.Body.Type, SecretHash: secretHash}); err != nil {
 			return err
@@ -246,7 +247,7 @@ func (s *Service) updateApplication(ctx context.Context, in *struct {
 	if app.TokenAuthMethod == privateKeyJWT && in.Body.JWKS != nil && emptyJWKS(in.Body.JWKS) {
 		return nil, huma.Error422UnprocessableEntity("私钥签名认证时不能清空 Application 公钥")
 	}
-	return nil, pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	return nil, db.Retry(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if n, err := s.saveSettings(ctx, q, in.ClientID, app.Type, &in.Body); err != nil {
 			return err
@@ -397,8 +398,9 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 	if err := invalid(st.validate(typ)); err != nil {
 		return 0, err
 	}
-	logo, err := q.LockApplicationLogo(ctx, clientID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) { // none yet: being created
+	logo, err := q.ApplicationLogo(ctx, clientID)
+	found := err == nil
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) { // none: deleted meanwhile
 		return 0, err
 	}
 	b := cmp.Or(st.Brand, &Brand{})
@@ -434,6 +436,7 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 		AppleAppIds: append([]string{}, st.AppleAppIDs...), AndroidApps: android, Jwks: st.JWKS,
 		LoginMethods: st.LoginMethods.column(),
 		BrandName:    nullable(b.Name), BrandLogo: nullable(logoKey(b.Logo)), BrandColor: nullable(b.Color),
+		CurrentLogo: logo,
 	})
 	var pg *pgconn.PgError
 	switch {
@@ -445,6 +448,8 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 		return 0, huma.Error422UnprocessableEntity("私钥签名认证时不能清空 Application 公钥")
 	case err != nil:
 		return 0, err
+	case n == 0 && found:
+		return 0, db.ErrConflict // check the Logo sent back against the new one
 	}
 	return n, q.DeleteUnusedLogos(ctx)
 }

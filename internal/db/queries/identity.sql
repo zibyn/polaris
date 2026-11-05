@@ -1,11 +1,13 @@
--- name: LockSetup :one
-SELECT setup_token, setup_done FROM settings FOR UPDATE;
+-- name: Setup :one
+SELECT setup_token, setup_done FROM settings;
 
--- name: SetSetupToken :exec
-UPDATE settings SET setup_token = $1;
+-- name: SetSetupToken :execrows
+-- No row when a token was made meanwhile, or setup closed.
+UPDATE settings SET setup_token = $1 WHERE setup_token IS NULL AND NOT setup_done;
 
--- name: CloseSetup :exec
-UPDATE settings SET setup_token = NULL, setup_done = true;
+-- name: CloseSetup :execrows
+-- No row when another Bootstrap closed it first: only one owner comes of it.
+UPDATE settings SET setup_token = NULL, setup_done = true WHERE NOT setup_done;
 
 -- name: CreateUser :exec
 -- The new User also picks up every default Role, in the same statement, so

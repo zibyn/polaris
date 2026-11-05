@@ -22,6 +22,18 @@ func (q *Queries) APIBuiltin(ctx context.Context, identifier string) (bool, erro
 	return builtin, err
 }
 
+const applicationLogo = `-- name: ApplicationLogo :one
+SELECT COALESCE(brand_logo, '')::text FROM applications WHERE client_id = $1
+`
+
+// An Application's own Logo (” for none), checked as InstanceLogo.
+func (q *Queries) ApplicationLogo(ctx context.Context, clientID string) (string, error) {
+	row := q.db.QueryRow(ctx, applicationLogo, clientID)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const applicationRoles = `-- name: ApplicationRoles :many
 SELECT role FROM application_roles WHERE client_id = $1 AND api = $2 ORDER BY role
 `
@@ -393,6 +405,19 @@ func (q *Queries) InsertApplication(ctx context.Context, arg InsertApplicationPa
 	return err
 }
 
+const instanceLogo = `-- name: InstanceLogo :one
+SELECT brand_logo FROM settings
+`
+
+// The instance's Logo: a save checks the Logo it sends back against this,
+// and writes only while it is still current (UpdateSettings).
+func (q *Queries) InstanceLogo(ctx context.Context) (string, error) {
+	row := q.db.QueryRow(ctx, instanceLogo)
+	var brand_logo string
+	err := row.Scan(&brand_logo)
+	return brand_logo, err
+}
+
 const listAPIs = `-- name: ListAPIs :many
 SELECT a.identifier, a.name, a.builtin,
        COALESCE((SELECT json_agg(json_build_object('key', p.key, 'name', p.name, 'builtin', p.builtin) ORDER BY p.key)
@@ -729,31 +754,6 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 		return nil, err
 	}
 	return items, nil
-}
-
-const lockApplicationLogo = `-- name: LockApplicationLogo :one
-SELECT COALESCE(brand_logo, '')::text FROM applications WHERE client_id = $1 FOR UPDATE
-`
-
-// An Application's own Logo (” for none), locked as LockInstanceLogo.
-func (q *Queries) LockApplicationLogo(ctx context.Context, clientID string) (string, error) {
-	row := q.db.QueryRow(ctx, lockApplicationLogo, clientID)
-	var column_1 string
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
-const lockInstanceLogo = `-- name: LockInstanceLogo :one
-SELECT brand_logo FROM settings FOR UPDATE
-`
-
-// The instance's Logo, locked until the transaction ends: a save checks
-// the Logo it sends back against this, not one an upload just replaced.
-func (q *Queries) LockInstanceLogo(ctx context.Context) (string, error) {
-	row := q.db.QueryRow(ctx, lockInstanceLogo)
-	var brand_logo string
-	err := row.Scan(&brand_logo)
-	return brand_logo, err
 }
 
 const m2MCaller = `-- name: M2MCaller :one
@@ -1203,6 +1203,7 @@ UPDATE applications SET
     brand_logo = $17,
     brand_color = $18
 WHERE client_id = $19 AND NOT builtin
+  AND COALESCE(brand_logo, '') = $20::text
 `
 
 type UpdateApplicationParams struct {
@@ -1225,11 +1226,13 @@ type UpdateApplicationParams struct {
 	BrandLogo              pgtype.Text
 	BrandColor             pgtype.Text
 	ClientID               string
+	CurrentLogo            string
 }
 
 // An empty webhook_url turns the webhook off; a NULL webhook_secret keeps
 // the stored one, as does a NULL jwks. idle_secs / max_secs 0 mean the
-// default.
+// default. No row either when the Logo is no longer current_logo, the one
+// read (an upload replaced it meanwhile).
 func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateApplication,
 		arg.Name,
@@ -1251,6 +1254,7 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 		arg.BrandLogo,
 		arg.BrandColor,
 		arg.ClientID,
+		arg.CurrentLogo,
 	)
 	if err != nil {
 		return 0, err
@@ -1258,7 +1262,7 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 	return result.RowsAffected(), nil
 }
 
-const updateSettings = `-- name: UpdateSettings :exec
+const updateSettings = `-- name: UpdateSettings :execrows
 WITH u AS (
     UPDATE settings SET password_login = $3, require_phone = $4,
         daily_send_limit = $5, terms_url = $6, privacy_url = $7,
@@ -1266,9 +1270,11 @@ WITH u AS (
         admins_need_two_factor = $10, passkey_login = $11,
         open_registration = $12, terms_url_en = $13, privacy_url_en = $14,
         brand_name = $15, brand_logo = $16, brand_color = $17
+    WHERE settings.brand_logo = $18
+    RETURNING 1
 )
 INSERT INTO audit_log (event, sub, detail)
-VALUES ('settings.updated', NULL, jsonb_build_object('by', $1::text, 'byType', NULLIF($2::text, '')))
+SELECT 'settings.updated', NULL, jsonb_build_object('by', $1::text, 'byType', NULLIF($2::text, '')) FROM u
 `
 
 type UpdateSettingsParams struct {
@@ -1289,11 +1295,13 @@ type UpdateSettingsParams struct {
 	BrandName           string
 	BrandLogo           string
 	BrandColor          string
+	CurrentLogo         string
 }
 
-// Changes the login policy; audited with who did it.
-func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) error {
-	_, err := q.db.Exec(ctx, updateSettings,
+// Changes the login policy; audited with who did it. No row when the Logo
+// is no longer current_logo, the one read (an upload replaced it meanwhile).
+func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateSettings,
 		arg.ByID,
 		arg.ByType,
 		arg.PasswordLogin,
@@ -1311,6 +1319,10 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.BrandName,
 		arg.BrandLogo,
 		arg.BrandColor,
+		arg.CurrentLogo,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

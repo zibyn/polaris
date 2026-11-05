@@ -6,18 +6,18 @@ FROM channels c
 ORDER BY c.kind;
 
 -- name: GetChannel :one
-SELECT plugin, config FROM channels WHERE kind = $1;
-
--- name: LockChannels :exec
--- Serialises writers, including two first saves of a kind (no row to lock yet).
-LOCK TABLE channels IN SHARE ROW EXCLUSIVE MODE;
+SELECT plugin, config, version FROM channels WHERE kind = $1;
 
 -- name: ChannelSecrets :many
 SELECT field, value FROM channel_secrets WHERE kind = $1;
 
--- name: PutChannel :exec
-INSERT INTO channels (kind, plugin, config) VALUES ($1, $2, $3)
-ON CONFLICT (kind) DO UPDATE SET plugin = excluded.plugin, config = excluded.config, updated_at = now();
+-- name: SaveChannel :execrows
+-- Saves kind if it is still at version, the one read (0: there was none);
+-- no row when another save got there first (ADR 0030).
+INSERT INTO channels (kind, plugin, config, version) VALUES (@kind, @plugin, @config, 1)
+ON CONFLICT (kind) DO UPDATE SET plugin = excluded.plugin, config = excluded.config, updated_at = now(),
+    version = channels.version + 1
+WHERE channels.version = @version;
 
 -- name: PutChannelSecret :exec
 INSERT INTO channel_secrets (kind, field, value) VALUES ($1, $2, $3)

@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db"
@@ -521,5 +524,46 @@ func TestBindingAnIdentifierAtLoginQueuesUserUpdated(t *testing.T) {
 	}
 	if got := queued(); len(got) != 0 {
 		t.Errorf("refused binding queued %v", got)
+	}
+}
+
+// Replicas starting together all print the one setup token, and of
+// Bootstraps at once with it only one makes an owner (ADR 0030: no lock,
+// the conditional writes decide).
+func TestConcurrentSetup(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	tokens := make([]string, 4)
+	var g errgroup.Group
+	for i := range tokens {
+		g.Go(func() (err error) { tokens[i], err = s.SetupToken(ctx); return })
+	}
+	if err := g.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tok := range tokens {
+		if tok == "" || tok != tokens[0] {
+			t.Fatalf("setup tokens differ: %q", tokens)
+		}
+	}
+	errs := make([]error, 4)
+	for i := range errs {
+		g.Go(func() error {
+			_, errs[i] = s.Bootstrap(ctx, tokens[0], fmt.Sprintf("root%d", i), "password1")
+			return nil
+		})
+	}
+	_ = g.Wait()
+	won := 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			won++
+		case !errors.Is(err, ErrSetupClosed):
+			t.Errorf("a losing Bootstrap: %v", err)
+		}
+	}
+	if n, err := s.q.CountOwners(ctx); won != 1 || err != nil || n != 1 {
+		t.Errorf("%d Bootstraps won, %d owners (%v); want 1 and 1", won, n, err)
 	}
 }

@@ -2,9 +2,9 @@
 SELECT COALESCE(nickname, '')::text AS nickname, COALESCE(avatar, '')::text AS avatar, profile, profile_updated_at
 FROM users WHERE id = $1;
 
--- name: LockUserProfile :one
--- The User's avatar key, with the row locked for the change that replaces it.
-SELECT COALESCE(avatar, '')::text AS avatar FROM users WHERE id = $1 FOR UPDATE;
+-- name: UserAvatar :one
+-- The User's avatar key, for the change that replaces it (SetAvatar).
+SELECT COALESCE(avatar, '')::text AS avatar FROM users WHERE id = $1;
 
 -- name: SetProfile :execrows
 -- Sets the nickname when set_nickname, merges set into the profile claims
@@ -30,14 +30,16 @@ WITH put AS (
 SELECT 1 FROM put;
 
 -- name: SetAvatar :execrows
--- Queues user.updated (changed: profile) when the avatar changes.
+-- Queues user.updated (changed: profile) when the avatar changes. No row
+-- when the avatar is no longer old, the one read (ADR 0030): replaced
+-- meanwhile, whose blob the caller would otherwise leave behind.
 WITH put AS (
     UPDATE users SET avatar = NULLIF(@avatar::text, ''),
         profile_updated_at = CASE WHEN users.avatar IS DISTINCT FROM NULLIF(@avatar::text, '') THEN now() ELSE users.profile_updated_at END
-    WHERE users.id = @user_id RETURNING users.id
+    WHERE users.id = @user_id AND COALESCE(users.avatar, '') = @old::text RETURNING users.id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM users u, user_event('user.updated', u.id, '{profile}') e
-    WHERE u.id = @user_id AND u.avatar IS DISTINCT FROM NULLIF(@avatar::text, '')
+    SELECT e.client_id, e.payload FROM put, users u, user_event('user.updated', u.id, '{profile}') e
+    WHERE u.id = put.id AND u.avatar IS DISTINCT FROM NULLIF(@avatar::text, '')
 )
 SELECT 1 FROM put;

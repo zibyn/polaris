@@ -12,6 +12,7 @@ PostgreSQL 只负责存数据和守护数据完整性,业务规则一律写在 G
 
 - 高争用的计数限流(发码配额):乐观重试会让所有写入方一起失败、一起重来,保留 advisory lock,或改用条件自增的计数行。
 - 队列领取(`FOR UPDATE SKIP LOCKED`):锁只在单条语句里持有,这是 PG 上标准的领取写法。
+- 单条语句内需要读到并发写入之后的最新行、并把读到的旧值写到别处(刷新令牌宽限期轮换要记下被替换的 token):PG 15 的 `UPDATE … RETURNING` 拿不到旧值,只能在同一语句里 `FOR UPDATE`。锁不跨出这条语句。
 - 迁移锁。
 
 ## Considered Options

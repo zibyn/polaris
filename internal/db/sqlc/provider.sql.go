@@ -173,7 +173,7 @@ func (q *Queries) ExternalIdentitySubject(ctx context.Context, arg ExternalIdent
 }
 
 const getProvider = `-- name: GetProvider :one
-SELECT type, name, enabled, config FROM providers WHERE id = $1
+SELECT type, name, enabled, config, version FROM providers WHERE id = $1
 `
 
 type GetProviderRow struct {
@@ -181,6 +181,7 @@ type GetProviderRow struct {
 	Name    string
 	Enabled bool
 	Config  []byte
+	Version int64
 }
 
 func (q *Queries) GetProvider(ctx context.Context, id string) (GetProviderRow, error) {
@@ -191,28 +192,13 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (GetProviderRow, e
 		&i.Name,
 		&i.Enabled,
 		&i.Config,
+		&i.Version,
 	)
 	return i, err
 }
 
-const getProviderForUpdate = `-- name: GetProviderForUpdate :one
-SELECT type, config FROM providers WHERE id = $1 FOR UPDATE
-`
-
-type GetProviderForUpdateRow struct {
-	Type   string
-	Config []byte
-}
-
-func (q *Queries) GetProviderForUpdate(ctx context.Context, id string) (GetProviderForUpdateRow, error) {
-	row := q.db.QueryRow(ctx, getProviderForUpdate, id)
-	var i GetProviderForUpdateRow
-	err := row.Scan(&i.Type, &i.Config)
-	return i, err
-}
-
 const insertProvider = `-- name: InsertProvider :exec
-INSERT INTO providers (id, type, name, config) VALUES ($1, $2, $3, $4)
+INSERT INTO providers (id, type, name, config, version) VALUES ($1, $2, $3, $4, 1)
 `
 
 type InsertProviderParams struct {
@@ -515,19 +501,30 @@ func (q *Queries) TakeProviderLogin(ctx context.Context, arg TakeProviderLoginPa
 	return i, err
 }
 
-const updateProvider = `-- name: UpdateProvider :exec
-UPDATE providers SET name = $2, config = $3 WHERE id = $1
+const updateProvider = `-- name: UpdateProvider :execrows
+UPDATE providers SET name = $1, config = $2, version = version + 1
+WHERE id = $3 AND version = $4
 `
 
 type UpdateProviderParams struct {
-	ID     string
-	Name   string
-	Config []byte
+	Name    string
+	Config  []byte
+	ID      string
+	Version int64
 }
 
-func (q *Queries) UpdateProvider(ctx context.Context, arg UpdateProviderParams) error {
-	_, err := q.db.Exec(ctx, updateProvider, arg.ID, arg.Name, arg.Config)
-	return err
+// No row when another save got there first since version was read (ADR 0030).
+func (q *Queries) UpdateProvider(ctx context.Context, arg UpdateProviderParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateProvider,
+		arg.Name,
+		arg.Config,
+		arg.ID,
+		arg.Version,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const userByExternalIdentity = `-- name: UserByExternalIdentity :one

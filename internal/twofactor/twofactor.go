@@ -23,6 +23,7 @@ import (
 
 	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 )
@@ -89,7 +90,14 @@ func (s *Store) Begin(ctx context.Context, sub string) (string, error) {
 // returns the User's 恢复码: the only time anyone sees them.
 func (s *Store) Confirm(ctx context.Context, sub, code string) ([]string, error) {
 	var codes []string
-	err := s.locked(ctx, sub, func(q *sqlc.Queries, t sqlc.LockTOTPRow) error {
+	err := db.Retry(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		t, err := q.TOTP(ctx, sub)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotBegun
+		} else if err != nil {
+			return err
+		}
 		if t.ConfirmedAt.Valid {
 			return ErrOn
 		}
@@ -97,8 +105,10 @@ func (s *Store) Confirm(ctx context.Context, sub, code string) ([]string, error)
 		if err != nil {
 			return err
 		}
-		if err := q.ConfirmTOTP(ctx, sqlc.ConfirmTOTPParams{UserID: sub, Step: step}); err != nil {
+		if n, err := q.ConfirmTOTP(ctx, sqlc.ConfirmTOTPParams{UserID: sub, Step: step, Secret: t.Secret}); err != nil {
 			return err
+		} else if n == 0 {
+			return db.ErrConflict // read again: on now, or begun again
 		}
 		if codes, err = s.newRecoveryCodes(ctx, q, sub); err != nil {
 			return err
@@ -111,12 +121,12 @@ func (s *Store) Confirm(ctx context.Context, sub, code string) ([]string, error)
 // Disable turns 两步验证 off, deleting the TOTP and every 恢复码; audited as
 // event done by by.
 func (s *Store) Disable(ctx context.Context, sub, event string, by audit.Actor) error {
-	return s.locked(ctx, sub, func(q *sqlc.Queries, t sqlc.LockTOTPRow) error {
-		if !t.ConfirmedAt.Valid {
-			return ErrOff
-		}
-		if err := q.DeleteTOTP(ctx, sub); err != nil {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		if n, err := q.DeleteTOTP(ctx, sub); err != nil {
 			return err
+		} else if n == 0 {
+			return notOn(ctx, q, sub)
 		}
 		if err := q.DeleteRecoveryCodes(ctx, sub); err != nil {
 			return err
@@ -128,9 +138,12 @@ func (s *Store) Disable(ctx context.Context, sub, event string, by audit.Actor) 
 // RegenerateRecoveryCodes replaces the User's 恢复码 with a new set.
 func (s *Store) RegenerateRecoveryCodes(ctx context.Context, sub string) ([]string, error) {
 	var codes []string
-	err := s.locked(ctx, sub, func(q *sqlc.Queries, t sqlc.LockTOTPRow) error {
-		if !t.ConfirmedAt.Valid {
-			return ErrOff
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		if n, err := q.KeepTOTPOn(ctx, sub); err != nil {
+			return err
+		} else if n == 0 {
+			return notOn(ctx, q, sub)
 		}
 		var err error
 		if codes, err = s.newRecoveryCodes(ctx, q, sub); err != nil {
@@ -139,6 +152,17 @@ func (s *Store) RegenerateRecoveryCodes(ctx context.Context, sub string) ([]stri
 		return writeAudit(ctx, q, "recovery_codes.regenerated", sub, audit.User(sub))
 	})
 	return codes, err
+}
+
+// notOn is why sub's 两步验证 is not on: never begun, or begun but not
+// confirmed.
+func notOn(ctx context.Context, q *sqlc.Queries, sub string) error {
+	if _, err := q.TOTP(ctx, sub); errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotBegun
+	} else if err != nil {
+		return err
+	}
+	return ErrOff
 }
 
 // Check takes sub's 恢复码 when one is given, else the TOTP code. Run it in
@@ -193,20 +217,6 @@ func (s *Store) UseRecoveryCode(ctx context.Context, sub, code string) error {
 // NormalizeRecoveryCode is a 恢复码 as kept: lowercase, no dash or spaces.
 func NormalizeRecoveryCode(code string) string {
 	return strings.NewReplacer("-", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(code)))
-}
-
-// locked runs change in a transaction holding the User's TOTP Credential.
-func (s *Store) locked(ctx context.Context, sub string, change func(*sqlc.Queries, sqlc.LockTOTPRow) error) error {
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		q := s.q.WithTx(tx)
-		t, err := q.LockTOTP(ctx, sub)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNotBegun
-		} else if err != nil {
-			return err
-		}
-		return change(q, t)
-	})
 }
 
 // match returns the time step code is for: within one step of now, after

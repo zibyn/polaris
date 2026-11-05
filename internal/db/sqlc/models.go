@@ -69,6 +69,7 @@ type Channel struct {
 	Plugin    string
 	Config    []byte
 	UpdatedAt pgtype.Timestamptz
+	Version   int64
 }
 
 type ChannelSecret struct {
@@ -208,6 +209,7 @@ type Provider struct {
 	Enabled   bool
 	Config    []byte
 	CreatedAt pgtype.Timestamptz
+	Version   int64
 }
 
 type ProviderLogin struct {
@@ -304,9 +306,10 @@ type Setting struct {
 }
 
 type SigningKey struct {
-	Kid       string
-	CreatedAt pgtype.Timestamptz
-	Sealed    []byte
+	Kid        string
+	CreatedAt  pgtype.Timestamptz
+	Sealed     []byte
+	Generation int64
 }
 
 type TotpCredential struct {
