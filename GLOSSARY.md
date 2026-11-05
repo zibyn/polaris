@@ -52,6 +52,10 @@ _Avoid_: Headless 模式, 嵌入模式, 后台集成
 Application 自己不做任何用户相关界面:User 登录与自助管理跳到托管页和账号中心,管理员直接用 Polaris 管理端。
 _Avoid_: 直接集成, 托管模式, 标准模式
 
+**集成方**:
+开发和运营某个 Application、按两种集成模式之一接入 Polaris 的一方,通常是实例运营方内部的一个团队。它在 Polaris 里没有自己的范围:它的后台持 Management API Role 时看到的是整个用户池。
+_Avoid_: 接入方, 租户, 客户
+
 **First-party Application**:
 由该实例的运营方自己开发和运营的 Application;当前所有 Application 都属于此类。
 _Avoid_: 内部应用, 自有客户端
