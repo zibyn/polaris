@@ -11,11 +11,12 @@ import { BrandTab } from "./-settings/brand";
 import { ChannelsTab } from "./-settings/channels";
 import { LoginTab } from "./-settings/login";
 import { SecurityTab, signingKeysQuery } from "./-settings/security";
+import { TermsTab } from "./-settings/terms";
 
 const defaults = { tab: "login" } as const;
 const search = z.object({
 	tab: z
-		.enum(["login", "brand", "channels", "security"])
+		.enum(["login", "terms", "brand", "channels", "security"])
 		.default(defaults.tab)
 		.catch(defaults.tab),
 });
@@ -25,7 +26,12 @@ const categories = [
 	{
 		tab: "login",
 		label: "登录方式",
-		hint: "密码、Passkey、验证码和用户协议",
+		hint: "密码、Passkey、验证码和注册",
+	},
+	{
+		tab: "terms",
+		label: "用户协议",
+		hint: "用户协议、隐私政策和协议版本",
 	},
 	{
 		tab: "brand",
@@ -48,7 +54,7 @@ export const Route = createFileRoute("/console/settings")({
 	staticData: {
 		useHeader: () => ({
 			title: "设置",
-			description: "登录方式、品牌、验证码通道和安全设置。",
+			description: "登录方式、用户协议、品牌、验证码通道和安全设置。",
 		}),
 	},
 	validateSearch: search,
@@ -94,6 +100,9 @@ function Settings() {
 			</TabsList>
 			<TabsContent value="login" className="max-w-3xl min-w-0">
 				<LoginTab />
+			</TabsContent>
+			<TabsContent value="terms" className="max-w-3xl min-w-0">
+				<TermsTab />
 			</TabsContent>
 			<TabsContent value="brand" className="max-w-3xl min-w-0">
 				<BrandTab />
