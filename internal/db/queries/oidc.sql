@@ -7,8 +7,10 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 
 -- name: SaveGrant :exec
 -- Revoking the refresh token of an App Session ends the Session: the chain
--- is the Session. The Session remembers the Application, for Back-Channel
--- Logout.
+-- is the Session, and a logout token goes to each Application it issued
+-- tokens to — this one too, though issued has not landed yet in this
+-- statement's snapshot. The Session remembers the Application, for
+-- Back-Channel Logout.
 WITH g AS (
     INSERT INTO oidc_grants (id, auth_code_hash, refresh_token_hash, expires_at, session_id, sealed)
     VALUES (@id, @auth_code_hash, @refresh_token_hash, @expires_at, @session_id, @sealed)
@@ -22,10 +24,17 @@ WITH g AS (
     INSERT INTO session_applications (session_id, client_id)
     SELECT g.session_id, @client_id FROM g WHERE g.session_id IS NOT NULL
     ON CONFLICT DO NOTHING
+), ended AS (
+    UPDATE sessions SET ended_at = now()
+    WHERE @revoked::boolean AND sessions.id_hash IS NULL AND sessions.ended_at IS NULL
+      AND sessions.id = (SELECT g.session_id FROM g)
+    RETURNING sessions.id, sessions.user_id, session_lapses_at(sessions) > now() AS live
 )
-UPDATE sessions SET ended_at = now()
-WHERE @revoked::boolean AND sessions.id_hash IS NULL AND sessions.ended_at IS NULL
-  AND sessions.id = (SELECT g.session_id FROM g);
+INSERT INTO webhook_deliveries (client_id, kind, payload)
+SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)
+FROM ended e JOIN applications a
+  ON a.client_id = @client_id OR a.client_id IN (SELECT sa.client_id FROM session_applications sa WHERE sa.session_id = e.id)
+WHERE e.live AND a.backchannel_logout_uri IS NOT NULL;
 
 -- name: RotateRefreshToken :execrows
 -- Swaps the refresh token only if old_hash is still the current one, keeps
@@ -43,14 +52,19 @@ INSERT INTO oidc_spent_refresh_tokens (hash, grant_id) SELECT @old_hash, g.id FR
 
 -- name: EndReusedRefreshToken :exec
 -- A spent refresh token came back: end its grant's Session (a grant outside
--- any Session is deleted instead) and audit it.
+-- any Session is deleted instead), queuing its logout tokens, and audit it.
 WITH spent AS (
     SELECT g.id, g.session_id FROM oidc_spent_refresh_tokens s JOIN oidc_grants g ON g.id = s.grant_id
     WHERE s.hash = $1
 ), ended AS (
     UPDATE sessions SET ended_at = now()
     WHERE sessions.id IN (SELECT spent.session_id FROM spent) AND sessions.ended_at IS NULL
-    RETURNING sessions.id, sessions.user_id
+    RETURNING sessions.id, sessions.user_id, session_lapses_at(sessions) > now() AS live
+), logout AS (
+    INSERT INTO webhook_deliveries (client_id, kind, payload)
+    SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)
+    FROM ended e JOIN session_applications sa ON sa.session_id = e.id JOIN applications a ON a.client_id = sa.client_id
+    WHERE e.live AND a.backchannel_logout_uri IS NOT NULL
 ), dropped AS (
     DELETE FROM oidc_grants WHERE oidc_grants.id IN (SELECT spent.id FROM spent WHERE spent.session_id IS NULL)
 )

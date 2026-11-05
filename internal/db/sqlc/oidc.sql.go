@@ -214,7 +214,12 @@ WITH spent AS (
 ), ended AS (
     UPDATE sessions SET ended_at = now()
     WHERE sessions.id IN (SELECT spent.session_id FROM spent) AND sessions.ended_at IS NULL
-    RETURNING sessions.id, sessions.user_id
+    RETURNING sessions.id, sessions.user_id, session_lapses_at(sessions) > now() AS live
+), logout AS (
+    INSERT INTO webhook_deliveries (client_id, kind, payload)
+    SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)
+    FROM ended e JOIN session_applications sa ON sa.session_id = e.id JOIN applications a ON a.client_id = sa.client_id
+    WHERE e.live AND a.backchannel_logout_uri IS NOT NULL
 ), dropped AS (
     DELETE FROM oidc_grants WHERE oidc_grants.id IN (SELECT spent.id FROM spent WHERE spent.session_id IS NULL)
 )
@@ -223,7 +228,7 @@ SELECT 'refresh_token.reused', ended.user_id, jsonb_build_object('session', ende
 `
 
 // A spent refresh token came back: end its grant's Session (a grant outside
-// any Session is deleted instead) and audit it.
+// any Session is deleted instead), queuing its logout tokens, and audit it.
 func (q *Queries) EndReusedRefreshToken(ctx context.Context, hash []byte) error {
 	_, err := q.db.Exec(ctx, endReusedRefreshToken, hash)
 	return err
@@ -509,38 +514,47 @@ WITH g AS (
     RETURNING session_id
 ), issued AS (
     INSERT INTO session_applications (session_id, client_id)
-    SELECT g.session_id, $8 FROM g WHERE g.session_id IS NOT NULL
+    SELECT g.session_id, $1 FROM g WHERE g.session_id IS NOT NULL
     ON CONFLICT DO NOTHING
+), ended AS (
+    UPDATE sessions SET ended_at = now()
+    WHERE $8::boolean AND sessions.id_hash IS NULL AND sessions.ended_at IS NULL
+      AND sessions.id = (SELECT g.session_id FROM g)
+    RETURNING sessions.id, sessions.user_id, session_lapses_at(sessions) > now() AS live
 )
-UPDATE sessions SET ended_at = now()
-WHERE $1::boolean AND sessions.id_hash IS NULL AND sessions.ended_at IS NULL
-  AND sessions.id = (SELECT g.session_id FROM g)
+INSERT INTO webhook_deliveries (client_id, kind, payload)
+SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)
+FROM ended e JOIN applications a
+  ON a.client_id = $1 OR a.client_id IN (SELECT sa.client_id FROM session_applications sa WHERE sa.session_id = e.id)
+WHERE e.live AND a.backchannel_logout_uri IS NOT NULL
 `
 
 type SaveGrantParams struct {
-	Revoked          bool
+	ClientID         string
 	ID               string
 	AuthCodeHash     []byte
 	RefreshTokenHash []byte
 	ExpiresAt        pgtype.Timestamptz
 	SessionID        pgtype.Text
 	Sealed           []byte
-	ClientID         string
+	Revoked          bool
 }
 
 // Revoking the refresh token of an App Session ends the Session: the chain
-// is the Session. The Session remembers the Application, for Back-Channel
-// Logout.
+// is the Session, and a logout token goes to each Application it issued
+// tokens to — this one too, though issued has not landed yet in this
+// statement's snapshot. The Session remembers the Application, for
+// Back-Channel Logout.
 func (q *Queries) SaveGrant(ctx context.Context, arg SaveGrantParams) error {
 	_, err := q.db.Exec(ctx, saveGrant,
-		arg.Revoked,
+		arg.ClientID,
 		arg.ID,
 		arg.AuthCodeHash,
 		arg.RefreshTokenHash,
 		arg.ExpiresAt,
 		arg.SessionID,
 		arg.Sealed,
-		arg.ClientID,
+		arg.Revoked,
 	)
 	return err
 }

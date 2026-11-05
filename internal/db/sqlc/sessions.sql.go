@@ -73,9 +73,18 @@ func (q *Queries) DeleteOldSessions(ctx context.Context) error {
 }
 
 const endBrowserSession = `-- name: EndBrowserSession :exec
-UPDATE sessions SET ended_at = now() WHERE id_hash = $1 AND ended_at IS NULL
+WITH ended AS (
+    UPDATE sessions SET ended_at = now() WHERE id_hash = $1 AND ended_at IS NULL
+    RETURNING sessions.id, sessions.user_id, session_lapses_at(sessions) > now() AS live
+)
+INSERT INTO webhook_deliveries (client_id, kind, payload)
+SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)
+FROM ended e JOIN session_applications sa ON sa.session_id = e.id JOIN applications a ON a.client_id = sa.client_id
+WHERE e.live AND a.backchannel_logout_uri IS NOT NULL
 `
 
+// Queues a logout token for each Application a live Session issued tokens
+// to (ADR 0022); a lapsed one was ended by nobody and sends nothing.
 func (q *Queries) EndBrowserSession(ctx context.Context, idHash []byte) error {
 	_, err := q.db.Exec(ctx, endBrowserSession, idHash)
 	return err
@@ -85,7 +94,12 @@ const endUserSession = `-- name: EndUserSession :execrows
 WITH ended AS (
     UPDATE sessions SET ended_at = now()
     WHERE sessions.id = $3 AND sessions.user_id = $4 AND sessions.id IN (SELECT l.id FROM live_sessions l)
-    RETURNING sessions.id, sessions.user_id
+    RETURNING sessions.id, sessions.user_id, session_lapses_at(sessions) > now() AS live
+), logout AS (
+    INSERT INTO webhook_deliveries (client_id, kind, payload)
+    SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)
+    FROM ended e JOIN session_applications sa ON sa.session_id = e.id JOIN applications a ON a.client_id = sa.client_id
+    WHERE e.live AND a.backchannel_logout_uri IS NOT NULL
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'session.ended', ended.user_id, jsonb_build_object('session', ended.id, 'by', $1::text, 'byType', NULLIF($2::text, '')) FROM ended
@@ -98,7 +112,8 @@ type EndUserSessionParams struct {
 	UserID string
 }
 
-// An admin signs a User out of one Session; audited with who did it.
+// An admin signs a User out of one Session, queuing its logout tokens;
+// audited with who did it.
 func (q *Queries) EndUserSession(ctx context.Context, arg EndUserSessionParams) (int64, error) {
 	result, err := q.db.Exec(ctx, endUserSession,
 		arg.ByID,

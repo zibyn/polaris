@@ -2,6 +2,8 @@ package oidcstore
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -105,7 +107,7 @@ func TestCreateSession(t *testing.T) {
 
 // Whether a Session still lives is one rule (session_lapses_at): the
 // live_sessions view, the console's list, the logout tokens sent when it is
-// ended or deleted, and the cleanup must all agree on it.
+// ended, and the cleanup must all agree on it.
 func TestSessionLivenessAgrees(t *testing.T) {
 	pool, keyring := setup(t)
 	s := New(pool, keyring)
@@ -200,12 +202,6 @@ func TestSessionLivenessAgrees(t *testing.T) {
 			}
 
 			id, _ = start(c.state)
-			exec("DELETE FROM sessions WHERE id = $1", id)
-			if got := logouts(id); got != c.live {
-				t.Errorf("deleting sent a logout token: %v", got)
-			}
-
-			id, _ = start(c.state)
 			exec(`UPDATE sessions SET auth_time = auth_time - interval '31 days', last_seen_at = last_seen_at - interval '31 days',
 				ended_at = ended_at - interval '31 days' WHERE id = $1`, id)
 			if err := q.DeleteOldSessions(ctx); err != nil {
@@ -215,5 +211,112 @@ func TestSessionLivenessAgrees(t *testing.T) {
 				t.Errorf("deleted by the cleanup 31 days on: %v", got)
 			}
 		})
+	}
+}
+
+// Every query that ends a Session, or deletes its User, queues one logout
+// token per Application it issued tokens to that has a logout URI (ADR
+// 0030: no trigger does it for them). A lapsed Session was ended by nobody
+// and sends nothing.
+func TestEveryEndingQueuesLogoutTokens(t *testing.T) {
+	pool, keyring := setup(t)
+	s := New(pool, keyring)
+	q := sqlc.New(pool)
+	ctx := context.Background()
+	for _, a := range []Application{
+		{ClientID: "rp", Name: "rp", Secret: "rp-secret", RedirectURIs: []string{"https://rp/cb"}, BackchannelLogoutURI: "https://rp/logout"},
+		{ClientID: "rp2", Name: "rp2", Secret: "rp2-secret", RedirectURIs: []string{"https://rp2/cb"}, BackchannelLogoutURI: "https://rp2/logout"},
+		{ClientID: "quiet", Name: "quiet", Secret: "quiet-secret", RedirectURIs: []string{"https://quiet/cb"}},
+	} {
+		if err := CreateApplication(ctx, pool, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := 0
+	// session makes a User with a Session (an App Session for app) that
+	// issued tokens to rp2 and quiet; rp is the Application it is for.
+	session := func(lapsed, app bool) (sub, id string, idHash []byte) {
+		t.Helper()
+		n++
+		sub = fmt.Sprintf("U%d", n)
+		if err := q.CreateUser(ctx, sub); err != nil {
+			t.Fatal(err)
+		}
+		if !app {
+			idHash = []byte{byte(n)}
+		}
+		sess, err := s.CreateSession(ctx, idHash, "rp", sub, time.Now(), []string{"pwd"}, "password")
+		if err != nil {
+			t.Fatal(err)
+		}
+		exec("INSERT INTO session_applications (session_id, client_id) VALUES ($1, 'rp2'), ($1, 'quiet')", sess.ID)
+		if lapsed {
+			exec("UPDATE sessions SET last_seen_at = now() - interval '100 days' WHERE id = $1", sess.ID)
+		}
+		exec("DELETE FROM webhook_deliveries")
+		return sub, sess.ID, idHash
+	}
+	ends := map[string]struct {
+		app bool
+		end func(sub, id string, idHash []byte) error
+		// want for a live Session; a lapsed one always gets none.
+		want []string
+	}{
+		"browser sign-out": {false, func(_, _ string, h []byte) error { return q.EndBrowserSession(ctx, h) }, []string{"rp2"}},
+		"admin ends it": {false, func(sub, id string, _ []byte) error {
+			_, err := q.EndUserSession(ctx, sqlc.EndUserSessionParams{ID: id, UserID: sub, ByID: "ADMIN", ByType: "user"})
+			return err
+		}, []string{"rp2"}},
+		"User disabled": {false, func(sub, _ string, _ []byte) error {
+			_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: sub, Disabled: true, ByID: "ADMIN", ByType: "user"})
+			return err
+		}, []string{"rp2"}},
+		"User deleted": {false, func(sub, _ string, _ []byte) error {
+			_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, ByID: "ADMIN", ByType: "user"})
+			return err
+		}, []string{"rp2"}},
+		// rp revokes: it gets one too, though its link lands in the same statement.
+		"refresh token revoked": {true, func(sub, id string, _ []byte) error {
+			g := &goidc.Grant{ID: "g-" + id, Subject: sub, ClientID: "rp", RefreshToken: "rt-" + id, Store: map[string]any{SessionKey: id}}
+			if err := s.SaveGrant(ctx, g); err != nil {
+				return err
+			}
+			exec("DELETE FROM session_applications WHERE session_id = $1 AND client_id = 'rp'", id)
+			g.RevokedAt = int(time.Now().Unix())
+			return s.SaveGrant(ctx, g)
+		}, []string{"rp", "rp2"}},
+		"refresh token reused": {false, func(sub, id string, _ []byte) error {
+			exec("INSERT INTO oidc_grants (id, sealed, session_id) VALUES ($1, '\\x00', $2)", "g-"+id, id)
+			exec("INSERT INTO oidc_spent_refresh_tokens (hash, grant_id) VALUES ($1, $2)", []byte("spent-"+id), "g-"+id)
+			return q.EndReusedRefreshToken(ctx, []byte("spent-"+id))
+		}, []string{"rp2"}},
+	}
+	for name, c := range ends {
+		for _, lapsed := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s, lapsed %v", name, lapsed), func(t *testing.T) {
+				sub, id, idHash := session(lapsed, c.app)
+				if err := c.end(sub, id, idHash); err != nil {
+					t.Fatal(err)
+				}
+				var got []string
+				if err := pool.QueryRow(ctx, `SELECT COALESCE(array_agg(client_id ORDER BY client_id), '{}')
+					FROM webhook_deliveries WHERE kind = 'logout' AND payload->>'sid' = $1 AND payload->>'sub' = $2`, id, sub).Scan(&got); err != nil {
+					t.Fatal(err)
+				}
+				want := c.want
+				if lapsed {
+					want = []string{}
+				}
+				if !slices.Equal(got, want) {
+					t.Errorf("logout tokens to %v, want %v", got, want)
+				}
+			})
+		}
 	}
 }

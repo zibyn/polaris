@@ -312,8 +312,9 @@ INSERT INTO audit_log (event, sub, detail)
 VALUES ('settings.updated', NULL, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, '')));
 
 -- name: SetUserDisabled :execrows
--- Disables or restores a User; disabling ends all their Sessions. Audited
--- with who did it; no row when nothing changed.
+-- Disables or restores a User; disabling ends all their Sessions, queuing
+-- a logout token for each live one (ADR 0022). Audited with who did it; no
+-- row when nothing changed.
 WITH changed AS (
     UPDATE users SET disabled_at = CASE WHEN @disabled::boolean THEN now() END
     WHERE users.id = @user_id AND (users.disabled_at IS NOT NULL) <> @disabled::boolean
@@ -324,6 +325,12 @@ WITH changed AS (
 ), ended AS (
     UPDATE sessions SET ended_at = now()
     WHERE sessions.user_id IN (SELECT changed.id FROM changed) AND @disabled::boolean AND sessions.ended_at IS NULL
+    RETURNING sessions.id, sessions.user_id, session_lapses_at(sessions) > now() AS live
+), logout AS (
+    INSERT INTO webhook_deliveries (client_id, kind, payload)
+    SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)
+    FROM ended e JOIN session_applications sa ON sa.session_id = e.id JOIN applications a ON a.client_id = sa.client_id
+    WHERE e.live AND a.backchannel_logout_uri IS NOT NULL
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT CASE WHEN @disabled::boolean THEN 'user.disabled' ELSE 'user.enabled' END AS event, changed.id, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, ''))
@@ -333,7 +340,8 @@ FROM changed;
 -- Deletes a User with everything of theirs (foreign keys cascade); their
 -- audit events keep only the sub, with no IP or UA in any detail. Audited
 -- with who did it, and queues user.deleted for every Application with a
--- webhook.
+-- webhook and a logout token for each of their live Sessions (read before
+-- the cascade takes them).
 WITH gone AS (
     DELETE FROM users WHERE users.id = @user_id RETURNING users.id
 ), scrubbed AS (
@@ -342,6 +350,14 @@ WITH gone AS (
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
     SELECT e.client_id, e.payload FROM gone, user_event('user.deleted', gone.id) e
+), ended AS (
+    SELECT s.id, s.user_id, session_lapses_at(s) > now() AS live
+    FROM sessions s WHERE s.user_id IN (SELECT gone.id FROM gone) AND s.ended_at IS NULL
+), logout AS (
+    INSERT INTO webhook_deliveries (client_id, kind, payload)
+    SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)
+    FROM ended e JOIN session_applications sa ON sa.session_id = e.id JOIN applications a ON a.client_id = sa.client_id
+    WHERE e.live AND a.backchannel_logout_uri IS NOT NULL
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'user.deleted', gone.id, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM gone;
