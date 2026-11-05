@@ -18,7 +18,8 @@ WITH put AS (
     WHERE users.id = $2 AND COALESCE(users.avatar, '') = $3::text RETURNING users.id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM put, users u, user_event('user.updated', u.id, '{profile}') e
+    SELECT a.client_id, jsonb_build_object('type', 'user.updated', 'sub', u.id, 'changed', '{profile}'::text[])
+    FROM put, users u JOIN applications a ON a.webhook_url IS NOT NULL
     WHERE u.id = put.id AND u.avatar IS DISTINCT FROM NULLIF($1::text, '')
 )
 SELECT 1 FROM put
@@ -53,7 +54,8 @@ WITH put AS (
     WHERE users.id = $5 RETURNING users.id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM users u, user_event('user.updated', u.id, '{profile}') e
+    SELECT a.client_id, jsonb_build_object('type', 'user.updated', 'sub', u.id, 'changed', '{profile}'::text[])
+    FROM users u JOIN applications a ON a.webhook_url IS NOT NULL
     WHERE u.id = $5 AND (
         ($1::boolean AND u.nickname IS DISTINCT FROM NULLIF($2::text, ''))
         OR u.profile <> (u.profile || $3::jsonb) - $4::text[])

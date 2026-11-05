@@ -214,6 +214,13 @@ func (s *Store) UseRecoveryCode(ctx context.Context, sub, code string) error {
 	return ErrRecoveryCode
 }
 
+// Satisfied is 两步验证或 Passkey: what 管理员必须启用两步验证或 Passkey asks of
+// an admin. A confirmed TOTP always counts, a Passkey only while the
+// instance offers Passkey login.
+func Satisfied(totp, hasPasskey, passkeyLogin bool) bool {
+	return totp || passkeyLogin && hasPasskey
+}
+
 // NormalizeRecoveryCode is a 恢复码 as kept: lowercase, no dash or spaces.
 func NormalizeRecoveryCode(code string) string {
 	return strings.NewReplacer("-", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(code)))

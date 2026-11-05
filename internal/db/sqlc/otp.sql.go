@@ -14,18 +14,23 @@ import (
 const auditDailyCap = `-- name: AuditDailyCap :execrows
 WITH claimed AS (
     UPDATE settings SET daily_cap_audited_at = $1::timestamptz
-    WHERE daily_cap_audited_at IS NULL OR daily_cap_audited_at + interval '24 hours' <= $1::timestamptz
+    WHERE daily_cap_audited_at IS NULL OR daily_cap_audited_at <= $2::timestamptz
     RETURNING daily_send_limit
 )
 INSERT INTO audit_log (event, detail)
 SELECT 'send.daily_cap_reached', jsonb_build_object('limit', daily_send_limit) FROM claimed
 `
 
-// Audits hitting the daily send limit at most once in 24 hours: the first
+type AuditDailyCapParams struct {
+	Now    pgtype.Timestamptz
+	DayAgo pgtype.Timestamptz
+}
+
+// Audits hitting the daily send limit at most once a day (since day_ago): the first
 // refusal is the one worth an event, the rest are the same person pressing
 // the button again. No row when it was audited within the day.
-func (q *Queries) AuditDailyCap(ctx context.Context, now pgtype.Timestamptz) (int64, error) {
-	result, err := q.db.Exec(ctx, auditDailyCap, now)
+func (q *Queries) AuditDailyCap(ctx context.Context, arg AuditDailyCapParams) (int64, error) {
+	result, err := q.db.Exec(ctx, auditDailyCap, arg.Now, arg.DayAgo)
 	if err != nil {
 		return 0, err
 	}
@@ -51,11 +56,11 @@ func (q *Queries) DeleteCode(ctx context.Context, arg DeleteCodeParams) (int64, 
 
 const deleteExpiredOTP = `-- name: DeleteExpiredOTP :exec
 WITH c AS (DELETE FROM codes WHERE codes.expires_at < now())
-DELETE FROM sends WHERE sends.sent_at < now() - interval '1 day'
+DELETE FROM sends WHERE sends.sent_at < now() - make_interval(secs => $1::int)
 `
 
-func (q *Queries) DeleteExpiredOTP(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteExpiredOTP)
+func (q *Queries) DeleteExpiredOTP(ctx context.Context, keepSecs int32) error {
+	_, err := q.db.Exec(ctx, deleteExpiredOTP, keepSecs)
 	return err
 }
 
@@ -163,19 +168,20 @@ func (q *Queries) SendCounts(ctx context.Context, arg SendCountsParams) (SendCou
 
 const tryCode = `-- name: TryCode :one
 UPDATE codes SET attempts = attempts + 1
-WHERE identifier = $1 AND attempts < 5 AND expires_at > $2
+WHERE identifier = $1 AND attempts < $2::int AND expires_at > $3
 RETURNING code
 `
 
 type TryCodeParams struct {
 	Identifier string
+	MaxTries   int32
 	Now        pgtype.Timestamptz
 }
 
 // Counts a try before the code is compared, so parallel guesses still get
 // five in all.
 func (q *Queries) TryCode(ctx context.Context, arg TryCodeParams) (string, error) {
-	row := q.db.QueryRow(ctx, tryCode, arg.Identifier, arg.Now)
+	row := q.db.QueryRow(ctx, tryCode, arg.Identifier, arg.MaxTries, arg.Now)
 	var code string
 	err := row.Scan(&code)
 	return code, err

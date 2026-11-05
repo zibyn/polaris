@@ -84,18 +84,6 @@ func (q *Queries) AccountUser(ctx context.Context, id string) (AccountUserRow, e
 	return i, err
 }
 
-const lockUser = `-- name: LockUser :one
-SELECT id FROM users WHERE id = $1 FOR UPDATE
-`
-
-// Serialises changes to a User's login paths.
-func (q *Queries) LockUser(ctx context.Context, id string) (string, error) {
-	row := q.db.QueryRow(ctx, lockUser, id)
-	var id_2 string
-	err := row.Scan(&id_2)
-	return id_2, err
-}
-
 const loginPaths = `-- name: LoginPaths :one
 SELECT COALESCE(array_agg(kind ORDER BY kind) FILTER (WHERE kind IS NOT NULL), '{}')::text[] AS identifiers,
        EXISTS (SELECT 1 FROM passwords p WHERE p.user_id = $1) AS has_password,
@@ -116,45 +104,6 @@ func (q *Queries) LoginPaths(ctx context.Context, userID string) (LoginPathsRow,
 	var i LoginPathsRow
 	err := row.Scan(&i.Identifiers, &i.HasPassword, &i.HasExternalIdentity)
 	return i, err
-}
-
-const mustKeepPasskey = `-- name: MustKeepPasskey :one
-SELECT (s.passkey_login AND s.admins_need_two_factor AND NOT totp_confirmed($1) AND EXISTS (
-    SELECT 1 FROM user_roles r WHERE r.user_id = $1 AND r.api = 'urn:polaris:management-api')
-    AND EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = $1 AND p.id = $2)
-    AND NOT EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = $1 AND p.id <> $2))::boolean AS must
-FROM settings s
-`
-
-type MustKeepPasskeyParams struct {
-	Sub string
-	ID  string
-}
-
-// The switch is on, the User holds a Management API Role, has no confirmed
-// TOTP, and id is their last Passkey: deleting it would lock them out. The
-// id must be theirs, so an unknown id is 404, not 409.
-func (q *Queries) MustKeepPasskey(ctx context.Context, arg MustKeepPasskeyParams) (bool, error) {
-	row := q.db.QueryRow(ctx, mustKeepPasskey, arg.Sub, arg.ID)
-	var must bool
-	err := row.Scan(&must)
-	return must, err
-}
-
-const mustKeepTwoFactor = `-- name: MustKeepTwoFactor :one
-SELECT (s.admins_need_two_factor AND NOT (s.passkey_login AND has_passkey($1)) AND EXISTS (
-    SELECT 1 FROM user_roles r WHERE r.user_id = $1 AND r.api = 'urn:polaris:management-api'))::boolean AS must
-FROM settings s
-`
-
-// 管理员必须启用两步验证或 Passkey is on, the User holds a Management API
-// Role, and no Passkey counts (the switch is off, or they have none):
-// turning 两步验证 off would lock them out of the Management API.
-func (q *Queries) MustKeepTwoFactor(ctx context.Context, uid string) (bool, error) {
-	row := q.db.QueryRow(ctx, mustKeepTwoFactor, uid)
-	var must bool
-	err := row.Scan(&must)
-	return must, err
 }
 
 const putPassword = `-- name: PutPassword :exec
@@ -200,7 +149,8 @@ WITH gone AS (
     DELETE FROM identifiers WHERE user_id = $2 AND kind = $1 RETURNING user_id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM gone, user_event('user.updated', gone.user_id, ARRAY[$1::text]) e
+    SELECT a.client_id, jsonb_build_object('type', 'user.updated', 'sub', gone.user_id, 'changed', ARRAY[$1::text])
+    FROM gone JOIN applications a ON a.webhook_url IS NOT NULL
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'identifier.removed', gone.user_id, jsonb_build_object('kind', $1::text, 'by', gone.user_id, 'byType', 'user') FROM gone
@@ -235,6 +185,46 @@ func (q *Queries) RemovePassword(ctx context.Context, userID string) (int64, err
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const secondFactors = `-- name: SecondFactors :one
+SELECT s.admins_need_two_factor, s.passkey_login,
+       EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = $1 AND r.api = 'urn:polaris:management-api') AS admin,
+       EXISTS (SELECT 1 FROM totp_credentials t WHERE t.user_id = $1 AND t.confirmed_at IS NOT NULL) AS totp,
+       (SELECT count(*) FROM passkeys p WHERE p.user_id = $1) AS passkeys,
+       EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = $1 AND p.id = $2::text) AS owns_passkey
+FROM settings s
+`
+
+type SecondFactorsParams struct {
+	Sub       string
+	PasskeyID string
+}
+
+type SecondFactorsRow struct {
+	AdminsNeedTwoFactor bool
+	PasskeyLogin        bool
+	Admin               bool
+	Totp                bool
+	Passkeys            int64
+	OwnsPasskey         bool
+}
+
+// What 管理员必须启用两步验证或 Passkey weighs for sub turning off 两步验证
+// or deleting the Passkey passkey_id (account.mustKeep): the settings, whether
+// sub holds a Management API Role, and their second factors.
+func (q *Queries) SecondFactors(ctx context.Context, arg SecondFactorsParams) (SecondFactorsRow, error) {
+	row := q.db.QueryRow(ctx, secondFactors, arg.Sub, arg.PasskeyID)
+	var i SecondFactorsRow
+	err := row.Scan(
+		&i.AdminsNeedTwoFactor,
+		&i.PasskeyLogin,
+		&i.Admin,
+		&i.Totp,
+		&i.Passkeys,
+		&i.OwnsPasskey,
+	)
+	return i, err
 }
 
 const userAudit = `-- name: UserAudit :many

@@ -489,18 +489,24 @@ func (q *Queries) SaveAuthnSession(ctx context.Context, arg SaveAuthnSessionPara
 
 const saveChallengeSession = `-- name: SaveChallengeSession :exec
 INSERT INTO oidc_challenge_sessions (hash, client_id, expires_at, data)
-VALUES ($1, $2, now() + interval '10 minutes', $3)
+VALUES ($1, $2, now() + make_interval(secs => $3::int), $4)
 ON CONFLICT (hash) DO UPDATE SET expires_at = EXCLUDED.expires_at, data = EXCLUDED.data
 `
 
 type SaveChallengeSessionParams struct {
 	Hash     []byte
 	ClientID string
+	TtlSecs  int32
 	Data     []byte
 }
 
 func (q *Queries) SaveChallengeSession(ctx context.Context, arg SaveChallengeSessionParams) error {
-	_, err := q.db.Exec(ctx, saveChallengeSession, arg.Hash, arg.ClientID, arg.Data)
+	_, err := q.db.Exec(ctx, saveChallengeSession,
+		arg.Hash,
+		arg.ClientID,
+		arg.TtlSecs,
+		arg.Data,
+	)
 	return err
 }
 

@@ -30,7 +30,7 @@ ON CONFLICT (identifier) DO UPDATE SET code = EXCLUDED.code, attempts = 0, expir
 -- Counts a try before the code is compared, so parallel guesses still get
 -- five in all.
 UPDATE codes SET attempts = attempts + 1
-WHERE identifier = @identifier AND attempts < 5 AND expires_at > @now
+WHERE identifier = @identifier AND attempts < @max_tries::int AND expires_at > @now
 RETURNING code;
 
 -- name: DeleteCode :execrows
@@ -38,15 +38,15 @@ DELETE FROM codes WHERE identifier = $1 AND code = $2;
 
 -- name: DeleteExpiredOTP :exec
 WITH c AS (DELETE FROM codes WHERE codes.expires_at < now())
-DELETE FROM sends WHERE sends.sent_at < now() - interval '1 day';
+DELETE FROM sends WHERE sends.sent_at < now() - make_interval(secs => @keep_secs::int);
 
 -- name: AuditDailyCap :execrows
--- Audits hitting the daily send limit at most once in 24 hours: the first
+-- Audits hitting the daily send limit at most once a day (since day_ago): the first
 -- refusal is the one worth an event, the rest are the same person pressing
 -- the button again. No row when it was audited within the day.
 WITH claimed AS (
     UPDATE settings SET daily_cap_audited_at = @now::timestamptz
-    WHERE daily_cap_audited_at IS NULL OR daily_cap_audited_at + interval '24 hours' <= @now::timestamptz
+    WHERE daily_cap_audited_at IS NULL OR daily_cap_audited_at <= @day_ago::timestamptz
     RETURNING daily_send_limit
 )
 INSERT INTO audit_log (event, detail)

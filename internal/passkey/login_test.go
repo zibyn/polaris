@@ -37,7 +37,7 @@ func start(t *testing.T) (*passkey.Store, *passkeytest.Authenticator, *pgxpool.P
 	}
 	// The account center's registration challenge hangs off a Session.
 	if _, err := pool.Exec(ctx,
-		"INSERT INTO sessions (id, id_hash, user_id, auth_time, amr, lapses_at) VALUES ('enroll-session', '\x01', $1, now(), '{}', now() + interval '30 days')", sub); err != nil {
+		"INSERT INTO sessions (id, id_hash, user_id, auth_time, amr, lapses_at, idle_timeout, max_lifetime) VALUES ('enroll-session', '\x01', $1, now(), '{}', now() + interval '30 days', '30 days', '90 days')", sub); err != nil {
 		t.Fatal(err)
 	}
 	store, err := passkey.New(pool, "https://rp.example")

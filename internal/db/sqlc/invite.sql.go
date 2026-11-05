@@ -99,7 +99,7 @@ func (q *Queries) LiveInvite(ctx context.Context, tokenHash []byte) (string, err
 const putInvite = `-- name: PutInvite :exec
 
 INSERT INTO invites (token_hash, user_id, expires_at)
-VALUES ($1, $2, now() + interval '7 days')
+VALUES ($1, $2, now() + make_interval(secs => $3::int))
 ON CONFLICT (user_id) DO UPDATE
 SET token_hash = EXCLUDED.token_hash, expires_at = EXCLUDED.expires_at, created_at = now()
 `
@@ -107,14 +107,15 @@ SET token_hash = EXCLUDED.token_hash, expires_at = EXCLUDED.expires_at, created_
 type PutInviteParams struct {
 	TokenHash []byte
 	UserID    string
+	TtlSecs   int32
 }
 
 // 注册邀请: 管理员发出的一条一次性链接, 本人点开设置自己的密码 (ADR 0016).
 // 表里只有 token 的 SHA-256, 明文只出现在那封邮件里。
 // 重发就是替换: invites 上 user_id 唯一, 所以旧 token 立刻失效。
-// 7 天有效, 用数据库的钟算, 和 LiveInvite / AcceptInvite 的是同一个。
+// 有效期 ttl_secs 由 identity.inviteTTL 定, 用数据库的钟算, 和 LiveInvite / AcceptInvite 的是同一个。
 func (q *Queries) PutInvite(ctx context.Context, arg PutInviteParams) error {
-	_, err := q.db.Exec(ctx, putInvite, arg.TokenHash, arg.UserID)
+	_, err := q.db.Exec(ctx, putInvite, arg.TokenHash, arg.UserID, arg.TtlSecs)
 	return err
 }
 

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/zibyn/polaris/internal/db/dbtest"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 )
@@ -223,7 +224,7 @@ func TestUserEventQueries(t *testing.T) {
 func queued(t *testing.T, tx pgx.Tx) []hook {
 	t.Helper()
 	rows, err := tx.Query(context.Background(), `
-		SELECT client_id, payload FROM webhook_deliveries WHERE kind = 'webhook' ORDER BY payload->'data'->>'sub'`)
+		SELECT client_id, payload, created_at FROM webhook_deliveries WHERE kind = 'webhook' ORDER BY payload->>'sub'`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,14 +233,19 @@ func queued(t *testing.T, tx pgx.Tx) []hook {
 	for rows.Next() {
 		var to string
 		var p map[string]any
-		if err := rows.Scan(&to, &p); err != nil {
+		var at pgtype.Timestamptz
+		if err := rows.Scan(&to, &p, &at); err != nil {
 			t.Fatal(err)
 		}
-		if to != "hooked" || p["timestamp"] == "" || p["timestamp"] == nil || len(p) != 3 {
-			t.Errorf("delivery to %s: %v", to, p)
+		if to != "hooked" || !at.Valid {
+			t.Errorf("delivery to %s at %v: %v", to, at, p)
 		}
-		h := hook{Type: p["type"].(string)}
-		h.Data, _ = p["data"].(map[string]any)
+		h := hook{Type: p["type"].(string), Data: map[string]any{}}
+		for k, v := range p {
+			if k != "type" {
+				h.Data[k] = v
+			}
+		}
 		out = append(out, h)
 	}
 	if err := rows.Err(); err != nil {
@@ -248,8 +254,9 @@ func queued(t *testing.T, tx pgx.Tx) []hook {
 	return out
 }
 
-// Every query that calls user_event() must be in userEventCases with a write
-// that queues something, so a new one cannot go untested.
+// Every query that queues a User event (an INSERT INTO webhook_deliveries
+// without a kind, so 'webhook') must be in userEventCases with a write that
+// queues something, so a new one cannot go untested.
 func TestUserEventQueriesAllListed(t *testing.T) {
 	files, err := filepath.Glob("queries/*.sql")
 	if err != nil || len(files) == 0 {
@@ -269,7 +276,7 @@ func TestUserEventQueriesAllListed(t *testing.T) {
 			if i+1 < len(ms) {
 				end = ms[i+1][0]
 			}
-			if strings.Contains(src[m[0]:end], "user_event(") {
+			if strings.Contains(src[m[0]:end], "INSERT INTO webhook_deliveries (client_id, payload)") {
 				calling = append(calling, src[m[2]:m[3]])
 			}
 		}

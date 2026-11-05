@@ -73,4 +73,4 @@ ORDER BY s.last_seen_at DESC;
 -- name: DeleteOldSessions :exec
 -- Ended or lapsed for more than 30 days (docs/spec/security-compliance.md).
 DELETE FROM sessions
-WHERE ended_at < now() - interval '30 days' OR lapses_at < now() - interval '30 days';
+WHERE ended_at < now() - make_interval(days => @keep_days::int) OR lapses_at < now() - make_interval(days => @keep_days::int);

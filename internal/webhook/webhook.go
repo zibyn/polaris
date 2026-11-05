@@ -8,7 +8,6 @@ package webhook
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -35,6 +34,10 @@ const (
 	// day in, drops the delivery.
 	maxAttempts = 12
 	maxWait     = 12 * time.Hour
+	// A claimed delivery is held back this long while it is being sent, so
+	// that no other replica sends it too; batch is how many one claims.
+	hold  = 5 * time.Minute
+	batch = 20
 )
 
 type Sender struct {
@@ -69,7 +72,7 @@ func (s *Sender) Run(ctx context.Context) {
 
 // Deliver sends the deliveries that are due, once each.
 func (s *Sender) Deliver(ctx context.Context) error {
-	due, err := s.q.ClaimDeliveries(ctx)
+	due, err := s.q.ClaimDeliveries(ctx, sqlc.ClaimDeliveriesParams{HoldSecs: int32(hold.Seconds()), Batch: batch})
 	if err != nil {
 		return err
 	}
@@ -129,16 +132,45 @@ func (s *Sender) request(ctx context.Context, d sqlc.ClaimDeliveriesRow) (*http.
 	if err != nil {
 		return nil, err
 	}
+	body, err := eventBody(d)
+	if err != nil {
+		return nil, err
+	}
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.Url, bytes.NewReader(d.Payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.Url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("webhook-id", d.ID)
 	req.Header.Set("webhook-timestamp", ts)
-	req.Header.Set("webhook-signature", sign(secret, d.ID, ts, d.Payload))
+	req.Header.Set("webhook-signature", sign(secret, d.ID, ts, body))
 	return req, nil
+}
+
+// facts are what a delivery keeps of a User event (and the sub of a logout).
+type facts struct {
+	Type    string   `json:"type"`
+	Sub     string   `json:"sub"`
+	Changed []string `json:"changed"`
+}
+
+// eventBody is the webhook's JSON (docs/spec/protocol.md#webhook), the same
+// bytes on every attempt: the event's facts and when it happened.
+func eventBody(d sqlc.ClaimDeliveriesRow) ([]byte, error) {
+	var f facts
+	if err := json.Unmarshal(d.Payload, &f); err != nil {
+		return nil, err
+	}
+	type data struct {
+		Sub     string   `json:"sub"`
+		Changed []string `json:"changed,omitempty"`
+	}
+	return json.Marshal(struct {
+		Type      string `json:"type"`
+		Timestamp string `json:"timestamp"`
+		Data      data   `json:"data"`
+	}{f.Type, d.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"), data{f.Sub, f.Changed}})
 }
 
 // sign makes a Standard Webhooks signature. A "whsec_" key is base64 after
@@ -159,15 +191,10 @@ func sign(secret []byte, id, ts string, body []byte) string {
 // drop gives up on a delivery, audited so that admins see which
 // Application missed which User's event or logout.
 func (s *Sender) drop(ctx context.Context, d sqlc.ClaimDeliveriesRow) error {
-	var p struct {
-		Sub  string `json:"sub"` // a logout token's
-		Data struct {
-			Sub string `json:"sub"`
-		} `json:"data"`
-	}
-	_ = json.Unmarshal(d.Payload, &p)
+	var f facts // a logout token's has its sub too
+	_ = json.Unmarshal(d.Payload, &f)
 	detail, _ := json.Marshal(map[string]string{"application": d.ClientID, "id": d.ID, "kind": d.Kind})
-	sub := cmp.Or(p.Data.Sub, p.Sub)
+	sub := f.Sub
 	if err := s.q.Audit(ctx, sqlc.AuditParams{Event: "webhook.failed", Sub: pgtype.Text{String: sub, Valid: true}, Detail: detail}); err != nil {
 		return err
 	}

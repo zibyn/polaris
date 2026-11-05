@@ -27,9 +27,9 @@ func (e *env) queued(what string, changed ...string) {
 	var got []string
 	if err := e.pool.QueryRow(context.Background(), `
 		WITH d AS (DELETE FROM webhook_deliveries RETURNING payload)
-		SELECT COALESCE(array_agg(d.payload->'data'->'changed'->>0), '{}') FROM d
-		WHERE d.payload->>'type' = 'user.updated' AND ((d.payload->'data') - 'changed'::text) = '{"sub": "ALICE"}'::jsonb
-		  AND jsonb_array_length(d.payload->'data'->'changed') = 1`).Scan(&got); err != nil {
+		SELECT COALESCE(array_agg(d.payload->'changed'->>0), '{}') FROM d
+		WHERE d.payload->>'type' = 'user.updated' AND (d.payload - 'type' - 'changed'::text) = '{"sub": "ALICE"}'::jsonb
+		  AND jsonb_array_length(d.payload->'changed') = 1`).Scan(&got); err != nil {
 		e.t.Fatal(err)
 	}
 	var left int

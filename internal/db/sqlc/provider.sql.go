@@ -219,8 +219,8 @@ func (q *Queries) InsertProvider(ctx context.Context, arg InsertProviderParams) 
 }
 
 const insertProviderAccountLogin = `-- name: InsertProviderAccountLogin :exec
-INSERT INTO provider_logins (state_hash, provider, nonce, verifier, authn_session, session_id, reauth)
-VALUES ($1, $2, $3, $4, '', $5, $6)
+INSERT INTO provider_logins (state_hash, provider, nonce, verifier, authn_session, session_id, reauth, expires_at)
+VALUES ($1, $2, $3, $4, '', $5, $6, now() + make_interval(secs => $7::int))
 `
 
 type InsertProviderAccountLoginParams struct {
@@ -230,6 +230,7 @@ type InsertProviderAccountLoginParams struct {
 	Verifier  string
 	SessionID pgtype.Text
 	Reauth    bool
+	TtlSecs   int32
 }
 
 func (q *Queries) InsertProviderAccountLogin(ctx context.Context, arg InsertProviderAccountLoginParams) error {
@@ -240,12 +241,14 @@ func (q *Queries) InsertProviderAccountLogin(ctx context.Context, arg InsertProv
 		arg.Verifier,
 		arg.SessionID,
 		arg.Reauth,
+		arg.TtlSecs,
 	)
 	return err
 }
 
 const insertProviderLogin = `-- name: InsertProviderLogin :exec
-INSERT INTO provider_logins (state_hash, provider, nonce, verifier, authn_session, binder_hash) VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO provider_logins (state_hash, provider, nonce, verifier, authn_session, binder_hash, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(secs => $7::int))
 `
 
 type InsertProviderLoginParams struct {
@@ -255,6 +258,7 @@ type InsertProviderLoginParams struct {
 	Verifier     string
 	AuthnSession string
 	BinderHash   []byte
+	TtlSecs      int32
 }
 
 func (q *Queries) InsertProviderLogin(ctx context.Context, arg InsertProviderLoginParams) error {
@@ -265,6 +269,7 @@ func (q *Queries) InsertProviderLogin(ctx context.Context, arg InsertProviderLog
 		arg.Verifier,
 		arg.AuthnSession,
 		arg.BinderHash,
+		arg.TtlSecs,
 	)
 	return err
 }

@@ -210,7 +210,7 @@ func TestSessionLivenessAgrees(t *testing.T) {
 			exec(`UPDATE sessions SET auth_time = auth_time - interval '31 days', last_seen_at = last_seen_at - interval '31 days',
 				ended_at = ended_at - interval '31 days' WHERE id = $1`, id)
 			exec(dbtest.Relapse)
-			if err := q.DeleteOldSessions(ctx); err != nil {
+			if err := q.DeleteOldSessions(ctx, 30); err != nil {
 				t.Fatal(err)
 			}
 			if got := !exists("SELECT 1 FROM sessions WHERE id = $1", id); got != c.deletedLater {

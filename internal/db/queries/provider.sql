@@ -60,11 +60,12 @@ INSERT INTO provider_secrets (provider, field, value) VALUES ($1, $2, $3)
 ON CONFLICT (provider, field) DO UPDATE SET value = excluded.value, updated_at = now();
 
 -- name: InsertProviderLogin :exec
-INSERT INTO provider_logins (state_hash, provider, nonce, verifier, authn_session, binder_hash) VALUES ($1, $2, $3, $4, $5, $6);
+INSERT INTO provider_logins (state_hash, provider, nonce, verifier, authn_session, binder_hash, expires_at)
+VALUES (@state_hash, @provider, @nonce, @verifier, @authn_session, @binder_hash, now() + make_interval(secs => @ttl_secs::int));
 
 -- name: InsertProviderAccountLogin :exec
-INSERT INTO provider_logins (state_hash, provider, nonce, verifier, authn_session, session_id, reauth)
-VALUES ($1, $2, $3, $4, '', $5, $6);
+INSERT INTO provider_logins (state_hash, provider, nonce, verifier, authn_session, session_id, reauth, expires_at)
+VALUES (@state_hash, @provider, @nonce, @verifier, '', @session_id, @reauth, now() + make_interval(secs => @ttl_secs::int));
 
 -- name: TakeProviderLogin :one
 DELETE FROM provider_logins WHERE state_hash = $1 AND provider = $2 AND expires_at > now()

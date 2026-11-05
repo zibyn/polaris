@@ -3,9 +3,9 @@
 
 -- name: PutInvite :exec
 -- 重发就是替换: invites 上 user_id 唯一, 所以旧 token 立刻失效。
--- 7 天有效, 用数据库的钟算, 和 LiveInvite / AcceptInvite 的是同一个。
+-- 有效期 ttl_secs 由 identity.inviteTTL 定, 用数据库的钟算, 和 LiveInvite / AcceptInvite 的是同一个。
 INSERT INTO invites (token_hash, user_id, expires_at)
-VALUES (@token_hash, @user_id, now() + interval '7 days')
+VALUES (@token_hash, @user_id, now() + make_interval(secs => @ttl_secs::int))
 ON CONFLICT (user_id) DO UPDATE
 SET token_hash = EXCLUDED.token_hash, expires_at = EXCLUDED.expires_at, created_at = now();
 

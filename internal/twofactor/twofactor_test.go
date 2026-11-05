@@ -107,3 +107,18 @@ func TestChecks(t *testing.T) {
 		t.Errorf("recovery code after turning off: %v", err)
 	}
 }
+
+// A TOTP always satisfies 两步验证或 Passkey; a Passkey only while the
+// instance offers Passkey login.
+func TestSatisfied(t *testing.T) {
+	for _, c := range []struct{ totp, passkey, passkeyLogin, want bool }{
+		{true, false, false, true},
+		{false, true, true, true},
+		{false, true, false, false},
+		{false, false, true, false},
+	} {
+		if got := twofactor.Satisfied(c.totp, c.passkey, c.passkeyLogin); got != c.want {
+			t.Errorf("Satisfied(%v, %v, %v) = %v", c.totp, c.passkey, c.passkeyLogin, got)
+		}
+	}
+}

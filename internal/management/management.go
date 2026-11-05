@@ -204,7 +204,7 @@ func (s *Service) authorize(api huma.API) func(huma.Context, func(huma.Context))
 		}
 		// An M2M Application's token has its client_id as sub, and it holds
 		// Roles on the API that the User tables know nothing about.
-		call := caller{sub: sub, permissions: c.Permissions, satisfied: c.TwoFactor, totp: c.Totp}
+		call := caller{sub: sub, permissions: c.Permissions, satisfied: twofactor.Satisfied(c.Totp, c.HasPasskey, c.PasskeyLogin), totp: c.Totp}
 		required, admin := c.TwoFactorRequired, c.Admin
 		if !admin {
 			a, err := s.q.M2MCaller(ctx.Context(), sqlc.M2MCallerParams{ClientID: sub, Api: identity.ManagementAPI})
@@ -383,7 +383,7 @@ func userDetail(r sqlc.GetUserRow) (UserDetail, error) {
 		User:               u,
 		HasPassword:        r.HasPassword,
 		TwoFactor:          r.TwoFactor,
-		TwoFactorOrPasskey: r.TwoFactorOrPasskey,
+		TwoFactorOrPasskey: twofactor.Satisfied(r.TwoFactor, r.HasPasskey, r.PasskeyLogin),
 		Invite:             invite(r),
 	}, nil
 }

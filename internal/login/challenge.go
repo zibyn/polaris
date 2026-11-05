@@ -75,6 +75,9 @@ type challengeError struct {
 	Next string `json:"next,omitempty"`
 }
 
+// challengeTTL is how long a direct-auth sign-in waits for its next step.
+const challengeTTL = 10 * time.Minute
+
 func (e *challengeError) Error() string { return e.Code + ": " + e.Description }
 
 // answer is what one challenge request yields: the authorization code that
@@ -191,7 +194,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if err != nil {
 			return err
 		}
-		return s.q.SaveChallengeSession(ctx, sqlc.SaveChallengeSessionParams{Hash: hash(token), ClientID: c.ID, Data: data})
+		return s.q.SaveChallengeSession(ctx, sqlc.SaveChallengeSessionParams{Hash: hash(token), ClientID: c.ID, Data: data, TtlSecs: int32(challengeTTL.Seconds())})
 	}
 	// next keeps the sign-in going: the App must take another step.
 	next := func(step, description string) (answer, error) {

@@ -20,4 +20,4 @@ DELETE FROM login_failures WHERE key = $1;
 
 -- name: DeleteOldLoginFailures :exec
 WITH expired AS (DELETE FROM lockouts WHERE until < now())
-DELETE FROM login_failures WHERE at < now() - interval '1 day';
+DELETE FROM login_failures WHERE at < now() - make_interval(secs => @keep_secs::int);

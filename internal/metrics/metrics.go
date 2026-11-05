@@ -77,10 +77,13 @@ func (pgCollector) Describe(ch chan<- *prometheus.Desc) {
 	}
 }
 
+// window is what the counts read from PG cover: the last day.
+const window = 24 * time.Hour
+
 func (c pgCollector) Collect(ch chan<- prometheus.Metric) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	r, err := c.q.Metrics(ctx)
+	r, err := c.q.Metrics(ctx, int32(window.Seconds()))
 	if err != nil {
 		ch <- prometheus.NewInvalidMetric(codeSends, err)
 		return

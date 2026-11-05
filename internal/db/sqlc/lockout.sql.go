@@ -22,11 +22,11 @@ func (q *Queries) ClearLoginFailures(ctx context.Context, key string) error {
 
 const deleteOldLoginFailures = `-- name: DeleteOldLoginFailures :exec
 WITH expired AS (DELETE FROM lockouts WHERE until < now())
-DELETE FROM login_failures WHERE at < now() - interval '1 day'
+DELETE FROM login_failures WHERE at < now() - make_interval(secs => $1::int)
 `
 
-func (q *Queries) DeleteOldLoginFailures(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteOldLoginFailures)
+func (q *Queries) DeleteOldLoginFailures(ctx context.Context, keepSecs int32) error {
+	_, err := q.db.Exec(ctx, deleteOldLoginFailures, keepSecs)
 	return err
 }
 

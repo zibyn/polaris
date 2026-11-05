@@ -38,7 +38,7 @@ func (s *Store) BeginAccount(ctx context.Context, issuer, id, userID, session st
 	to, p, err := s.begin(ctx, issuer, id, func(stateHash []byte, nonce, verifier string) error {
 		return s.q.InsertProviderAccountLogin(ctx, sqlc.InsertProviderAccountLoginParams{
 			StateHash: stateHash, Provider: id, Nonce: nonce, Verifier: verifier,
-			SessionID: pgtype.Text{String: session, Valid: true}, Reauth: reauth,
+			SessionID: pgtype.Text{String: session, Valid: true}, Reauth: reauth, TtlSecs: int32(loginTTL.Seconds()),
 		})
 	})
 	if err != nil || !reauth {

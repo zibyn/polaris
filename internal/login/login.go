@@ -307,10 +307,14 @@ func (s *Service) audience(ctx context.Context, _ *goidc.Token, g *goidc.Grant) 
 	return claims
 }
 
-// DeleteOldSessions removes Sessions ended or idle for over 30 days; run by
-// the hourly cleanup.
+// sessionKeepDays is how long an ended or lapsed Session is kept, with its
+// last IP and User-Agent (docs/spec/security-compliance.md).
+const sessionKeepDays = 30
+
+// DeleteOldSessions removes Sessions ended or lapsed sessionKeepDays ago; run
+// by the hourly cleanup.
 func DeleteOldSessions(ctx context.Context, pool *pgxpool.Pool) error {
-	return sqlc.New(pool).DeleteOldSessions(ctx)
+	return sqlc.New(pool).DeleteOldSessions(ctx, sessionKeepDays)
 }
 
 // authenticate is the hosted login: a live browser Session signs the User in

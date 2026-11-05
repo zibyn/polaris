@@ -71,12 +71,12 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (C
 
 const deleteOldSessions = `-- name: DeleteOldSessions :exec
 DELETE FROM sessions
-WHERE ended_at < now() - interval '30 days' OR lapses_at < now() - interval '30 days'
+WHERE ended_at < now() - make_interval(days => $1::int) OR lapses_at < now() - make_interval(days => $1::int)
 `
 
 // Ended or lapsed for more than 30 days (docs/spec/security-compliance.md).
-func (q *Queries) DeleteOldSessions(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteOldSessions)
+func (q *Queries) DeleteOldSessions(ctx context.Context, keepDays int32) error {
+	_, err := q.db.Exec(ctx, deleteOldSessions, keepDays)
 	return err
 }
 

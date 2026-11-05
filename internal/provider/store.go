@@ -46,6 +46,9 @@ type Store struct {
 	keyring *crypt.Keyring
 }
 
+// loginTTL is how long a sign-in at a Provider may take to come back.
+const loginTTL = 10 * time.Minute
+
 func NewStore(pool *pgxpool.Pool, keyring *crypt.Keyring) *Store {
 	return &Store{pool: pool, q: sqlc.New(pool), keyring: keyring}
 }
@@ -255,7 +258,7 @@ func (s *Store) Begin(ctx context.Context, issuer, id, authnSession, binder stri
 	to, _, err := s.begin(ctx, issuer, id, func(stateHash []byte, nonce, verifier string) error {
 		return s.q.InsertProviderLogin(ctx, sqlc.InsertProviderLoginParams{
 			StateHash: stateHash, Provider: id, Nonce: nonce, Verifier: verifier, AuthnSession: authnSession,
-			BinderHash: hash(binder),
+			BinderHash: hash(binder), TtlSecs: int32(loginTTL.Seconds()),
 		})
 	})
 	return to, err

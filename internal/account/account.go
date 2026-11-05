@@ -678,9 +678,9 @@ func (s *Service) disableTwoFactor(ctx context.Context, _ *struct{}) (*struct{},
 	sub := callerOf(ctx).sub
 	// The switch would be pointless if admins could turn 两步验证 off; a
 	// Passkey left satisfies it just as well.
-	if must, err := s.q.MustKeepTwoFactor(ctx, sub); err != nil {
+	if f, err := s.q.SecondFactors(ctx, sqlc.SecondFactorsParams{Sub: sub}); err != nil {
 		return nil, err
-	} else if must {
+	} else if f.AdminsNeedTwoFactor && f.Admin && !twofactor.Satisfied(false, f.Passkeys > 0, f.PasskeyLogin) {
 		return nil, huma.Error409Conflict("管理员必须启用两步验证或 Passkey,你持有管理员角色,不能关闭")
 	}
 	return nil, twoFactorErr(s.twoFactor.Disable(ctx, sub, "mfa.disabled", audit.User(sub)))
@@ -847,9 +847,11 @@ func (s *Service) removePasskey(ctx context.Context, in *providerPath) (*struct{
 	c := callerOf(ctx)
 	// Deleting the last Passkey would lock a Role-holding User out of the
 	// Management API while the switch is on and no TOTP is left.
-	if must, err := s.q.MustKeepPasskey(ctx, sqlc.MustKeepPasskeyParams{Sub: c.sub, ID: in.ID}); err != nil {
+	// The id must be theirs, so an unknown one is 404 (from Remove), not 409.
+	if f, err := s.q.SecondFactors(ctx, sqlc.SecondFactorsParams{Sub: c.sub, PasskeyID: in.ID}); err != nil {
 		return nil, err
-	} else if must {
+	} else if f.AdminsNeedTwoFactor && f.Admin && f.OwnsPasskey &&
+		twofactor.Satisfied(f.Totp, true, f.PasskeyLogin) && !twofactor.Satisfied(f.Totp, f.Passkeys > 1, f.PasskeyLogin) {
 		return nil, huma.Error409Conflict("管理员必须启用两步验证或 Passkey,你持有管理员角色,不能删除最后一把 Passkey")
 	}
 	return nil, passkeyErr(s.passkeys.Remove(ctx, c.sub, in.ID, audit.User(c.sub)))

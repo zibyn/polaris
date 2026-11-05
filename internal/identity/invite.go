@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -22,6 +23,9 @@ const (
 	// ErrInviteSpent: 链接用过、被撤销或过期 —— 对本人是同一种情况。
 	ErrInviteSpent Invalid = "邀请链接已失效，请联系管理员重新发送"
 )
+
+// inviteTTL is how long a 注册邀请 link works.
+const inviteTTL = 7 * 24 * time.Hour
 
 // MintInvite mints a 注册邀请 for sub and returns its plaintext token and the
 // email address it goes to. Only the token's hash is stored, so the plaintext
@@ -42,7 +46,7 @@ func (s *Store) MintInvite(ctx context.Context, sub string) (token, email string
 		return "", "", ErrNoEmail
 	}
 	token = rand.Text()
-	err = s.q.PutInvite(ctx, sqlc.PutInviteParams{TokenHash: tokenHash(token), UserID: sub})
+	err = s.q.PutInvite(ctx, sqlc.PutInviteParams{TokenHash: tokenHash(token), UserID: sub, TtlSecs: int32(inviteTTL.Seconds())})
 	return token, email, err
 }
 

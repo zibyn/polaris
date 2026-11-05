@@ -30,7 +30,9 @@ WITH put AS (
     INSERT INTO identifiers (user_id, kind, value) VALUES (@user_id, @kind, @value)
 )
 INSERT INTO webhook_deliveries (client_id, payload)
-SELECT e.client_id, e.payload FROM user_event('user.updated', @user_id, ARRAY[@kind::text]) e;
+SELECT a.client_id, jsonb_build_object('type', 'user.updated', 'sub', @user_id::text, 'changed', ARRAY[@kind::text])
+    FROM applications a
+    WHERE a.webhook_url IS NOT NULL;
 
 -- name: ReplaceIdentifier :execrows
 -- Sets a User's Identifier of a kind, replacing the one they had. Audited
@@ -43,7 +45,8 @@ WITH put AS (
     RETURNING identifiers.user_id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM put, user_event('user.updated', put.user_id, ARRAY[@kind::text]) e
+    SELECT a.client_id, jsonb_build_object('type', 'user.updated', 'sub', put.user_id, 'changed', ARRAY[@kind::text])
+    FROM put JOIN applications a ON a.webhook_url IS NOT NULL
     WHERE NOT EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = put.user_id AND i.kind = @kind AND i.value = @value)
 )
 INSERT INTO audit_log (event, sub, detail)
@@ -55,10 +58,6 @@ ON CONFLICT (user_id) DO UPDATE SET hash = EXCLUDED.hash;
 
 -- name: AssignRole :exec
 INSERT INTO user_roles (user_id, api, role) VALUES ($1, $2, $3);
-
--- name: LockOwners :exec
--- Serialises changes that could leave the instance without an owner.
-SELECT pg_advisory_xact_lock(hashtext('owners'));
 
 -- name: CountOwners :one
 -- Only an active owner counts: a 待激活 owner can sign in but gets no token,

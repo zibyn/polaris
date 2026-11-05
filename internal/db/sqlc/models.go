@@ -259,19 +259,17 @@ type Send struct {
 }
 
 type Session struct {
-	IDHash     []byte
-	UserID     string
-	AuthTime   pgtype.Timestamptz
-	Amr        []string
-	LastSeenAt pgtype.Timestamptz
-	ID         string
-	ClientID   pgtype.Text
-	// The default is a browser Session's, only for direct INSERTs (tests); oidcstore.SessionDefaults decides.
+	IDHash      []byte
+	UserID      string
+	AuthTime    pgtype.Timestamptz
+	Amr         []string
+	LastSeenAt  pgtype.Timestamptz
+	ID          string
+	ClientID    pgtype.Text
 	IdleTimeout pgtype.Interval
 	EndedAt     pgtype.Timestamptz
 	Ip          pgtype.Text
 	UserAgent   pgtype.Text
-	// The default is a browser Session's, only for direct INSERTs (tests); oidcstore.SessionDefaults decides.
 	MaxLifetime pgtype.Interval
 	LoginMethod pgtype.Text
 	LapsesAt    pgtype.Timestamptz
@@ -339,10 +337,11 @@ type UserRole struct {
 }
 
 type WebhookDelivery struct {
-	ID       string
-	ClientID string
-	Payload  []byte
-	Attempts int32
-	NextAt   pgtype.Timestamptz
-	Kind     string
+	ID        string
+	ClientID  string
+	Payload   []byte
+	Attempts  int32
+	NextAt    pgtype.Timestamptz
+	Kind      string
+	CreatedAt pgtype.Timestamptz
 }

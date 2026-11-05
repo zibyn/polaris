@@ -68,8 +68,9 @@ const caller = `-- name: Caller :one
 SELECT count(*) > 0 AS admin,
        COALESCE(array_agg(DISTINCT rp.permission ORDER BY rp.permission)
                 FILTER (WHERE rp.permission IS NOT NULL), '{}')::text[] AS permissions,
-       two_factor_satisfied($1) AS two_factor,
-       totp_confirmed($1) AS totp,
+       EXISTS (SELECT 1 FROM totp_credentials t WHERE t.user_id = $1::text AND t.confirmed_at IS NOT NULL) AS totp,
+       EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = $1::text) AS has_passkey,
+       (SELECT passkey_login FROM settings) AS passkey_login,
        (SELECT admins_need_two_factor FROM settings) AS two_factor_required
 FROM user_roles ur LEFT JOIN role_permissions rp USING (api, role)
 WHERE ur.user_id = $1 AND ur.api = $2
@@ -84,22 +85,24 @@ type CallerParams struct {
 type CallerRow struct {
 	Admin             bool
 	Permissions       []string
-	TwoFactor         bool
 	Totp              bool
+	HasPasskey        bool
+	PasskeyLogin      bool
 	TwoFactorRequired bool
 }
 
 // Holding any Role on the API makes an admin, even one with no Permissions;
 // a disabled User is none. Admins must satisfy 两步验证或 Passkey when the
-// settings say so.
+// settings say so (twofactor.Satisfied, from the facts here).
 func (q *Queries) Caller(ctx context.Context, arg CallerParams) (CallerRow, error) {
 	row := q.db.QueryRow(ctx, caller, arg.Sub, arg.Api)
 	var i CallerRow
 	err := row.Scan(
 		&i.Admin,
 		&i.Permissions,
-		&i.TwoFactor,
 		&i.Totp,
+		&i.HasPasskey,
+		&i.PasskeyLogin,
 		&i.TwoFactorRequired,
 	)
 	return i, err
@@ -113,8 +116,8 @@ WITH gone AS (
     RETURNING apis.identifier
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM (SELECT DISTINCT ur.user_id FROM user_roles ur JOIN gone ON ur.api = gone.identifier) h,
-                    user_event('user.updated', h.user_id, '{roles}') e
+    SELECT a.client_id, jsonb_build_object('type', 'user.updated', 'sub', h.user_id, 'changed', '{roles}'::text[])
+    FROM (SELECT DISTINCT ur.user_id FROM user_roles ur JOIN gone ON ur.api = gone.identifier) h JOIN applications a ON a.webhook_url IS NOT NULL
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'api.deleted', NULL, jsonb_build_object('api', gone.identifier, 'force', $1::boolean, 'by', $2::text, 'byType', NULLIF($3::text, '')) FROM gone
@@ -203,8 +206,8 @@ WITH gone AS (
     RETURNING roles.api, roles.key
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM user_roles ur JOIN gone ON ur.api = gone.api AND ur.role = gone.key,
-                    user_event('user.updated', ur.user_id, '{roles}') e
+    SELECT a.client_id, jsonb_build_object('type', 'user.updated', 'sub', ur.user_id, 'changed', '{roles}'::text[])
+    FROM user_roles ur JOIN gone ON ur.api = gone.api AND ur.role = gone.key JOIN applications a ON a.webhook_url IS NOT NULL
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'role.deleted', NULL, jsonb_build_object('api', gone.api, 'key', gone.key, 'force', $1::boolean, 'by', $2::text, 'byType', NULLIF($3::text, '')) FROM gone
@@ -256,7 +259,8 @@ WITH gone AS (
     WHERE audit_log.sub IN (SELECT gone.id FROM gone)
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM gone, user_event('user.deleted', gone.id) e
+    SELECT a.client_id, jsonb_build_object('type', 'user.deleted', 'sub', gone.id)
+    FROM gone JOIN applications a ON a.webhook_url IS NOT NULL
 ), ended AS (
     SELECT s.id, s.user_id, s.lapses_at > now() AS live
     FROM sessions s WHERE s.user_id IN (SELECT gone.id FROM gone) AND s.ended_at IS NULL
@@ -345,8 +349,9 @@ SELECT u.id, u.created_at, u.disabled_at, u.pending,
                  FROM user_roles ur JOIN roles r ON r.api = ur.api AND r.key = ur.role
                  WHERE ur.user_id = u.id), '[]')::jsonb AS roles,
        EXISTS (SELECT 1 FROM passwords p WHERE p.user_id = u.id) AS has_password,
-       totp_confirmed(u.id) AS two_factor,
-       two_factor_satisfied(u.id) AS two_factor_or_passkey,
+       EXISTS (SELECT 1 FROM totp_credentials t WHERE t.user_id = u.id AND t.confirmed_at IS NOT NULL) AS two_factor,
+       EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = u.id) AS has_passkey,
+       (SELECT passkey_login FROM settings) AS passkey_login,
        -- 注册邀请现在是什么状态: 表里还挂着一条还没到期的就是「已发出」, 上
        -- 一条被本人用掉了就是「已接受」(users.invite_accepted_at), 其余
        -- 是「没发出过」——撤销过、过期了都算, 不等清理任务把那行扫掉。
@@ -358,17 +363,18 @@ WHERE u.id = $1
 `
 
 type GetUserRow struct {
-	ID                 string
-	CreatedAt          pgtype.Timestamptz
-	DisabledAt         pgtype.Timestamptz
-	Pending            bool
-	Identifiers        []byte
-	Roles              []byte
-	HasPassword        bool
-	TwoFactor          bool
-	TwoFactorOrPasskey bool
-	InviteExpiresAt    pgtype.Timestamptz
-	InviteAccepted     bool
+	ID              string
+	CreatedAt       pgtype.Timestamptz
+	DisabledAt      pgtype.Timestamptz
+	Pending         bool
+	Identifiers     []byte
+	Roles           []byte
+	HasPassword     bool
+	TwoFactor       bool
+	HasPasskey      bool
+	PasskeyLogin    bool
+	InviteExpiresAt pgtype.Timestamptz
+	InviteAccepted  bool
 }
 
 func (q *Queries) GetUser(ctx context.Context, id string) (GetUserRow, error) {
@@ -383,7 +389,8 @@ func (q *Queries) GetUser(ctx context.Context, id string) (GetUserRow, error) {
 		&i.Roles,
 		&i.HasPassword,
 		&i.TwoFactor,
-		&i.TwoFactorOrPasskey,
+		&i.HasPasskey,
+		&i.PasskeyLogin,
 		&i.InviteExpiresAt,
 		&i.InviteAccepted,
 	)
@@ -792,7 +799,7 @@ SELECT (SELECT count(*) FROM users) AS users,
        (SELECT count(*) FROM sessions WHERE auth_time >= date_trunc('day', now())) AS logins_today,
        (SELECT count(*) FROM sessions WHERE ended_at IS NULL AND lapses_at > now()) AS live_sessions,
        (SELECT count(*) FROM applications) AS applications,
-       (SELECT count(*) FROM sends WHERE sent_at >= now() - interval '1 day') AS sends_last_day,
+       (SELECT count(*) FROM sends WHERE sent_at >= now() - make_interval(secs => $1::int)) AS sends_last_day,
        (SELECT daily_send_limit FROM settings) AS daily_send_limit
 `
 
@@ -805,8 +812,8 @@ type OverviewRow struct {
 	DailySendLimit int32
 }
 
-func (q *Queries) Overview(ctx context.Context) (OverviewRow, error) {
-	row := q.db.QueryRow(ctx, overview)
+func (q *Queries) Overview(ctx context.Context, daySecs int32) (OverviewRow, error) {
+	row := q.db.QueryRow(ctx, overview, daySecs)
 	var i OverviewRow
 	err := row.Scan(
 		&i.Users,
@@ -1100,7 +1107,8 @@ WITH changed AS (
     RETURNING users.id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM changed, user_event(CASE WHEN $1::boolean THEN 'user.disabled' ELSE 'user.enabled' END, changed.id) e
+    SELECT a.client_id, jsonb_build_object('type', CASE WHEN $1::boolean THEN 'user.disabled' ELSE 'user.enabled' END, 'sub', changed.id)
+    FROM changed JOIN applications a ON a.webhook_url IS NOT NULL
 ), ended AS (
     UPDATE sessions SET ended_at = now()
     WHERE sessions.user_id IN (SELECT changed.id FROM changed) AND $1::boolean AND sessions.ended_at IS NULL
@@ -1151,8 +1159,9 @@ WITH gone AS (
     RETURNING user_roles.user_id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM user_event('user.updated', $1, '{roles}') e
-    WHERE EXISTS (SELECT 1 FROM gone) OR EXISTS (SELECT 1 FROM added)
+    SELECT a.client_id, jsonb_build_object('type', 'user.updated', 'sub', $1::text, 'changed', '{roles}'::text[])
+    FROM applications a
+    WHERE a.webhook_url IS NOT NULL AND (EXISTS (SELECT 1 FROM gone) OR EXISTS (SELECT 1 FROM added))
 )
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('roles.assigned', $1::text, jsonb_build_object('api', $2::text, 'roles', $3::text[], 'by', $4::text, 'byType', NULLIF($5::text, '')))

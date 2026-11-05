@@ -121,8 +121,8 @@ func (s *Store) failed(ctx context.Context, key string, max int32, window, lock 
 	})
 }
 
-// DeleteOldLoginFailures removes day-old failures and past lockouts; run
-// by the hourly cleanup.
+// DeleteOldLoginFailures removes failures older than any window counts and
+// past lockouts; run by the hourly cleanup.
 func DeleteOldLoginFailures(ctx context.Context, pool *pgxpool.Pool) error {
-	return sqlc.New(pool).DeleteOldLoginFailures(ctx)
+	return sqlc.New(pool).DeleteOldLoginFailures(ctx, int32(max(passwordWindow, ipWindow, startWindow).Seconds()))
 }

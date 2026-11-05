@@ -74,7 +74,9 @@ WITH put AS (
     INSERT INTO identifiers (user_id, kind, value) VALUES ($1, $2, $3)
 )
 INSERT INTO webhook_deliveries (client_id, payload)
-SELECT e.client_id, e.payload FROM user_event('user.updated', $1, ARRAY[$2::text]) e
+SELECT a.client_id, jsonb_build_object('type', 'user.updated', 'sub', $1::text, 'changed', ARRAY[$2::text])
+    FROM applications a
+    WHERE a.webhook_url IS NOT NULL
 `
 
 type BindIdentifierParams struct {
@@ -132,16 +134,6 @@ SELECT u.id, r.api, r.key FROM new_user u JOIN roles r ON r.default_role
 // and the set is whatever the default Roles are at that moment.
 func (q *Queries) CreateUser(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, createUser, id)
-	return err
-}
-
-const lockOwners = `-- name: LockOwners :exec
-SELECT pg_advisory_xact_lock(hashtext('owners'))
-`
-
-// Serialises changes that could leave the instance without an owner.
-func (q *Queries) LockOwners(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, lockOwners)
 	return err
 }
 
@@ -250,7 +242,8 @@ WITH put AS (
     RETURNING identifiers.user_id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM put, user_event('user.updated', put.user_id, ARRAY[$1::text]) e
+    SELECT a.client_id, jsonb_build_object('type', 'user.updated', 'sub', put.user_id, 'changed', ARRAY[$1::text])
+    FROM put JOIN applications a ON a.webhook_url IS NOT NULL
     WHERE NOT EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = put.user_id AND i.kind = $1 AND i.value = $4)
 )
 INSERT INTO audit_log (event, sub, detail)

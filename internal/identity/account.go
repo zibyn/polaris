@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/zibyn/polaris/internal/audit"
+	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/profile"
 )
@@ -107,16 +108,14 @@ func otherLoginPath(paths sqlc.LoginPathsRow) bool {
 	return false
 }
 
-// changeLoginPaths runs change with the User locked, and undoes it if it
-// leaves them no way to sign in (invariant 1): a phone number, an email,
-// a username with a password, or an External Identity at an enabled
-// Provider.
+// changeLoginPaths runs change, and undoes it if it leaves the User no way
+// to sign in (invariant 1): a phone number, an email, a username with a
+// password, or an External Identity at an enabled Provider. SERIALIZABLE,
+// not a lock: of two changes at once that each leave a path the other takes
+// away, one is run again and refused.
 func (s *Store) changeLoginPaths(ctx context.Context, sub string, change func(*sqlc.Queries) error) error {
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	return db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if _, err := q.LockUser(ctx, sub); err != nil {
-			return err
-		}
 		if err := change(q); err != nil {
 			return err
 		}
@@ -147,13 +146,11 @@ const ErrLastOwner Invalid = "你是最后一位所有者，无法注销"
 // guardOwners runs change in a transaction that fails with ErrLastOwner if
 // it takes the instance from having a usable owner to having none. Only an
 // active owner counts: a 待激活 owner can sign in but gets no token, so they
-// cannot administer the instance.
+// cannot administer the instance. SERIALIZABLE, as changeLoginPaths: two
+// owners demoted at once cannot both see the other still there.
 func (s *Store) guardOwners(ctx context.Context, change func(*sqlc.Queries) error) error {
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	return db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if err := q.LockOwners(ctx); err != nil {
-			return err
-		}
 		before, err := q.CountOwners(ctx)
 		if err != nil {
 			return err

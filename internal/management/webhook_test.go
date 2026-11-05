@@ -33,7 +33,8 @@ func (e *env) hooked() {
 // deliveries takes every queued delivery, oldest first.
 func (e *env) deliveries() []delivery {
 	e.t.Helper()
-	rows, err := e.pool.Query(context.Background(), "DELETE FROM webhook_deliveries WHERE kind = 'webhook' RETURNING client_id, payload")
+	rows, err := e.pool.Query(context.Background(), `DELETE FROM webhook_deliveries WHERE kind = 'webhook'
+		RETURNING client_id, jsonb_build_object('type', payload->'type', 'timestamp', created_at, 'data', payload - 'type')`)
 	if err != nil {
 		e.t.Fatal(err)
 	}

@@ -25,22 +25,15 @@ SELECT u.created_at,
 FROM users u, settings s
 WHERE u.id = $1;
 
--- name: MustKeepTwoFactor :one
--- 管理员必须启用两步验证或 Passkey is on, the User holds a Management API
--- Role, and no Passkey counts (the switch is off, or they have none):
--- turning 两步验证 off would lock them out of the Management API.
-SELECT (s.admins_need_two_factor AND NOT (s.passkey_login AND has_passkey($1)) AND EXISTS (
-    SELECT 1 FROM user_roles r WHERE r.user_id = $1 AND r.api = 'urn:polaris:management-api'))::boolean AS must
-FROM settings s;
-
--- name: MustKeepPasskey :one
--- The switch is on, the User holds a Management API Role, has no confirmed
--- TOTP, and id is their last Passkey: deleting it would lock them out. The
--- id must be theirs, so an unknown id is 404, not 409.
-SELECT (s.passkey_login AND s.admins_need_two_factor AND NOT totp_confirmed(@sub) AND EXISTS (
-    SELECT 1 FROM user_roles r WHERE r.user_id = @sub AND r.api = 'urn:polaris:management-api')
-    AND EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = @sub AND p.id = @id)
-    AND NOT EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = @sub AND p.id <> @id))::boolean AS must
+-- name: SecondFactors :one
+-- What 管理员必须启用两步验证或 Passkey weighs for sub turning off 两步验证
+-- or deleting the Passkey passkey_id (account.mustKeep): the settings, whether
+-- sub holds a Management API Role, and their second factors.
+SELECT s.admins_need_two_factor, s.passkey_login,
+       EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = @sub AND r.api = 'urn:polaris:management-api') AS admin,
+       EXISTS (SELECT 1 FROM totp_credentials t WHERE t.user_id = @sub AND t.confirmed_at IS NOT NULL) AS totp,
+       (SELECT count(*) FROM passkeys p WHERE p.user_id = @sub) AS passkeys,
+       EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = @sub AND p.id = @passkey_id::text) AS owns_passkey
 FROM settings s;
 
 -- name: Reauthenticate :exec
@@ -48,10 +41,6 @@ FROM settings s;
 -- counts from now (see CreateSession for lapses_at).
 UPDATE sessions SET auth_time = now(), amr = @amr, lapses_at = LEAST(last_seen_at + idle_timeout, now() + max_lifetime)
 WHERE id = @id AND user_id = @user_id;
-
--- name: LockUser :one
--- Serialises changes to a User's login paths.
-SELECT id FROM users WHERE id = $1 FOR UPDATE;
 
 -- name: LoginPaths :one
 -- What a User could sign in with (docs/spec/identity.md#不变式).
@@ -67,7 +56,8 @@ WITH gone AS (
     DELETE FROM identifiers WHERE user_id = @user_id AND kind = @kind RETURNING user_id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
-    SELECT e.client_id, e.payload FROM gone, user_event('user.updated', gone.user_id, ARRAY[@kind::text]) e
+    SELECT a.client_id, jsonb_build_object('type', 'user.updated', 'sub', gone.user_id, 'changed', ARRAY[@kind::text])
+    FROM gone JOIN applications a ON a.webhook_url IS NOT NULL
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'identifier.removed', gone.user_id, jsonb_build_object('kind', @kind::text, 'by', gone.user_id, 'byType', 'user') FROM gone;

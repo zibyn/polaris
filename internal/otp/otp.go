@@ -38,6 +38,8 @@ const (
 
 const (
 	ttl           = 5 * time.Minute
+	maxTries      = 5              // wrong guesses that kill a code
+	day           = 24 * time.Hour // the longest send limit's window
 	auditDailyCap = "send.daily_cap_reached"
 )
 
@@ -122,7 +124,7 @@ func (s *Service) reserveInvite(ctx context.Context, value string) error {
 		Identifier: value,
 		MinuteAgo:  ts(now.Add(-time.Minute)),
 		HourAgo:    ts(now.Add(-time.Hour)),
-		DayAgo:     ts(now.Add(-24 * time.Hour)),
+		DayAgo:     ts(now.Add(-day)),
 	})
 	if err != nil {
 		return err
@@ -156,7 +158,7 @@ func (s *Service) reserve(ctx context.Context, value, ip, code string) error {
 		Ip:         ip,
 		MinuteAgo:  ts(now.Add(-time.Minute)),
 		HourAgo:    ts(now.Add(-time.Hour)),
-		DayAgo:     ts(now.Add(-24 * time.Hour)),
+		DayAgo:     ts(now.Add(-day)),
 	})
 	if err != nil {
 		return err
@@ -186,7 +188,7 @@ func (s *Service) reserve(ctx context.Context, value, ip, code string) error {
 // the caller's transaction when it wrote that event, because the caller is
 // about to roll it back to refuse the send.
 func (s *Service) overDailyCap(ctx context.Context, tx pgx.Tx, q *sqlc.Queries, c sqlc.SendCountsRow, now time.Time) error {
-	n, err := q.AuditDailyCap(ctx, ts(now))
+	n, err := q.AuditDailyCap(ctx, sqlc.AuditDailyCapParams{Now: ts(now), DayAgo: ts(now.Add(-day))})
 	if err != nil || n == 0 {
 		return err
 	}
@@ -196,7 +198,7 @@ func (s *Service) overDailyCap(ctx context.Context, tx pgx.Tx, q *sqlc.Queries, 
 // Check spends value's code if it matches; five tries kill it.
 func (s *Service) Check(ctx context.Context, value, code string) error {
 	q := sqlc.New(s.pool)
-	want, err := q.TryCode(ctx, sqlc.TryCodeParams{Identifier: value, Now: ts(s.now())})
+	want, err := q.TryCode(ctx, sqlc.TryCodeParams{Identifier: value, Now: ts(s.now()), MaxTries: maxTries})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrWrongCode
 	} else if err != nil {
@@ -215,7 +217,7 @@ func (s *Service) Check(ctx context.Context, value, code string) error {
 // DeleteExpired removes dead codes and day-old send counts; run by the
 // hourly cleanup.
 func DeleteExpired(ctx context.Context, pool *pgxpool.Pool) error {
-	return sqlc.New(pool).DeleteExpiredOTP(ctx)
+	return sqlc.New(pool).DeleteExpiredOTP(ctx, int32(day.Seconds()))
 }
 
 func ts(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: true} }

@@ -36,11 +36,16 @@ func (q *Queries) DeleteOldAudit(ctx context.Context) error {
 }
 
 const userLoginFailures = `-- name: UserLoginFailures :one
-SELECT count(*) FROM audit_log WHERE sub = $1::text AND event = 'login.failed' AND at > now() - interval '30 days'
+SELECT count(*) FROM audit_log WHERE sub = $1::text AND event = 'login.failed' AND at > now() - make_interval(days => $2::int)
 `
 
-func (q *Queries) UserLoginFailures(ctx context.Context, sub string) (int64, error) {
-	row := q.db.QueryRow(ctx, userLoginFailures, sub)
+type UserLoginFailuresParams struct {
+	Sub  string
+	Days int32
+}
+
+func (q *Queries) UserLoginFailures(ctx context.Context, arg UserLoginFailuresParams) (int64, error) {
+	row := q.db.QueryRow(ctx, userLoginFailures, arg.Sub, arg.Days)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -50,10 +55,16 @@ const userLogins = `-- name: UserLogins :many
 SELECT l.at, l.event, l.detail, COALESCE(a.name, l.detail->>'client_id', '')::text AS application
 FROM audit_log l LEFT JOIN applications a ON a.client_id = l.detail->>'client_id'
 WHERE l.sub = $1::text AND l.event IN ('login.succeeded', 'login.failed', 'login.password_locked')
-  AND l.at > now() - interval '30 days'
+  AND l.at > now() - make_interval(days => $2::int)
 ORDER BY l.at DESC, l.id DESC
-LIMIT 50
+LIMIT $3::int
 `
+
+type UserLoginsParams struct {
+	Sub  string
+	Days int32
+	Lim  int32
+}
 
 type UserLoginsRow struct {
 	At          pgtype.Timestamptz
@@ -62,10 +73,10 @@ type UserLoginsRow struct {
 	Application string
 }
 
-// The account center's 最近登录: the last 30 days, newest first, at most 50.
+// The account center's 最近登录: the last days, newest first, at most lim.
 // A deleted Application falls back to the client_id.
-func (q *Queries) UserLogins(ctx context.Context, sub string) ([]UserLoginsRow, error) {
-	rows, err := q.db.Query(ctx, userLogins, sub)
+func (q *Queries) UserLogins(ctx context.Context, arg UserLoginsParams) ([]UserLoginsRow, error) {
+	rows, err := q.db.Query(ctx, userLogins, arg.Sub, arg.Days, arg.Lim)
 	if err != nil {
 		return nil, err
 	}

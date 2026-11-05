@@ -30,14 +30,17 @@ type listLoginsOutput struct {
 	}
 }
 
+// The 最近登录 list: the last loginDays, at most loginsShown of them.
+const loginDays, loginsShown = 30, 50
+
 func (s *Service) listLogins(ctx context.Context, _ *struct{}) (*listLoginsOutput, error) {
 	sub := callerOf(ctx).sub
-	rows, err := s.q.UserLogins(ctx, sub)
+	rows, err := s.q.UserLogins(ctx, sqlc.UserLoginsParams{Sub: sub, Days: loginDays, Lim: loginsShown})
 	if err != nil {
 		return nil, err
 	}
 	out := &listLoginsOutput{}
-	if out.Body.FailedCount, err = s.q.UserLoginFailures(ctx, sub); err != nil {
+	if out.Body.FailedCount, err = s.q.UserLoginFailures(ctx, sqlc.UserLoginFailuresParams{Sub: sub, Days: loginDays}); err != nil {
 		return nil, err
 	}
 	out.Body.Logins = []Login{}

@@ -136,7 +136,7 @@ SELECT data FROM oidc_authn_sessions WHERE id = $1 AND expires_at > now();
 
 -- name: SaveChallengeSession :exec
 INSERT INTO oidc_challenge_sessions (hash, client_id, expires_at, data)
-VALUES ($1, $2, now() + interval '10 minutes', $3)
+VALUES (@hash, @client_id, now() + make_interval(secs => @ttl_secs::int), @data)
 ON CONFLICT (hash) DO UPDATE SET expires_at = EXCLUDED.expires_at, data = EXCLUDED.data;
 
 -- name: ChallengeSession :one

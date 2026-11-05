@@ -15,6 +15,7 @@ import (
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db/dbtest"
 	"github.com/zibyn/polaris/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/login"
 	"github.com/zibyn/polaris/internal/oidcstore"
 	"github.com/zibyn/polaris/internal/webhook"
 )
@@ -212,7 +213,7 @@ func TestExpiredSessionSendsNothing(t *testing.T) {
 			var err error
 			switch c.by {
 			case "cleanup":
-				err = q.DeleteOldSessions(ctx)
+				err = login.DeleteOldSessions(ctx, e.pool)
 			case "delete":
 				_, err = q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, ByID: "ADMIN", ByType: "user"})
 			case "disable":

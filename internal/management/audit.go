@@ -70,7 +70,7 @@ type overviewOutput struct {
 }
 
 func (s *Service) overview(ctx context.Context, _ *struct{}) (*overviewOutput, error) {
-	r, err := s.q.Overview(ctx)
+	r, err := s.q.Overview(ctx, int32((24 * time.Hour).Seconds()))
 	if err != nil {
 		return nil, err
 	}
