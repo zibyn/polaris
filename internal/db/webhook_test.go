@@ -64,18 +64,34 @@ var userEventCases = []struct {
 		return err
 	}, nil},
 
-	{"SetNickname", "new nickname", "UPDATE users SET nickname = 'A' WHERE id = 'ALICE'", func(ctx context.Context, q *sqlc.Queries) error {
-		_, err := q.SetNickname(ctx, sqlc.SetNicknameParams{UserID: "ALICE", Nickname: "B"})
+	{"SetProfile", "new nickname", "UPDATE users SET nickname = 'A' WHERE id = 'ALICE'", func(ctx context.Context, q *sqlc.Queries) error {
+		_, err := q.SetProfile(ctx, sqlc.SetProfileParams{UserID: "ALICE", SetNickname: true, Nickname: "B", Set: []byte("{}"), Clear: []string{}})
 		return err
 	}, []hook{updated("ALICE", "profile")}},
-	{"SetNickname", "same nickname", "UPDATE users SET nickname = 'A' WHERE id = 'ALICE'", func(ctx context.Context, q *sqlc.Queries) error {
-		_, err := q.SetNickname(ctx, sqlc.SetNicknameParams{UserID: "ALICE", Nickname: "A"})
+	{"SetProfile", "same nickname", "UPDATE users SET nickname = 'A' WHERE id = 'ALICE'", func(ctx context.Context, q *sqlc.Queries) error {
+		_, err := q.SetProfile(ctx, sqlc.SetProfileParams{UserID: "ALICE", SetNickname: true, Nickname: "A", Set: []byte("{}"), Clear: []string{}})
 		return err
 	}, nil},
-	{"SetNickname", "clear when none", "", func(ctx context.Context, q *sqlc.Queries) error {
-		_, err := q.SetNickname(ctx, sqlc.SetNicknameParams{UserID: "ALICE", Nickname: ""})
+	{"SetProfile", "clear when none", "", func(ctx context.Context, q *sqlc.Queries) error {
+		_, err := q.SetProfile(ctx, sqlc.SetProfileParams{UserID: "ALICE", SetNickname: true, Nickname: "", Set: []byte("{}"), Clear: []string{"name"}})
 		return err
 	}, nil},
+	{"SetProfile", "nickname left alone", "UPDATE users SET nickname = 'A' WHERE id = 'ALICE'", func(ctx context.Context, q *sqlc.Queries) error {
+		_, err := q.SetProfile(ctx, sqlc.SetProfileParams{UserID: "ALICE", Nickname: "", Set: []byte("{}"), Clear: []string{}})
+		return err
+	}, nil},
+	{"SetProfile", "new claim", "", func(ctx context.Context, q *sqlc.Queries) error {
+		_, err := q.SetProfile(ctx, sqlc.SetProfileParams{UserID: "ALICE", Set: []byte(`{"name":"Alice"}`), Clear: []string{}})
+		return err
+	}, []hook{updated("ALICE", "profile")}},
+	{"SetProfile", "same claim", `UPDATE users SET profile = '{"name":"Alice"}' WHERE id = 'ALICE'`, func(ctx context.Context, q *sqlc.Queries) error {
+		_, err := q.SetProfile(ctx, sqlc.SetProfileParams{UserID: "ALICE", Set: []byte(`{"name":"Alice"}`), Clear: []string{}})
+		return err
+	}, nil},
+	{"SetProfile", "claim cleared", `UPDATE users SET profile = '{"name":"Alice"}' WHERE id = 'ALICE'`, func(ctx context.Context, q *sqlc.Queries) error {
+		_, err := q.SetProfile(ctx, sqlc.SetProfileParams{UserID: "ALICE", Set: []byte("{}"), Clear: []string{"name"}})
+		return err
+	}, []hook{updated("ALICE", "profile")}},
 
 	{"SetAvatar", "new avatar", "", func(ctx context.Context, q *sqlc.Queries) error {
 		_, err := q.SetAvatar(ctx, sqlc.SetAvatarParams{UserID: "ALICE", Avatar: "k1"})

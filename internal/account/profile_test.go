@@ -17,8 +17,11 @@ import (
 )
 
 type profileBody struct {
-	Nickname string `json:"nickname"`
-	Picture  string `json:"picture"`
+	Nickname  string                    `json:"nickname"`
+	Picture   string                    `json:"picture"`
+	Name      string                    `json:"name"`
+	Address   struct{ Locality string } `json:"address"`
+	UpdatedAt int64                     `json:"updated_at"`
 }
 
 func pngOf(t *testing.T, w, h int) []byte {
@@ -172,6 +175,15 @@ func TestDirectAPIProfile(t *testing.T) {
 	}
 	if code := e.call("PATCH", app, "/v1/auth/profile", map[string]string{"nickname": strings.Repeat("x", 33)}, nil); code != 400 {
 		t.Errorf("long nickname: %d", code)
+	}
+	// The other fields change on their own, and the nickname stays.
+	body := map[string]any{"name": "Alice Liddell", "address": map[string]string{"locality": "Oxford"}}
+	if code := e.call("PATCH", app, "/v1/auth/profile", body, &p); code != 200 || p.Nickname != "Alice" || p.Name != "Alice Liddell" ||
+		p.Address.Locality != "Oxford" || p.UpdatedAt == 0 {
+		t.Errorf("set name and address: %d %+v", code, p)
+	}
+	if code := e.call("PATCH", app, "/v1/auth/profile", map[string]string{"website": "javascript:alert(1)"}, nil); code != 400 {
+		t.Errorf("javascript website: %d", code)
 	}
 	for _, bad := range []string{"", "garbage", e.token("BOB", nil)} {
 		if code := e.call("PATCH", bad, "/v1/auth/profile", map[string]string{"nickname": "Mallory"}, nil); code != 401 {

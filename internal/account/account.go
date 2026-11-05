@@ -113,7 +113,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 	op(api, http.MethodDelete, "remove-identifier", "/identifiers/{kind}", "Unbind the User's phone number or email", s.removeIdentifier, http.StatusForbidden)
 	op(api, http.MethodPut, "put-password", "/password", "Set or change the User's password", s.putPassword, http.StatusForbidden)
 	op(api, http.MethodDelete, "delete-account", "/me", "Delete the User's account and all their data, at once", s.deleteAccount, http.StatusForbidden, http.StatusConflict)
-	op(api, http.MethodPatch, "set-nickname", "/profile", "Set or clear the User's nickname; 400 for one refused", s.setNickname, http.StatusBadRequest)
+	op(api, http.MethodPatch, "set-profile", "/profile", "Set or clear the 用户资料 fields given; 400 for one refused", s.setProfile, http.StatusBadRequest)
 	huma.Register(api, huma.Operation{OperationID: "set-avatar", Method: http.MethodPut, Path: "/avatar",
 		Summary: "Upload the User's avatar: a JPEG, PNG or WebP of at most 5 MB, kept as a 512×512 JPEG; 400 for what is not one",
 		Errors:  []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusRequestEntityTooLarge}, MaxBodyBytes: profile.MaxAvatarBytes}, s.setAvatar)
@@ -218,10 +218,9 @@ type Identifier struct {
 
 type meOutput struct {
 	Body struct {
-		Sub             string       `json:"sub"`
-		CreatedAt       time.Time    `json:"createdAt"`
-		Nickname        string       `json:"nickname,omitempty"`
-		Picture         string       `json:"picture,omitempty" doc:"The avatar's URL"`
+		Sub       string    `json:"sub"`
+		CreatedAt time.Time `json:"createdAt"`
+		profile.Profile
 		Identifiers     []Identifier `json:"identifiers" nullable:"false"`
 		HasPassword     bool         `json:"hasPassword"`
 		PasswordAllowed bool         `json:"passwordAllowed" doc:"The password login setting lets this User sign in with, and set, a password"`
@@ -276,7 +275,7 @@ func (s *Service) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	b.Nickname, b.Picture = p.Nickname, p.Picture
+	b.Profile = p
 	if b.ExternalIdentities, err = s.externalIdentities(ctx, c.sub); err != nil {
 		return nil, err
 	}

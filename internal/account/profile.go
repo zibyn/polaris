@@ -15,16 +15,12 @@ import (
 	"github.com/zibyn/polaris/internal/profile"
 )
 
-// ProfilePath is the direct auth API's 用户资料, for Apps: PATCH sets the
-// nickname; PUT and DELETE on ProfilePath + "/avatar" upload and remove the
+// ProfilePath is the direct auth API's 用户资料, for Apps: PATCH changes
+// the fields it names; PUT and DELETE on ProfilePath + "/avatar" upload and remove the
 // avatar.
 const ProfilePath = "/v1/auth/profile"
 
-type nicknameInput struct {
-	Body struct {
-		Nickname string `json:"nickname" doc:"Trimmed; 1–32 characters with no control characters, or empty to clear it"`
-	}
-}
+type profileInput struct{ Body profile.Patch }
 
 type profileOutput struct{ Body profile.Profile }
 
@@ -33,9 +29,9 @@ func (s *Service) profileOf(ctx context.Context, sub string) (*profileOutput, er
 	return &profileOutput{Body: p}, err
 }
 
-func (s *Service) setNickname(ctx context.Context, in *nicknameInput) (*profileOutput, error) {
+func (s *Service) setProfile(ctx context.Context, in *profileInput) (*profileOutput, error) {
 	sub := callerOf(ctx).sub
-	if err := profileErr(s.profiles.SetNickname(ctx, sub, in.Body.Nickname, sub)); err != nil {
+	if err := profileErr(s.profiles.Update(ctx, sub, in.Body, sub)); err != nil {
 		return nil, err
 	}
 	return s.profileOf(ctx, sub)
@@ -61,7 +57,7 @@ func (s *Service) removeAvatar(ctx context.Context, _ *struct{}) (*profileOutput
 	return s.profileOf(ctx, sub)
 }
 
-// profileErr is 400 for a nickname or an avatar refused.
+// profileErr is 400 for a field or an avatar refused.
 func profileErr(err error) error {
 	var invalid profile.Invalid
 	if errors.As(err, &invalid) {
@@ -109,13 +105,11 @@ func (s *Service) registerDirectProfile(mux *http.ServeMux) {
 		}
 	}
 	mux.HandleFunc("PATCH "+ProfilePath, direct(func(r *http.Request, sub string) error {
-		var body struct {
-			Nickname *string `json:"nickname"`
+		var body profile.Patch
+		if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&body); err != nil {
+			return profile.Invalid("请求体须为 JSON 对象,如 {\"nickname\": \"...\"}")
 		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || body.Nickname == nil {
-			return profile.Invalid("请求体须为 {\"nickname\": \"...\"}")
-		}
-		return s.profiles.SetNickname(r.Context(), sub, *body.Nickname, sub)
+		return s.profiles.Update(r.Context(), sub, body, sub)
 	}))
 	mux.HandleFunc("PUT "+ProfilePath+"/avatar", direct(func(r *http.Request, sub string) error {
 		return s.profiles.SetAvatar(r.Context(), sub, r.Body, sub)

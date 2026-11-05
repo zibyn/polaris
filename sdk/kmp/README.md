@@ -113,7 +113,7 @@ val passkey = auth.addPasskey()                        // 系统弹出「创建 
 
 - 登出:`auth.signOut()`,离线也会清空本地令牌。
 - 注销(应用商店要求 App 内提供入口):二次确认后让 User 重新登录一次,再调 `auth.deleteAccount()`;超过 10 分钟未登录会抛 `PolarisException.REAUTHENTICATE`。
-- 用户资料:`auth.setNickname("小明")` 改昵称(空串清除),`auth.uploadAvatar(bytes)` 上传头像(JPEG/PNG/WebP,≤ 5 MB,服务端裁成 512×512),`auth.removeAvatar()` 移除;都返回当前的 `Profile`。要在 ID token 里拿到 `nickname`、`picture`,`PolarisConfig` 的 `scope` 加上 `profile`。
+- 用户资料:`auth.setNickname("小明")` 改昵称(空串清除),`auth.updateProfile(ProfilePatch(name = "王小明", address = Address(locality = "上海")))` 改其他标准字段(null 不改，空串清除),`auth.uploadAvatar(bytes)` 上传头像(JPEG/PNG/WebP,≤ 5 MB,服务端裁成 512×512),`auth.removeAvatar()` 移除;都返回当前的 `Profile`。要在 ID token 里拿到这些 claim,`PolarisConfig` 的 `scope` 加上 `profile`(地址另加 `address`)。
 
 ### 自动填充验证码
 

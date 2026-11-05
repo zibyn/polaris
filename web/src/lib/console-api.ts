@@ -1,6 +1,7 @@
 // The console signs in as the built-in public Application with code + PKCE
 // and keeps the access token for this tab only; see oidc.ts.
 
+import type { ProfileClaims } from "#/components/profile-details";
 import { oidcClient } from "#/lib/oidc";
 
 export { APIError } from "#/lib/oidc";
@@ -31,15 +32,16 @@ export type Invite = {
 	state: "none" | "sent" | "accepted";
 	expiresAt?: string;
 };
-export type UserDetail = User & {
-	nickname?: string;
-	// The avatar's URL.
-	picture?: string;
-	hasPassword: boolean;
-	twoFactor: boolean;
-	twoFactorOrPasskey: boolean;
-	invite: Invite;
-};
+export type UserDetail = User &
+	ProfileClaims & {
+		nickname?: string;
+		// The avatar's URL.
+		picture?: string;
+		hasPassword: boolean;
+		twoFactor: boolean;
+		twoFactorOrPasskey: boolean;
+		invite: Invite;
+	};
 export type RoleInfo = Role & { apiName: string; builtin: boolean };
 export type Me = { sub: string; identifier: string; permissions: string[] };
 export type Session = {

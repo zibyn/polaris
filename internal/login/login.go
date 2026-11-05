@@ -11,6 +11,7 @@ import (
 	"crypto/subtle"
 	"embed"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"html/template"
 	"log/slog"
@@ -129,7 +130,8 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 	}
 	store := oidcstore.New(pool, keyring)
 	s.store = store
-	store.Scopes = strings.Join([]string{goidc.ScopeOpenID.ID, goidc.ScopeOfflineAccess.ID, goidc.ScopePhone.ID, goidc.ScopeEmail.ID, goidc.ScopeProfile.ID}, " ")
+	store.Scopes = strings.Join([]string{goidc.ScopeOpenID.ID, goidc.ScopeOfflineAccess.ID, goidc.ScopePhone.ID, goidc.ScopeEmail.ID,
+		goidc.ScopeProfile.ID, goidc.ScopeAddress.ID}, " ")
 	op, err := oidcop.New(
 		oidcop.Config{
 			Issuer:      issuer,
@@ -137,9 +139,12 @@ func New(ctx context.Context, pool *pgxpool.Pool, keyring *crypt.Keyring, issuer
 			JWKS:        oidcstore.NewKeys(pool, keyring).JWKS,
 			IDTokenAlgs: []goidc.SignatureAlgorithm{goidc.SigAlgRS256},
 		},
-		oidcop.WithScopes(goidc.ScopeOpenID, goidc.ScopeOfflineAccess, goidc.ScopePhone, goidc.ScopeEmail, goidc.ScopeProfile),
+		oidcop.WithScopes(goidc.ScopeOpenID, goidc.ScopeOfflineAccess, goidc.ScopePhone, goidc.ScopeEmail, goidc.ScopeProfile,
+			goidc.ScopeAddress),
 		oidcop.WithClaims(goidc.ClaimPhoneNumber, goidc.ClaimPhoneNumberVerified, goidc.ClaimEmail, goidc.ClaimEmailVerified,
-			goidc.ClaimNickname, goidc.ClaimPicture),
+			goidc.ClaimName, goidc.ClaimGivenName, goidc.ClaimFamilyName, goidc.ClaimMiddleName, goidc.ClaimNickname,
+			goidc.ClaimPreferredUsername, goidc.ClaimProfile, goidc.ClaimPicture, goidc.ClaimWebsite, goidc.ClaimGender,
+			goidc.ClaimBirthdate, goidc.ClaimZoneInfo, goidc.ClaimLocale, goidc.ClaimUpdatedAt, goidc.ClaimAddress),
 		oidcop.WithNoneAuthn(),
 		oidcop.WithSecretBasicAuthn(),
 		oidcop.WithSecretPostAuthn(),
@@ -849,8 +854,9 @@ func deviceContext(r *http.Request) context.Context {
 	return oidcstore.WithDevice(r.Context(), identity.ClientIP(r), r.UserAgent())
 }
 
-// userClaims are the phone, email and profile claims the grant's scopes
-// ask for.
+// userClaims are the phone, email, profile and address claims the grant's
+// scopes ask for, each only when it has a value; the username Identifier is
+// the profile's preferred_username.
 func (s *Service) userClaims(ctx context.Context, g *goidc.Grant) map[string]any {
 	claims := map[string]any{}
 	scopes := strings.Fields(g.Scopes)
@@ -865,19 +871,27 @@ func (s *Service) userClaims(ctx context.Context, g *goidc.Grant) map[string]any
 			claims[goidc.ClaimPhoneNumber], claims[goidc.ClaimPhoneNumberVerified] = id.Value, true
 		case id.Kind == "email" && slices.Contains(scopes, goidc.ScopeEmail.ID):
 			claims[goidc.ClaimEmail], claims[goidc.ClaimEmailVerified] = id.Value, true
+		case id.Kind == "username" && slices.Contains(scopes, goidc.ScopeProfile.ID):
+			claims[goidc.ClaimPreferredUsername] = id.Value
 		}
 	}
-	if slices.Contains(scopes, goidc.ScopeProfile.ID) {
-		p, err := s.profiles.Get(ctx, g.Subject)
-		if err != nil {
-			slog.Error("user claims: profile", "err", err)
-		}
-		if p.Nickname != "" {
-			claims[goidc.ClaimNickname] = p.Nickname
-		}
-		if p.Picture != "" {
-			claims[goidc.ClaimPicture] = p.Picture
-		}
+	profileScope, addressScope := slices.Contains(scopes, goidc.ScopeProfile.ID), slices.Contains(scopes, goidc.ScopeAddress.ID)
+	if !profileScope && !addressScope {
+		return claims
+	}
+	p, err := s.profiles.Get(ctx, g.Subject)
+	if err != nil {
+		slog.Error("user claims: profile", "err", err)
+		return claims
+	}
+	if addressScope && p.Address != nil {
+		claims[goidc.ClaimAddress] = p.Address
+	}
+	if profileScope {
+		p.Address = nil
+		// Profile is named as the claims are: send its fields as they are.
+		b, _ := json.Marshal(p)
+		_ = json.Unmarshal(b, &claims)
 	}
 	return claims
 }

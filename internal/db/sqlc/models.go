@@ -319,13 +319,15 @@ type TotpCredential struct {
 }
 
 type User struct {
-	ID         string
-	CreatedAt  pgtype.Timestamptz
-	DisabledAt pgtype.Timestamptz
-	Status     string
-	Pending    bool
-	Nickname   pgtype.Text
-	Avatar     pgtype.Text
+	ID               string
+	CreatedAt        pgtype.Timestamptz
+	DisabledAt       pgtype.Timestamptz
+	Status           string
+	Pending          bool
+	Nickname         pgtype.Text
+	Avatar           pgtype.Text
+	Profile          []byte
+	ProfileUpdatedAt pgtype.Timestamptz
 }
 
 type UserRole struct {

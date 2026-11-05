@@ -52,7 +52,7 @@ func TestEveryWriteIsAudited(t *testing.T) {
 		{op: "enable-user", call: call("POST", "/users/ALICE/enable", nil), event: "user.enabled"},
 		{op: "reset-two-factor", setup: func() { e.twoFactorOn("ALICE") }, call: call("DELETE", "/users/ALICE/2fa", nil), event: "mfa.reset"},
 		{op: "replace-identifier", call: call("PUT", "/users/ALICE/identifiers/username", map[string]string{"value": "alice"}), event: "identifier.replaced"},
-		{op: "set-user-nickname", call: call("PATCH", "/users/ALICE/profile", map[string]string{"nickname": "A"}), event: "user.profile_updated"},
+		{op: "set-user-profile", call: call("PATCH", "/users/ALICE/profile", map[string]string{"nickname": "A"}), event: "user.profile_updated"},
 		{op: "remove-user-avatar", setup: func() { e.avatar("ALICE") }, call: call("DELETE", "/users/ALICE/avatar", nil), event: "user.avatar_removed"},
 		{op: "remove-user-passkey", call: func() int {
 			return e.call("DELETE", owner, "/users/ALICE/passkeys/"+e.passkey("ALICE", "k", false), nil, nil)

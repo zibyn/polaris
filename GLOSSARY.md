@@ -89,7 +89,7 @@ User 用来登录的手机号、邮箱或用户名,在用户池内唯一;手机�
 _Avoid_: 账号, 用户名, 联系方式
 
 **用户资料**(Profile):
-User 对外展示的昵称和头像,跨所有 Application 是同一份;不唯一、不验证、不能用来登录。昵称不是用户名:用户名是 Identifier。
+User 对外展示的昵称、头像和详细资料(姓名、性别、生日、网站、时区、语言、地址等 OIDC 标准 claim),跨所有 Application 是同一份;不唯一、不验证、不能用来登录。昵称不是用户名:用户名是 Identifier。
 _Avoid_: 个人信息, 身份, 用户名
 
 **External Identity**:

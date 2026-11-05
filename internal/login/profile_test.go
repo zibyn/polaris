@@ -51,17 +51,26 @@ func TestProfileClaims(t *testing.T) {
 
 	ctx := context.Background()
 	profiles := profile.New(e.pool, e.issuer)
-	if err := profiles.SetNickname(ctx, sub, " 小明 ", sub); err != nil {
+	nickname, name, city := " 小明 ", "王小明", "上海"
+	if err := profiles.Update(ctx, sub, profile.Patch{Nickname: &nickname, Name: &name, Address: &profile.Address{Locality: city}}, sub); err != nil {
 		t.Fatal(err)
 	}
 	if err := profiles.SetAvatar(ctx, sub, bytes.NewReader(pngBytes(t)), sub); err != nil {
 		t.Fatal(err)
 	}
 	id, info = login("openid+profile")
-	for name, claims := range map[string]map[string]any{"id token": id, "userinfo": info} {
+	for what, claims := range map[string]map[string]any{"id token": id, "userinfo": info} {
 		pic, _ := claims["picture"].(string)
-		if claims["nickname"] != "小明" || !strings.HasPrefix(pic, e.issuer+"/avatars/") || claims["name"] != nil {
-			t.Errorf("%s: %v", name, claims)
+		if claims["nickname"] != "小明" || !strings.HasPrefix(pic, e.issuer+"/avatars/") || claims["name"] != "王小明" ||
+			claims["updated_at"] == nil || claims["address"] != nil || claims["given_name"] != nil {
+			t.Errorf("%s: %v", what, claims)
+		}
+	}
+	// address is its own scope.
+	addrID, addrInfo := login("openid+address")
+	for what, claims := range map[string]map[string]any{"id token": addrID, "userinfo": addrInfo} {
+		if a, _ := claims["address"].(map[string]any); a["locality"] != "上海" || len(a) != 1 || claims["name"] != nil {
+			t.Errorf("%s: %v", what, claims)
 		}
 	}
 	// The picture is served to anyone, as a JPEG cached for good.
@@ -83,6 +92,27 @@ func TestProfileClaims(t *testing.T) {
 	}
 }
 
+// The username Identifier is preferred_username, under the profile scope only.
+func TestPreferredUsername(t *testing.T) {
+	e := start(t)
+	e.bootstrap("owner", "password1")
+	login := func(scope string) (idToken, userinfo map[string]any) {
+		e.newBrowser()
+		_, page := e.authorize("&scope=" + scope)
+		resp, _ := e.submit(page, "owner", "password1")
+		tok := e.exchange(clientID, callback, e.code(resp))
+		return e.claims(tok.IDToken), e.userinfo(tok.AccessToken)
+	}
+	id, info := login("openid+profile")
+	if id["preferred_username"] != "owner" || info["preferred_username"] != "owner" {
+		t.Errorf("with profile: %v %v", id, info)
+	}
+	id, info = login("openid")
+	if id["preferred_username"] != nil || info["preferred_username"] != nil {
+		t.Errorf("without profile: %v %v", id, info)
+	}
+}
+
 func TestDiscoveryListsProfile(t *testing.T) {
 	e := start(t)
 	_, body := e.do("GET", "/.well-known/openid-configuration", nil)
@@ -93,7 +123,9 @@ func TestDiscoveryListsProfile(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &meta); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(meta.Scopes, "profile") || !slices.Contains(meta.Claims, "nickname") || !slices.Contains(meta.Claims, "picture") {
+	if !slices.Contains(meta.Scopes, "profile") || !slices.Contains(meta.Claims, "nickname") || !slices.Contains(meta.Claims, "picture") ||
+		!slices.Contains(meta.Claims, "preferred_username") || !slices.Contains(meta.Scopes, "address") ||
+		!slices.Contains(meta.Claims, "address") || !slices.Contains(meta.Claims, "updated_at") {
 		t.Errorf("discovery: %+v", meta)
 	}
 }

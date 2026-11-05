@@ -1,5 +1,5 @@
-// Package profile is the User's 用户资料: a nickname and an avatar (ADR
-// 0020). The avatar is re-encoded here, kept in the blob store and served at
+// Package profile is the User's 用户资料: a nickname, an avatar (ADR 0020)
+// and the other OIDC standard profile and address claims (ADR 0029). The avatar is re-encoded here, kept in the blob store and served at
 // /avatars/{key}. 用户资料 is not identity (ADR 0018): nothing here guards
 // how a User signs in.
 package profile
@@ -10,12 +10,16 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
+	"time"
+	_ "time/tzdata" // zoneinfo is checked against it wherever Polaris runs
 	"unicode"
 	"unicode/utf8"
 
@@ -24,6 +28,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/image/draw"
 	"golang.org/x/image/webp"
+	"golang.org/x/text/language"
 
 	"github.com/zibyn/polaris/internal/blob"
 	"github.com/zibyn/polaris/internal/db/sqlc"
@@ -35,10 +40,8 @@ type Invalid string
 func (e Invalid) Error() string { return string(e) }
 
 const (
-	ErrNicknameTooLong Invalid = "昵称最多 32 个字符"
-	ErrNicknameControl Invalid = "昵称不能含控制字符"
-	ErrNotImage        Invalid = "头像须为 JPEG、PNG 或 WebP 图片"
-	ErrImageTooLarge   Invalid = "头像不能超过 5 MB"
+	ErrNotImage      Invalid = "头像须为 JPEG、PNG 或 WebP 图片"
+	ErrImageTooLarge Invalid = "头像不能超过 5 MB"
 )
 
 // ErrNoUser is a sub with no User.
@@ -59,21 +62,73 @@ const keyPrefix = "avatar/"
 
 // CheckNickname trims a nickname and checks it: at most 32 characters, no
 // control characters. "" clears it.
-func CheckNickname(s string) (string, error) {
+func CheckNickname(s string) (string, error) { return checkText("昵称", s, 32, false) }
+
+// checkText trims s and checks it: at most max characters, no control
+// characters but, when multiline, line breaks (kept as \n).
+func checkText(label, s string, max int, multiline bool) (string, error) {
 	s = strings.TrimSpace(s)
-	if utf8.RuneCountInString(s) > 32 {
-		return "", ErrNicknameTooLong
+	if multiline {
+		s = strings.ReplaceAll(s, "\r\n", "\n")
 	}
-	if strings.IndexFunc(s, unicode.IsControl) >= 0 {
-		return "", ErrNicknameControl
+	if utf8.RuneCountInString(s) > max {
+		return "", Invalid(fmt.Sprintf("%s最多 %d 个字符", label, max))
+	}
+	if strings.IndexFunc(s, func(r rune) bool { return unicode.IsControl(r) && !(multiline && r == '\n') }) >= 0 {
+		return "", Invalid(label + "不能含控制字符")
 	}
 	return s, nil
 }
 
-// Profile is the User's 用户资料 as Applications see it; empty for unset.
+// Address is the address claim (OIDC Core 5.1.1); empty for unset.
+type Address struct {
+	Formatted     string `json:"formatted,omitempty" doc:"The full address to display; may hold line breaks"`
+	StreetAddress string `json:"street_address,omitempty" doc:"Street, house number, apartment; may hold line breaks"`
+	Locality      string `json:"locality,omitempty" doc:"City"`
+	Region        string `json:"region,omitempty" doc:"State, province or prefecture"`
+	PostalCode    string `json:"postal_code,omitempty"`
+	Country       string `json:"country,omitempty" doc:"Country name or code"`
+}
+
+// Claims are the standard claims kept as they are sent: every profile claim
+// but nickname, picture, preferred_username and updated_at, plus address.
+type Claims struct {
+	Name       string   `json:"name,omitempty" doc:"Full name, as the User wants it shown"`
+	GivenName  string   `json:"given_name,omitempty"`
+	FamilyName string   `json:"family_name,omitempty"`
+	MiddleName string   `json:"middle_name,omitempty"`
+	Profile    string   `json:"profile,omitempty" doc:"Profile page URL, http(s)"`
+	Website    string   `json:"website,omitempty" doc:"Web page or blog URL, http(s)"`
+	Gender     string   `json:"gender,omitempty" doc:"female, male, or anything else the User says"`
+	Birthdate  string   `json:"birthdate,omitempty" doc:"YYYY-MM-DD, 0000-MM-DD without the year, or YYYY alone"`
+	Zoneinfo   string   `json:"zoneinfo,omitempty" doc:"IANA time zone, such as Asia/Shanghai"`
+	Locale     string   `json:"locale,omitempty" doc:"BCP 47 language tag, such as zh-CN"`
+	Address    *Address `json:"address,omitempty"`
+}
+
+// Profile is the User's 用户资料 as Applications see it, named as the OIDC
+// claims are; empty for unset.
 type Profile struct {
 	Nickname string `json:"nickname,omitempty"`
 	Picture  string `json:"picture,omitempty" doc:"Avatar URL: a 512×512 JPEG; it changes with every upload"`
+	Claims
+	UpdatedAt int64 `json:"updated_at,omitempty" doc:"When 用户资料 last changed, in Unix seconds; absent if it never has"`
+}
+
+// Patch changes 用户资料: a field left out stays, "" clears it.
+type Patch struct {
+	Nickname   *string  `json:"nickname,omitempty" doc:"Trimmed; at most 32 characters with no control characters"`
+	Name       *string  `json:"name,omitempty" doc:"At most 64 characters"`
+	GivenName  *string  `json:"given_name,omitempty" doc:"At most 64 characters"`
+	FamilyName *string  `json:"family_name,omitempty" doc:"At most 64 characters"`
+	MiddleName *string  `json:"middle_name,omitempty" doc:"At most 64 characters"`
+	Profile    *string  `json:"profile,omitempty" doc:"http(s) URL"`
+	Website    *string  `json:"website,omitempty" doc:"http(s) URL"`
+	Gender     *string  `json:"gender,omitempty" doc:"female, male, or anything else; at most 32 characters"`
+	Birthdate  *string  `json:"birthdate,omitempty" doc:"YYYY-MM-DD, 0000-MM-DD or YYYY"`
+	Zoneinfo   *string  `json:"zoneinfo,omitempty" doc:"IANA time zone"`
+	Locale     *string  `json:"locale,omitempty" doc:"BCP 47 language tag"`
+	Address    *Address `json:"address,omitempty" doc:"Replaces the whole address; {} clears it"`
 }
 
 type Store struct {
@@ -91,8 +146,14 @@ func (s *Store) Get(ctx context.Context, sub string) (Profile, error) {
 	r, err := s.q.UserProfile(ctx, sub)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Profile{}, ErrNoUser
+	} else if err != nil {
+		return Profile{}, err
 	}
-	return Profile{Nickname: r.Nickname, Picture: s.Picture(r.Avatar)}, err
+	p := Profile{Nickname: r.Nickname, Picture: s.Picture(r.Avatar)}
+	if r.ProfileUpdatedAt.Valid {
+		p.UpdatedAt = r.ProfileUpdatedAt.Time.Unix()
+	}
+	return p, json.Unmarshal(r.Profile, &p.Claims)
 }
 
 // Picture is the URL of the avatar under key, "" for none.
@@ -103,21 +164,157 @@ func (s *Store) Picture(key string) string {
 	return s.issuer + "/avatars/" + strings.TrimPrefix(key, keyPrefix)
 }
 
-// SetNickname checks and sets the User's nickname; audited as done by by.
-func (s *Store) SetNickname(ctx context.Context, sub, nickname, by string) error {
-	nickname, err := CheckNickname(nickname)
+// Update checks p and applies it; audited as done by by.
+func (s *Store) Update(ctx context.Context, sub string, p Patch, by string) error {
+	arg, err := p.params()
 	if err != nil {
 		return err
 	}
+	arg.UserID = sub
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if n, err := q.SetNickname(ctx, sqlc.SetNicknameParams{UserID: sub, Nickname: nickname}); err != nil {
+		if n, err := q.SetProfile(ctx, arg); err != nil {
 			return err
 		} else if n == 0 {
 			return ErrNoUser
 		}
 		return audit(ctx, q, "user.profile_updated", sub, by)
 	})
+}
+
+// params checks every field p sets and sorts them into the claims to set
+// and the ones to clear.
+func (p Patch) params() (sqlc.SetProfileParams, error) {
+	arg := sqlc.SetProfileParams{Clear: []string{}}
+	if p.Nickname != nil {
+		n, err := CheckNickname(*p.Nickname)
+		if err != nil {
+			return arg, err
+		}
+		arg.SetNickname, arg.Nickname = true, n
+	}
+	set := map[string]any{}
+	put := func(key string, v any, empty bool) {
+		if empty {
+			arg.Clear = append(arg.Clear, key)
+		} else {
+			set[key] = v
+		}
+	}
+	for _, f := range []struct {
+		key, label string
+		v          *string
+		check      func(label, s string) (string, error)
+	}{
+		{"name", "姓名", p.Name, text(64)},
+		{"given_name", "名", p.GivenName, text(64)},
+		{"family_name", "姓", p.FamilyName, text(64)},
+		{"middle_name", "中间名", p.MiddleName, text(64)},
+		{"profile", "个人主页", p.Profile, checkURL},
+		{"website", "网站", p.Website, checkURL},
+		{"gender", "性别", p.Gender, text(32)},
+		{"birthdate", "生日", p.Birthdate, checkBirthdate},
+		{"zoneinfo", "时区", p.Zoneinfo, checkZoneinfo},
+		{"locale", "语言", p.Locale, checkLocale},
+	} {
+		if f.v == nil {
+			continue
+		}
+		v, err := f.check(f.label, *f.v)
+		if err != nil {
+			return arg, err
+		}
+		put(f.key, v, v == "")
+	}
+	if a := p.Address; a != nil {
+		var err error
+		for _, f := range []struct {
+			label     string
+			v         *string
+			max       int
+			multiline bool
+		}{
+			{"完整地址", &a.Formatted, 256, true},
+			{"街道地址", &a.StreetAddress, 256, true},
+			{"城市", &a.Locality, 64, false},
+			{"省/州", &a.Region, 64, false},
+			{"邮编", &a.PostalCode, 16, false},
+			{"国家/地区", &a.Country, 64, false},
+		} {
+			if *f.v, err = checkText(f.label, *f.v, f.max, f.multiline); err != nil {
+				return arg, err
+			}
+		}
+		put("address", a, *a == Address{})
+	}
+	var err error
+	arg.Set, err = json.Marshal(set)
+	return arg, err
+}
+
+func text(max int) func(label, s string) (string, error) {
+	return func(label, s string) (string, error) { return checkText(label, s, max, false) }
+}
+
+// checkURL takes an absolute http(s) URL: Applications show it as a link.
+func checkURL(label, s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	u, err := url.Parse(s)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || len(s) > 2048 ||
+		strings.IndexFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
+		return "", Invalid(label + "须为 http(s) 地址")
+	}
+	return s, nil
+}
+
+// checkBirthdate takes YYYY-MM-DD, 0000-MM-DD (the year withheld) or YYYY
+// (the year alone), as OIDC Core 5.1 has it.
+func checkBirthdate(label, s string) (string, error) {
+	s = strings.TrimSpace(s)
+	bad := Invalid(label + "须为 YYYY-MM-DD、0000-MM-DD 或 YYYY")
+	switch {
+	case s == "":
+		return "", nil
+	case len(s) == 4:
+		if _, err := time.Parse("2006", s); err != nil || s == "0000" {
+			return "", bad
+		}
+	case len(s) == 10:
+		// 2000 is a leap year, so 0000-02-29 passes.
+		if _, err := time.Parse(time.DateOnly, strings.Replace(s, "0000-", "2000-", 1)); err != nil {
+			return "", bad
+		}
+	default:
+		return "", bad
+	}
+	return s, nil
+}
+
+func checkZoneinfo(label, s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	if _, err := time.LoadLocation(s); err != nil || s == "Local" {
+		return "", Invalid(label + "须为 IANA 时区,如 Asia/Shanghai")
+	}
+	return s, nil
+}
+
+// checkLocale takes a BCP 47 tag and keeps it in its canonical form.
+func checkLocale(label, s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	tag, err := language.Parse(s)
+	if err != nil || tag == language.Und {
+		return "", Invalid(label + "须为 BCP 47 语言标签,如 zh-CN")
+	}
+	return tag.String(), nil
 }
 
 // SetAvatar takes an uploaded image, crops it to the centre square, and

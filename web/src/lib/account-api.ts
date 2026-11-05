@@ -1,6 +1,7 @@
 // The account center signs in as its built-in Application and calls the
 // Account API; see oidc.ts.
 
+import type { ProfileClaims } from "#/components/profile-details";
 import { oidcClient } from "#/lib/oidc";
 
 export { APIError } from "#/lib/oidc";
@@ -15,7 +16,7 @@ export type Identifier = {
 	kind: "phone" | "email" | "username";
 	value: string;
 };
-export type Me = {
+export type Me = ProfileClaims & {
 	sub: string;
 	createdAt: string;
 	nickname?: string;
@@ -58,7 +59,7 @@ export type Session = {
 	active: boolean;
 	current: boolean;
 };
-export type Profile = { nickname?: string; picture?: string };
+export type Profile = ProfileClaims & { nickname?: string; picture?: string };
 // One row of 最近登录; the server normalizes method.
 export type Login = {
 	at: string;

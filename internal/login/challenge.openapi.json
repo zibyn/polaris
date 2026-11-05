@@ -103,9 +103,9 @@
     },
     "/v1/auth/profile": {
       "patch": {
-        "operationId": "set-nickname",
-        "summary": "Set or clear the signed-in User's nickname",
-        "description": "The App's own access token changes the User it was issued to, while its Session lives. The nickname is trimmed; 1–32 characters with no control characters, or empty to clear it. It is not unique and not a username. Applications see it as the nickname claim under the profile scope.",
+        "operationId": "set-profile",
+        "summary": "Set or clear fields of the signed-in User's 用户资料",
+        "description": "The App's own access token changes the User it was issued to, while its Session lives. Only the fields in the body change; an empty string clears one, and address replaces the whole address ({} clears it). Fields are named and sent to Applications as the OIDC standard claims: address under the address scope, the rest under the profile scope. 用户资料 is not unique and not used to sign in; nickname is not a username.",
         "security": [
           {
             "bearer": []
@@ -116,15 +116,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": [
-                  "nickname"
-                ],
-                "properties": {
-                  "nickname": {
-                    "type": "string"
-                  }
-                }
+                "$ref": "#/components/schemas/ProfilePatch"
               }
             }
           }
@@ -246,15 +238,159 @@
     "schemas": {
       "Profile": {
         "type": "object",
+        "description": "Every field is absent when unset.",
         "properties": {
           "nickname": {
-            "type": "string",
-            "description": "Absent when unset."
+            "type": "string"
           },
           "picture": {
             "type": "string",
             "format": "uri",
-            "description": "The avatar: a 512×512 JPEG at issuer/avatars/{key}, public and cached for good; it changes with every upload. Absent when unset."
+            "description": "The avatar: a 512×512 JPEG at issuer/avatars/{key}, public and cached for good; it changes with every upload."
+          },
+          "name": {
+            "type": "string"
+          },
+          "given_name": {
+            "type": "string"
+          },
+          "family_name": {
+            "type": "string"
+          },
+          "middle_name": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "website": {
+            "type": "string"
+          },
+          "gender": {
+            "type": "string"
+          },
+          "birthdate": {
+            "type": "string"
+          },
+          "zoneinfo": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "address": {
+            "type": "object",
+            "description": "The address claim (OIDC Core 5.1.1).",
+            "properties": {
+              "formatted": {
+                "type": "string",
+                "description": "The full address to display; may hold line breaks; at most 256 characters."
+              },
+              "street_address": {
+                "type": "string",
+                "description": "Street, house number, apartment; may hold line breaks; at most 256 characters."
+              },
+              "locality": {
+                "type": "string",
+                "description": "City; at most 64 characters."
+              },
+              "region": {
+                "type": "string",
+                "description": "State, province or prefecture; at most 64 characters."
+              },
+              "postal_code": {
+                "type": "string",
+                "description": "At most 16 characters."
+              },
+              "country": {
+                "type": "string",
+                "description": "Country name or code; at most 64 characters."
+              }
+            }
+          },
+          "updated_at": {
+            "type": "integer",
+            "description": "When 用户资料 last changed, in Unix seconds."
+          }
+        }
+      },
+      "ProfilePatch": {
+        "type": "object",
+        "description": "Fields left out stay as they are; an empty string clears one. Strings are trimmed and may not hold control characters.",
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "description": "At most 32 characters."
+          },
+          "name": {
+            "type": "string",
+            "description": "Full name, as the User wants it shown; at most 64 characters."
+          },
+          "given_name": {
+            "type": "string",
+            "description": "At most 64 characters."
+          },
+          "family_name": {
+            "type": "string",
+            "description": "At most 64 characters."
+          },
+          "middle_name": {
+            "type": "string",
+            "description": "At most 64 characters."
+          },
+          "profile": {
+            "type": "string",
+            "description": "Profile page: an http(s) URL."
+          },
+          "website": {
+            "type": "string",
+            "description": "Web page or blog: an http(s) URL."
+          },
+          "gender": {
+            "type": "string",
+            "description": "female, male, or anything else; at most 32 characters."
+          },
+          "birthdate": {
+            "type": "string",
+            "description": "YYYY-MM-DD, 0000-MM-DD without the year, or YYYY alone."
+          },
+          "zoneinfo": {
+            "type": "string",
+            "description": "IANA time zone, such as Asia/Shanghai."
+          },
+          "locale": {
+            "type": "string",
+            "description": "BCP 47 language tag, such as zh-CN; kept in its canonical form."
+          },
+          "address": {
+            "type": "object",
+            "description": "Replaces the whole address; {} clears it.",
+            "properties": {
+              "formatted": {
+                "type": "string",
+                "description": "The full address to display; may hold line breaks; at most 256 characters."
+              },
+              "street_address": {
+                "type": "string",
+                "description": "Street, house number, apartment; may hold line breaks; at most 256 characters."
+              },
+              "locality": {
+                "type": "string",
+                "description": "City; at most 64 characters."
+              },
+              "region": {
+                "type": "string",
+                "description": "State, province or prefecture; at most 64 characters."
+              },
+              "postal_code": {
+                "type": "string",
+                "description": "At most 16 characters."
+              },
+              "country": {
+                "type": "string",
+                "description": "Country name or code; at most 64 characters."
+              }
+            }
           }
         }
       },

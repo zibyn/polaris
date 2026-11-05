@@ -299,6 +299,21 @@ class PolarisTest {
   }
 
   @Test
+  fun updateProfileSendsOnlyTheFieldsSet() = runTest {
+    server.store.value = stored()
+    server.handlers["/v1/auth/profile"] = {
+      json("""{"name":"王小明","address":{"locality":"上海"},"updated_at":1730000000}""")
+    }
+    val auth = server.auth()
+    val p = auth.updateProfile(ProfilePatch(name = "王小明", website = "", address = Address(locality = "上海")))
+    assertEquals(Profile(name = "王小明", address = Address(locality = "上海"), updatedAt = 1730000000), p)
+    assertEquals(
+      """{"name":"王小明","website":"","address":{"locality":"上海"}}""",
+      server.bodies.last { it.first == "/v1/auth/profile" }.second,
+    )
+  }
+
+  @Test
   fun profileCallsSignOutOnceTheSessionIsGone() = runTest {
     server.store.value = stored()
     server.handlers["/v1/auth/profile/avatar"] = { respond("", HttpStatusCode.Unauthorized) }

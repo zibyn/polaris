@@ -172,18 +172,16 @@ func (s *Service) deleteUser(ctx context.Context, in *subPath) (*struct{}, error
 	})
 }
 
-type setNicknameInput struct {
+type setProfileInput struct {
 	Sub  string `path:"sub"`
-	Body struct {
-		Nickname string `json:"nickname" doc:"Trimmed; 1–32 characters with no control characters, or empty to clear it"`
-	}
+	Body profile.Patch
 }
 
-func (s *Service) setNickname(ctx context.Context, in *setNicknameInput) (*struct{}, error) {
+func (s *Service) setProfile(ctx context.Context, in *setProfileInput) (*struct{}, error) {
 	if err := s.mayManage(ctx, in.Sub); err != nil {
 		return nil, err
 	}
-	err := s.profiles.SetNickname(ctx, in.Sub, in.Body.Nickname, callerSub(ctx))
+	err := s.profiles.Update(ctx, in.Sub, in.Body, callerSub(ctx))
 	var invalid profile.Invalid
 	if errors.As(err, &invalid) {
 		return nil, huma.Error400BadRequest(invalid.Error())

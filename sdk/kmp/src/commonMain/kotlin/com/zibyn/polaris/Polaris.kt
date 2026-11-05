@@ -63,12 +63,68 @@ public data class Tokens(
 /** What the terms checkbox links to, and the version to sign in with once it is ticked. */
 public data class Terms(val termsUrl: String, val privacyUrl: String, val version: String)
 
-/** The User's 用户资料, as every Application sees it; null for unset. */
+/**
+ * The User's 用户资料, as every Application sees it, named as the OIDC
+ * standard claims are; null for unset.
+ */
 @Serializable
 public data class Profile(
   val nickname: String? = null,
   /** The avatar's URL: a 512×512 JPEG, a new URL after every upload. */
   val picture: String? = null,
+  val name: String? = null,
+  @SerialName("given_name") val givenName: String? = null,
+  @SerialName("family_name") val familyName: String? = null,
+  @SerialName("middle_name") val middleName: String? = null,
+  /** Profile page URL. */
+  val profile: String? = null,
+  val website: String? = null,
+  /** `female`, `male`, or anything else the User says. */
+  val gender: String? = null,
+  /** `YYYY-MM-DD`, `0000-MM-DD` without the year, or `YYYY` alone. */
+  val birthdate: String? = null,
+  /** IANA time zone, such as `Asia/Shanghai`. */
+  val zoneinfo: String? = null,
+  /** BCP 47 language tag, such as `zh-CN`. */
+  val locale: String? = null,
+  val address: Address? = null,
+  /** When 用户资料 last changed, in Unix seconds. */
+  @SerialName("updated_at") val updatedAt: Long? = null,
+)
+
+/** The address claim (OIDC Core 5.1.1); null for unset. */
+@Serializable
+public data class Address(
+  /** The full address to display; may hold line breaks. */
+  val formatted: String? = null,
+  @SerialName("street_address") val streetAddress: String? = null,
+  /** City. */
+  val locality: String? = null,
+  /** State, province or prefecture. */
+  val region: String? = null,
+  @SerialName("postal_code") val postalCode: String? = null,
+  /** Country name or code. */
+  val country: String? = null,
+)
+
+/**
+ * A change to 用户资料: null leaves a field as it is, "" clears it, and
+ * [address] replaces the whole address (an empty [Address] clears it).
+ */
+@Serializable
+public data class ProfilePatch(
+  val nickname: String? = null,
+  val name: String? = null,
+  @SerialName("given_name") val givenName: String? = null,
+  @SerialName("family_name") val familyName: String? = null,
+  @SerialName("middle_name") val middleName: String? = null,
+  val profile: String? = null,
+  val website: String? = null,
+  val gender: String? = null,
+  val birthdate: String? = null,
+  val zoneinfo: String? = null,
+  val locale: String? = null,
+  val address: Address? = null,
 )
 
 /** A Passkey on the User's account, from the account center. */
@@ -449,11 +505,19 @@ public class Polaris(
    * `invalid_request` with the reason to show.
    */
   @Throws(Exception::class)
-  public suspend fun setNickname(nickname: String): Profile = profileCall {
+  public suspend fun setNickname(nickname: String): Profile = updateProfile(ProfilePatch(nickname = nickname))
+
+  /**
+   * Changes the fields [patch] sets. A field Polaris refuses (too long, not
+   * an http(s) URL, not a date, time zone or language tag) throws
+   * [PolarisException] `invalid_request` with the reason to show.
+   */
+  @Throws(Exception::class)
+  public suspend fun updateProfile(patch: ProfilePatch): Profile = profileCall {
     http.patch("$issuer/v1/auth/profile") {
       bearerAuth(it)
       contentType(ContentType.Application.Json)
-      setBody(json.encodeToString(NicknameRequest(nickname)))
+      setBody(json.encodeToString(patch))
     }
   }
 
@@ -575,7 +639,6 @@ private fun newVerifier(): String = base64Url.encode(Uuid.random().toByteArray()
 
 @Serializable private class PasskeyOptionsResponse(val options: JsonElement)
 
-@Serializable private class NicknameRequest(val nickname: String)
 
 @Serializable private class CodeResponse(@SerialName("authorization_code") val authorizationCode: String)
 

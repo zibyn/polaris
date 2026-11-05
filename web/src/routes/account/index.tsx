@@ -12,6 +12,10 @@ import { encode } from "uqr";
 import { CopyButton } from "#/components/copy-button";
 import { FormError, FormField, failed, saved } from "#/components/form";
 import { ItemList, PropRow } from "#/components/item-list";
+import {
+	EditProfileDetails,
+	ProfileDetails,
+} from "#/components/profile-details";
 import { Star } from "#/components/star";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -246,11 +250,12 @@ function saveFile(name: string, blob: Blob) {
 	URL.revokeObjectURL(a.href);
 }
 
-// ProfileSection is the 用户资料 every Application shows: the nickname and
-// the avatar. Neither is a sensitive action.
+// ProfileSection is the 用户资料 every Application shows: the nickname, the
+// avatar and the details. None is a sensitive action.
 function ProfileSection({ me }: { me: Me }) {
 	const queryClient = useQueryClient();
 	const [editing, setEditing] = useState(false);
+	const [editingDetails, setEditingDetails] = useState(false);
 	const file = useRef<HTMLInputElement>(null);
 	const onSaved = async () => {
 		await queryClient.invalidateQueries(meQuery);
@@ -327,11 +332,33 @@ function ProfileSection({ me }: { me: Me }) {
 						size="sm"
 					/>
 				</PropRow>
+				<PropRow
+					label="详细资料"
+					actions={
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => setEditingDetails(true)}
+						>
+							修改
+						</Button>
+					}
+				>
+					<ProfileDetails p={me} />
+				</PropRow>
 			</ItemList>
 			{editing && (
 				<EditNickname
 					nickname={me.nickname ?? ""}
 					onClose={() => setEditing(false)}
+				/>
+			)}
+			{editingDetails && (
+				<EditProfileDetails
+					p={me}
+					save={(body) => api<Profile>("/profile", { method: "PATCH", body })}
+					onSaved={onSaved}
+					onClose={() => setEditingDetails(false)}
 				/>
 			)}
 		</Section>

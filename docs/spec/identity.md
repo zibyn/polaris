@@ -35,8 +35,9 @@ User (sub: 不透明、稳定、永不复用)
 - `sub`:User ID,public 类型,不用手机号。
 - `phone` scope:`phone_number`,`phone_number_verified` 恒为 true。
 - `email` scope:`email`,`email_verified` 恒为 true。
-- `profile` scope:用户资料。有昵称时发 `nickname`,有头像时发 `picture`(`issuer` + `/avatars/{key}`,512×512 JPEG,每次上传换新地址);没值的 claim 不发。不发 `name`、`preferred_username` 等其他 profile claim。(ADR 0020)
-- External Identity 和用户名不暴露。
+- `profile` scope:用户资料，全部 OIDC 标准 profile claim。`nickname`;`picture`(`issuer` + `/avatars/{key}`,512×512 JPEG,每次上传换新地址);`preferred_username`(用户名 Identifier);`name`、`given_name`、`family_name`、`middle_name`、`profile`、`website`、`gender`、`birthdate`、`zoneinfo`、`locale`;`updated_at`(用户资料最后一次变化的 Unix 秒数，不含 `preferred_username`)。没值的 claim 不发。(ADR 0020、0029)
+- `address` scope:`address`,含 `formatted`、`street_address`、`locality`、`region`、`postal_code`、`country`,只发有值的子字段。(ADR 0029)
+- External Identity 不暴露。
 
 ## 账号生命周期
 

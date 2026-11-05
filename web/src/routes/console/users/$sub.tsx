@@ -19,6 +19,10 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { FormError, FormField, failed, saved } from "#/components/form";
 import { ItemList, PropRow } from "#/components/item-list";
+import {
+	EditProfileDetails,
+	ProfileDetails,
+} from "#/components/profile-details";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { Checkbox } from "#/components/ui/checkbox";
@@ -261,6 +265,8 @@ function UserPage() {
 	const name = primaryIdentifier(u.identifiers);
 	const [changing, setChanging] = useState<Identifier["kind"] | null>(null);
 	const [renaming, setRenaming] = useState(false);
+	const [editingDetails, setEditingDetails] = useState(false);
+	const client = useQueryClient();
 	return (
 		<div className="max-w-3xl space-y-10 pt-4">
 			<Section title="个人资料">
@@ -315,8 +321,40 @@ function UserPage() {
 							<span className="text-muted-foreground">未上传</span>
 						)}
 					</PropRow>
+					<PropRow
+						label="详细资料"
+						actions={
+							writable && (
+								<Button
+									size="sm"
+									variant="ghost"
+									onClick={() => setEditingDetails(true)}
+								>
+									修改
+								</Button>
+							)
+						}
+					>
+						<ProfileDetails p={u} />
+					</PropRow>
 				</ItemList>
 			</Section>
+			{editingDetails && (
+				<EditProfileDetails
+					p={u}
+					save={(body) =>
+						api(`/users/${encodeURIComponent(u.sub)}/profile`, {
+							method: "PATCH",
+							body,
+						})
+					}
+					onSaved={async () => {
+						await invalidateUser(client, u.sub);
+						saved();
+					}}
+					onClose={() => setEditingDetails(false)}
+				/>
+			)}
 			{renaming && (
 				<EditNickname
 					sub={u.sub}

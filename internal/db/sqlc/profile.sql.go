@@ -7,6 +7,8 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const lockUserProfile = `-- name: LockUserProfile :one
@@ -23,7 +25,9 @@ func (q *Queries) LockUserProfile(ctx context.Context, id string) (string, error
 
 const setAvatar = `-- name: SetAvatar :execrows
 WITH put AS (
-    UPDATE users SET avatar = NULLIF($1::text, '') WHERE users.id = $2 RETURNING users.id
+    UPDATE users SET avatar = NULLIF($1::text, ''),
+        profile_updated_at = CASE WHEN users.avatar IS DISTINCT FROM NULLIF($1::text, '') THEN now() ELSE users.profile_updated_at END
+    WHERE users.id = $2 RETURNING users.id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
     SELECT e.client_id, e.payload FROM users u, user_event('user.updated', u.id, '{profile}') e
@@ -46,26 +50,46 @@ func (q *Queries) SetAvatar(ctx context.Context, arg SetAvatarParams) (int64, er
 	return result.RowsAffected(), nil
 }
 
-const setNickname = `-- name: SetNickname :execrows
+const setProfile = `-- name: SetProfile :execrows
 WITH put AS (
-    UPDATE users SET nickname = NULLIF($1::text, '') WHERE users.id = $2 RETURNING users.id
+    UPDATE users SET
+        nickname = CASE WHEN $1::boolean THEN NULLIF($2::text, '') ELSE users.nickname END,
+        profile = (users.profile || $3::jsonb) - $4::text[],
+        profile_updated_at = CASE
+            WHEN ($1::boolean AND users.nickname IS DISTINCT FROM NULLIF($2::text, ''))
+              OR users.profile <> (users.profile || $3::jsonb) - $4::text[] THEN now()
+            ELSE users.profile_updated_at END
+    WHERE users.id = $5 RETURNING users.id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
     SELECT e.client_id, e.payload FROM users u, user_event('user.updated', u.id, '{profile}') e
-    WHERE u.id = $2 AND u.nickname IS DISTINCT FROM NULLIF($1::text, '')
+    WHERE u.id = $5 AND (
+        ($1::boolean AND u.nickname IS DISTINCT FROM NULLIF($2::text, ''))
+        OR u.profile <> (u.profile || $3::jsonb) - $4::text[])
 )
 SELECT 1 FROM put
 `
 
-type SetNicknameParams struct {
-	Nickname string
-	UserID   string
+type SetProfileParams struct {
+	SetNickname bool
+	Nickname    string
+	Set         []byte
+	Clear       []string
+	UserID      string
 }
 
-// Queues user.updated (changed: profile) when the nickname changes; the
-// hooks CTE reads the row as it was before the update.
-func (q *Queries) SetNickname(ctx context.Context, arg SetNicknameParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setNickname, arg.Nickname, arg.UserID)
+// Sets the nickname when set_nickname, merges set into the profile claims
+// and drops the keys in clear. Stamps profile_updated_at and queues
+// user.updated (changed: profile) only when something changes; both read
+// the row as it was before the update.
+func (q *Queries) SetProfile(ctx context.Context, arg SetProfileParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setProfile,
+		arg.SetNickname,
+		arg.Nickname,
+		arg.Set,
+		arg.Clear,
+		arg.UserID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -73,17 +97,25 @@ func (q *Queries) SetNickname(ctx context.Context, arg SetNicknameParams) (int64
 }
 
 const userProfile = `-- name: UserProfile :one
-SELECT COALESCE(nickname, '')::text AS nickname, COALESCE(avatar, '')::text AS avatar FROM users WHERE id = $1
+SELECT COALESCE(nickname, '')::text AS nickname, COALESCE(avatar, '')::text AS avatar, profile, profile_updated_at
+FROM users WHERE id = $1
 `
 
 type UserProfileRow struct {
-	Nickname string
-	Avatar   string
+	Nickname         string
+	Avatar           string
+	Profile          []byte
+	ProfileUpdatedAt pgtype.Timestamptz
 }
 
 func (q *Queries) UserProfile(ctx context.Context, id string) (UserProfileRow, error) {
 	row := q.db.QueryRow(ctx, userProfile, id)
 	var i UserProfileRow
-	err := row.Scan(&i.Nickname, &i.Avatar)
+	err := row.Scan(
+		&i.Nickname,
+		&i.Avatar,
+		&i.Profile,
+		&i.ProfileUpdatedAt,
+	)
 	return i, err
 }
