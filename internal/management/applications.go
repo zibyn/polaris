@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -41,6 +42,7 @@ type ApplicationSettings struct {
 	WebhookURL             string       `json:"webhookUrl,omitempty" doc:"Where User events (user.deleted, user.disabled, user.enabled, user.updated) are sent; empty for none"`
 	WebhookSecret          string       `json:"webhookSecret,omitempty" writeOnly:"true" doc:"Key the webhook is signed with; empty keeps the stored one. Never read back."`
 	BackchannelLogoutURI   string       `json:"backchannelLogoutUri,omitempty" doc:"Where OIDC Back-Channel Logout tokens are sent when a Session ends; Web (confidential) Applications only, empty for none"`
+	HomeURL                string       `json:"homeUrl,omitempty" doc:"首页地址: where the account center, opened as {issuer}/account?client_id=<id>, links back to as 「返回 <name>」 (ADR 0034); https, or http on localhost. Empty for none; not for M2M Applications"`
 	AppleAppIDs            []string     `json:"appleAppIds" nullable:"false" doc:"Team ID + Bundle ID, as ABCDE12345.com.example.app"`
 	AndroidApps            []AndroidApp `json:"androidApps" nullable:"false"`
 	// Kept apart from the authentication method: registering keys switches
@@ -152,7 +154,7 @@ func (s *Service) applications(ctx context.Context, clientID string) ([]Applicat
 			ApplicationSettings: ApplicationSettings{
 				Name: r.Name, RedirectURIs: r.RedirectUris, PostLogoutRedirectURIs: r.PostLogoutRedirectUris,
 				DefaultAPI: r.DefaultApi, SessionIdleTimeout: r.SessionIdleTimeout, SessionMaxLifetime: r.SessionMaxLifetime, RefreshTokens: r.RefreshTokens,
-				RequireRole: r.RequireRole, WebhookURL: r.WebhookUrl, BackchannelLogoutURI: r.BackchannelLogoutUri, AppleAppIDs: r.AppleAppIds,
+				RequireRole: r.RequireRole, WebhookURL: r.WebhookUrl, BackchannelLogoutURI: r.BackchannelLogoutUri, HomeURL: r.HomeUrl, AppleAppIDs: r.AppleAppIds,
 				JWKS: r.Jwks, LoginMethods: loginMethodsOf(r.LoginMethods), Brand: brandOf(r.BrandName, r.BrandLogo, r.BrandColor),
 			},
 			TokenAuthMethod: r.TokenAuthMethod,
@@ -309,6 +311,9 @@ func (st *ApplicationSettings) validate(typ string) error {
 		if len(st.RedirectURIs) > 0 || len(st.PostLogoutRedirectURIs) > 0 {
 			return identity.Invalid("M2M Application 不登录,没有回调地址")
 		}
+		if st.HomeURL != "" {
+			return identity.Invalid("M2M Application 不登录,没有首页地址")
+		}
 		if len(st.AppleAppIDs) > 0 || len(st.AndroidApps) > 0 {
 			return identity.Invalid("M2M Application 不关联原生 App")
 		}
@@ -345,6 +350,9 @@ func (st *ApplicationSettings) validate(typ string) error {
 		if p, err := url.Parse(u); err != nil || !p.IsAbs() || p.Fragment != "" || len(u) > 2048 {
 			return identity.Invalid("回调地址须为完整 URI,不带 #:" + u)
 		}
+	}
+	if st.HomeURL != "" && !homeURL(st.HomeURL) {
+		return identity.Invalid("首页地址须为 https 地址(localhost 可用 http),不带 #:" + st.HomeURL)
 	}
 	if st.WebhookURL != "" {
 		if p, err := url.Parse(st.WebhookURL); err != nil || (p.Scheme != "https" && p.Scheme != "http") || p.Host == "" {
@@ -392,6 +400,18 @@ func (st *ApplicationSettings) validate(typ string) error {
 	return nil
 }
 
+// homeURL reports whether u may be a 首页地址: a link a User follows, so
+// https, except a developer's own machine.
+func homeURL(u string) bool {
+	p, err := url.Parse(u)
+	if err != nil || p.Host == "" || p.Fragment != "" || len(u) > 2048 {
+		return false
+	}
+	h := p.Hostname()
+	ip := net.ParseIP(h)
+	return p.Scheme == "https" || p.Scheme == "http" && (h == "localhost" || ip != nil && ip.IsLoopback())
+}
+
 // saveSettings writes an Application's settings; 0 rows for a built-in or
 // missing one. A Logo left out is deleted.
 func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, typ string, st *ApplicationSettings) (int64, error) {
@@ -432,7 +452,7 @@ func (s *Service) saveSettings(ctx context.Context, q *sqlc.Queries, clientID, t
 		RedirectUris:           append([]string{}, st.RedirectURIs...),
 		PostLogoutRedirectUris: append([]string{}, st.PostLogoutRedirectURIs...),
 		DefaultApi:             st.DefaultAPI, IdleSecs: st.SessionIdleTimeout, MaxSecs: st.SessionMaxLifetime, RefreshTokens: st.RefreshTokens,
-		RequireRole: st.RequireRole, WebhookUrl: st.WebhookURL, WebhookSecret: secret, BackchannelLogoutUri: st.BackchannelLogoutURI,
+		RequireRole: st.RequireRole, WebhookUrl: st.WebhookURL, WebhookSecret: secret, BackchannelLogoutUri: st.BackchannelLogoutURI, HomeUrl: st.HomeURL,
 		AppleAppIds: append([]string{}, st.AppleAppIDs...), AndroidApps: android, Jwks: st.JWKS,
 		LoginMethods: st.LoginMethods.column(),
 		BrandName:    nullable(b.Name), BrandLogo: nullable(logoKey(b.Logo)), BrandColor: nullable(b.Color),

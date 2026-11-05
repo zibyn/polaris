@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zibyn/polaris/internal/audit"
+	"github.com/zibyn/polaris/internal/brand"
 	"github.com/zibyn/polaris/internal/channel"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db/sqlc"
@@ -105,6 +106,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 	api.UseMiddleware(s.authorize(api))
 
 	op(api, http.MethodGet, "me", "/me", "The signed-in User", s.me)
+	op(api, http.MethodGet, "brand", "/brand", "The 品牌 the account center wears, and its way back to an Application (ADR 0034)", s.brand)
 	op(api, http.MethodPost, "send-reauth-code", "/reauth/code", "Send a code to one of the User's Identifiers, to reauthenticate with", s.sendReauthCode)
 	op(api, http.MethodPost, "reauth", "/reauth", "Reauthenticate this Session with a code, the password or a Passkey", s.reauth)
 	op(api, http.MethodPost, "begin-passkey-reauth", "/reauth/passkey", "Begin reauthenticating with one of the User's Passkeys: assertion options for the browser or native App", s.beginPasskeyReauth)
@@ -260,6 +262,55 @@ func twoFactorOf(u sqlc.AccountUserRow) TwoFactor {
 		t.EnabledAt = &u.TwoFactorSince.Time
 	}
 	return t
+}
+
+type brandInput struct {
+	ClientID string `query:"client_id" doc:"The Application that sent the User here; unknown or empty is as none"`
+}
+
+type brandOutput struct {
+	Body struct {
+		Name    string            `json:"name,omitempty" doc:"Empty for 「Polaris」"`
+		Logo    string            `json:"logo,omitempty" doc:"The Logo's path"`
+		Color   string            `json:"color,omitempty" doc:"Primary colour as #rrggbb"`
+		Palette map[string]string `json:"palette,omitempty" doc:"The CSS properties the primary colour sets, with their values"`
+		Back    *backLink         `json:"back,omitempty" doc:"Where 「返回 <name>」 goes; absent without a 首页地址"`
+	}
+}
+
+type backLink struct {
+	Name string `json:"name" doc:"The Application's name"`
+	URL  string `json:"url" doc:"Its 首页地址"`
+}
+
+// brand is the 品牌 of the Application clientID, as on its hosted pages;
+// the way back is only ever its registered 首页地址, never a URL from the
+// request, so there is no open redirect.
+func (s *Service) brand(ctx context.Context, in *brandInput) (*brandOutput, error) {
+	// As on the hosted pages, one it cannot read leaves the default look:
+	// the account center still opens.
+	out := &brandOutput{}
+	b, err := s.q.Brand(ctx, in.ClientID)
+	if err != nil {
+		slog.Error("brand", "err", err)
+		return out, nil
+	}
+	o := &out.Body
+	o.Name, o.Color = b.Name, b.Color
+	if b.Logo != "" {
+		o.Logo = brand.LogoPath(strings.TrimPrefix(b.Logo, brand.KeyPrefix))
+	}
+	if b.Color != "" {
+		o.Palette = brand.Shades(b.Color)
+	}
+	home, err := s.q.ApplicationHome(ctx, in.ClientID)
+	switch {
+	case err == nil:
+		o.Back = &backLink{home.Name, home.HomeUrl}
+	case !errors.Is(err, pgx.ErrNoRows):
+		slog.Error("brand", "err", err)
+	}
+	return out, nil
 }
 
 func (s *Service) me(ctx context.Context, _ *struct{}) (*meOutput, error) {

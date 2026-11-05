@@ -12,6 +12,16 @@ export const { finishLogin, api, forget, logout } = oidcClient({
 	apiPrefix: "/v1/account",
 });
 
+// AccountBrand is the 品牌 the account center wears: the Application's that
+// sent the User here with ?client_id=, or the instance's (ADR 0034).
+export type AccountBrand = {
+	name?: string;
+	logo?: string; // its path
+	color?: string;
+	palette?: Record<string, string>; // CSS properties the colour sets
+	back?: { name: string; url: string }; // the Application's 首页地址
+};
+
 export type Identifier = {
 	kind: "phone" | "email" | "username";
 	value: string;

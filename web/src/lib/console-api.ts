@@ -158,6 +158,7 @@ export type ApplicationSettings = {
 	webhookUrl?: string;
 	webhookSecret?: string; // write-only; empty keeps the stored one
 	backchannelLogoutUri?: string; // confidential only; empty for none
+	homeUrl?: string; // 首页地址, the account center's way back; empty for none
 	appleAppIds: string[];
 	androidApps: AndroidApp[];
 	jwks?: { keys: unknown[] }; // Application 公钥; absent keeps the stored set

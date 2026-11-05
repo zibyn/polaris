@@ -37,7 +37,7 @@ Polaris 自己渲染、浏览器跳转过来的页面:登录、绑定、协议�
 _Avoid_: 登录 UI, Universal Login, 认证页
 
 **品牌**:
-托管页上代替 Polaris 标识的一组外观设置:品牌名、Logo、主色。实例设一套默认,Application 可逐项覆盖;都不设时托管页就是 Polaris 自己的样子。
+托管页和账号中心上代替 Polaris 标识的一组外观设置:品牌名、Logo、主色。实例设一套默认,Application 可逐项覆盖;都不设时就是 Polaris 自己的样子。账号中心带 `?client_id=` 打开时用该 Application 的品牌,否则用实例的。
 _Avoid_: 主题, 皮肤, 外观, Branding
 
 **Webhook**:

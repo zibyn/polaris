@@ -163,6 +163,7 @@ test("sign-in redirects are URLs and idle days a whole number up to a year", () 
 	const ok = {
 		redirectUris: "com.example.shop://callback",
 		postLogoutRedirectUris: "",
+		homeUrl: "",
 		idleDays: "",
 		maxDays: "",
 		refreshTokens: true,
@@ -187,6 +188,34 @@ test("sign-in redirects are URLs and idle days a whole number up to a year", () 
 		),
 		{ postLogoutRedirectUris: "「/home」不是有效的地址。" },
 	);
+});
+
+test("a home URL is https, or http on localhost, without #", () => {
+	const ok = {
+		redirectUris: "",
+		postLogoutRedirectUris: "",
+		idleDays: "",
+		maxDays: "",
+		refreshTokens: true,
+	};
+	for (const homeUrl of [
+		"",
+		"https://shop.example.com/",
+		"http://localhost:3000",
+		"http://127.0.0.1/",
+	]) {
+		assert.equal(loginSchema.safeParse({ ...ok, homeUrl }).success, true);
+	}
+	for (const homeUrl of [
+		"http://shop.example.com",
+		"https://shop.example.com/#x",
+		"javascript:alert(1)",
+		"/home",
+	]) {
+		assert.deepEqual(fieldErrors(loginSchema.safeParse({ ...ok, homeUrl })), {
+			homeUrl: "请输入 https 开头的地址（本机可用 http），不能包含 #。",
+		});
+	}
 });
 
 test("the Android textarea and its entries round-trip", () => {

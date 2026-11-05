@@ -228,3 +228,8 @@ SELECT COALESCE(a.brand_name, s.brand_name)::text AS name,
        COALESCE(a.brand_logo, s.brand_logo)::text AS logo,
        COALESCE(a.brand_color, s.brand_color)::text AS color
 FROM settings s LEFT JOIN applications a ON a.client_id = @client_id;
+
+-- name: ApplicationHome :one
+-- The Application client_id's name and 首页地址, for the account center's
+-- way back to it (ADR 0034); no row without a 首页地址.
+SELECT name, home_url::text AS home_url FROM applications WHERE client_id = $1 AND home_url IS NOT NULL;

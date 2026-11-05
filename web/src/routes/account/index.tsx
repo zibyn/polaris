@@ -52,6 +52,7 @@ import {
 	totpSchema,
 } from "#/lib/account";
 import {
+	type AccountBrand,
 	APIError,
 	api,
 	forget,
@@ -86,6 +87,7 @@ export const Route = createFileRoute("/account/")({
 				Promise.all([
 					context.queryClient.ensureQueryData(sessionsQuery),
 					context.queryClient.ensureQueryData(loginsQuery),
+					context.queryClient.ensureQueryData(brandQuery),
 				]),
 			),
 	component: Account,
@@ -99,6 +101,17 @@ const sessionsQuery = queryOptions({
 const loginsQuery = queryOptions({
 	queryKey: ["account", "logins"],
 	queryFn: () => api<{ logins: Login[]; failedCount: number }>("/logins"),
+});
+
+// The Application that sent the User here, read once: the sign-in round
+// trip brings the query string back, a Provider's return does not.
+const brandQuery = queryOptions({
+	queryKey: ["account", "brand"],
+	queryFn: () =>
+		api<AccountBrand>(
+			`/brand?${new URLSearchParams({ client_id: new URLSearchParams(location.search).get("client_id") ?? "" })}`,
+		),
+	staleTime: Number.POSITIVE_INFINITY,
 });
 
 const passkeysQuery = queryOptions({
@@ -115,6 +128,17 @@ type Guard = (action: () => void) => void;
 function Account() {
 	// The page's own data: bindings and passwords change it in place.
 	const user = useSuspenseQuery(meQuery).data;
+	const brand = useSuspenseQuery(brandQuery).data;
+	// On the root, so dialogs, portalled to body, take the colour too.
+	useEffect(() => {
+		const root = document.documentElement.style;
+		for (const [k, v] of Object.entries(brand.palette ?? {})) {
+			root.setProperty(k, v);
+		}
+		return () => {
+			for (const k of Object.keys(brand.palette ?? {})) root.removeProperty(k);
+		};
+	}, [brand.palette]);
 	const queryClient = useQueryClient();
 	const [pending, setPending] = useState<(() => void) | null>(null);
 	const [deleted, setDeleted] = useState(false);
@@ -153,17 +177,34 @@ function Account() {
 		<div className="min-h-svh bg-canvas p-2 text-sm sm:p-6">
 			<Panel className="mx-auto max-w-2xl space-y-10 px-6 py-8 sm:px-14 sm:py-11">
 				<div className="flex items-center gap-2 font-semibold">
-					<Star className="size-5 text-star" />
-					Polaris
-					{/* Admins come here from the console's menu; this is the way back. */}
-					{user.admin && (
-						<Link
-							to="/console"
-							className="ml-auto font-medium text-[13px] text-primary-ink underline-offset-2 hover:underline"
-						>
-							返回管理端
-						</Link>
+					{/* As on the hosted pages: a brand's Logo, if any, replaces the star. */}
+					{brand.logo ? (
+						<img src={brand.logo} alt="" className="size-5 object-contain" />
+					) : (
+						!(brand.name || brand.color) && (
+							<Star className="size-5 text-star" />
+						)
 					)}
+					{brand.name || "Polaris"}
+					<div className="ml-auto flex gap-4">
+						{brand.back && (
+							<a
+								href={brand.back.url}
+								className="font-medium text-[13px] text-primary-ink underline-offset-2 hover:underline"
+							>
+								返回 {brand.back.name}
+							</a>
+						)}
+						{/* Admins come here from the console's menu; this is the way back. */}
+						{user.admin && (
+							<Link
+								to="/console"
+								className="font-medium text-[13px] text-primary-ink underline-offset-2 hover:underline"
+							>
+								返回管理端
+							</Link>
+						)}
+					</div>
 				</div>
 				<header className="flex items-center gap-4">
 					<UserAvatar

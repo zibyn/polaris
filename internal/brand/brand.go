@@ -91,6 +91,15 @@ func contrast(a, b rgb) float64 {
 // for the brand panel, and ink, for text on soft, darkened until it reads
 // at 4.5:1 there.
 func Palette(color string) template.CSS {
+	s := Shades(color)
+	//nolint:gosec // every value is #rrggbb, made here
+	return template.CSS(fmt.Sprintf("--primary: %s; --primary-hover: %s; --primary-soft: %s; --primary-ink: %s;",
+		s["--primary"], s["--primary-hover"], s["--primary-soft"], s["--primary-ink"]))
+}
+
+// Shades are Palette's four CSS properties and their values, for the
+// account center to set itself.
+func Shades(color string) map[string]string {
 	p := parse(color)
 	black, white := rgb{}, rgb{1, 1, 1}
 	soft := p.mix(white, 0.92)
@@ -98,9 +107,8 @@ func Palette(color string) template.CSS {
 	for i := 0; i < 20 && contrast(ink, soft) < 4.5; i++ {
 		ink = ink.mix(black, 0.05)
 	}
-	//nolint:gosec // every value is #rrggbb, made here
-	return template.CSS(fmt.Sprintf("--primary: %s; --primary-hover: %s; --primary-soft: %s; --primary-ink: %s;",
-		p, p.mix(black, 0.12), soft, ink))
+	return map[string]string{"--primary": p.String(), "--primary-hover": p.mix(black, 0.12).String(),
+		"--primary-soft": soft.String(), "--primary-ink": ink.String()}
 }
 
 // LogoType is the content type of a Logo, sniffed from its bytes, or why

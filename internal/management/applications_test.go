@@ -195,6 +195,54 @@ func TestBackchannelLogoutURI(t *testing.T) {
 	}
 }
 
+// An Application may name its 首页地址, the account center's way back to it
+// (ADR 0034): https, or http on localhost only.
+func TestApplicationHomeURL(t *testing.T) {
+	e := start(t)
+	owner := e.token(e.owner, nil)
+	settings := map[string]any{"name": "Web", "redirectUris": []string{"https://web.example/cb"}, "postLogoutRedirectUris": []string{},
+		"refreshTokens": true, "homeUrl": "https://web.example/", "appleAppIds": []string{}, "androidApps": []any{}}
+	var created struct {
+		Application struct{ ClientID, HomeURL string }
+	}
+	if code := e.call("POST", owner, "/applications", map[string]any{"type": "confidential", "settings": settings}, &created); code != 200 ||
+		created.Application.HomeURL != "https://web.example/" {
+		t.Fatalf("create: %d %+v", code, created)
+	}
+	path := "/applications/" + created.Application.ClientID
+	for u, want := range map[string]int{
+		"http://localhost:3000/":  204,
+		"http://127.0.0.1:8080":   204,
+		"http://[::1]/":           204,
+		"http://web.example/":     422,
+		"https://web.example/#x":  422,
+		"javascript:alert(1)":     422,
+		"/relative":               422,
+		"https://":                422,
+		"http://localhost.evil/":  422,
+		"https://web.example/app": 204,
+	} {
+		settings["homeUrl"] = u
+		if code := e.call("PUT", owner, path, settings, nil); code != want {
+			t.Errorf("%q: %d, want %d", u, code, want)
+		}
+	}
+	settings["homeUrl"] = ""
+	if code := e.call("PUT", owner, path, settings, nil); code != 204 {
+		t.Fatalf("clear: %d", code)
+	}
+	var got struct{ HomeURL string }
+	if e.get(owner, path, &got); got.HomeURL != "" {
+		t.Errorf("after clearing: %+v", got)
+	}
+	e.call("PUT", owner, apiPath(track), map[string]any{"name": "Track"}, nil)
+	m2m := m2mSettings(track)
+	m2m["homeUrl"] = "https://web.example/"
+	if code := e.call("POST", owner, "/applications", map[string]any{"type": "m2m", "settings": m2m}, nil); code != 422 {
+		t.Errorf("M2M Application: %d", code)
+	}
+}
+
 // TestManageM2MApplication covers the M2M Application type: a backend service
 // that calls one API as itself (ADR 0015). It has a secret and a default API,
 // no login, and its default API cannot be changed later.

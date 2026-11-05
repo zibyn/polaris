@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -1056,5 +1057,45 @@ func TestPendingUserCannotUseTheAccountCenter(t *testing.T) {
 	var n int
 	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM passwords WHERE user_id = 'ALICE'").Scan(&n); err != nil || n != 0 {
 		t.Errorf("%d passwords, want 0: the account center wrote one", n)
+	}
+}
+
+// The account center opened as /account?client_id=<id> wears that
+// Application's 品牌 and links back to its 首页地址 (ADR 0034). An unknown
+// client_id is as none: the instance's brand, no way back.
+func TestApplicationBrand(t *testing.T) {
+	e := start(t)
+	e.user("u1", "phone:+8613800000001")
+	tok := e.signIn("u1", 0)
+	if _, err := e.pool.Exec(context.Background(), `
+		UPDATE settings SET brand_name = 'Acme', brand_color = '#0a66c2';
+		INSERT INTO applications (client_id, name, type, home_url, brand_name) VALUES
+			('shop', '商城', 'public', 'https://shop.example/', '商城'),
+			('blog', '博客', 'public', NULL, NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	type back struct{ Name, URL string }
+	type brand struct {
+		Name, Color string
+		Palette     map[string]string
+		Back        *back
+	}
+	for clientID, want := range map[string]brand{
+		"":        {Name: "Acme", Color: "#0a66c2"},
+		"shop":    {Name: "商城", Color: "#0a66c2", Back: &back{"商城", "https://shop.example/"}},
+		"blog":    {Name: "Acme", Color: "#0a66c2"}, // no 首页地址
+		"unknown": {Name: "Acme", Color: "#0a66c2"},
+	} {
+		var got brand
+		if code := e.call("GET", tok, "/v1/account/brand?client_id="+clientID, nil, &got); code != 200 {
+			t.Fatalf("%q: %d", clientID, code)
+		}
+		if got.Palette["--primary"] != "#0a66c2" || len(got.Palette) != 4 {
+			t.Errorf("%q: palette %v", clientID, got.Palette)
+		}
+		got.Palette = nil
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%q: %+v, want %+v", clientID, got, want)
+		}
 	}
 }

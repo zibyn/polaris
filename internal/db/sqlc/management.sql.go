@@ -484,7 +484,8 @@ SELECT client_id, name, type, builtin, created_at, redirect_uris, post_logout_re
        COALESCE(extract(epoch FROM session_max_lifetime), 0)::int AS session_max_lifetime,
        refresh_tokens, require_role, COALESCE(webhook_url, '')::text AS webhook_url, webhook_secret_updated_at,
        COALESCE(backchannel_logout_uri, '')::text AS backchannel_logout_uri, apple_app_ids, android_apps,
-       token_auth_method, jwks, login_methods, brand_name, brand_logo, brand_color
+       token_auth_method, jwks, login_methods, brand_name, brand_logo, brand_color,
+       COALESCE(home_url, '')::text AS home_url
 FROM applications
 WHERE $1::text = '' OR client_id = $1
 ORDER BY builtin DESC, created_at, client_id
@@ -514,6 +515,7 @@ type ListApplicationsRow struct {
 	BrandName              pgtype.Text
 	BrandLogo              pgtype.Text
 	BrandColor             pgtype.Text
+	HomeUrl                string
 }
 
 // One Application, or all of them for an empty client_id.
@@ -550,6 +552,7 @@ func (q *Queries) ListApplications(ctx context.Context, clientID string) ([]List
 			&i.BrandName,
 			&i.BrandLogo,
 			&i.BrandColor,
+			&i.HomeUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -1204,15 +1207,16 @@ UPDATE applications SET
                                      WHEN $10 IS NOT NULL THEN now()
                                      ELSE webhook_secret_updated_at END,
     backchannel_logout_uri = NULLIF($11::text, ''),
-    apple_app_ids = $12,
-    android_apps = $13,
-    jwks = COALESCE($14, jwks),
-    login_methods = $15,
-    brand_name = $16,
-    brand_logo = $17,
-    brand_color = $18
-WHERE client_id = $19 AND NOT builtin
-  AND COALESCE(brand_logo, '') = $20::text
+    home_url = NULLIF($12::text, ''),
+    apple_app_ids = $13,
+    android_apps = $14,
+    jwks = COALESCE($15, jwks),
+    login_methods = $16,
+    brand_name = $17,
+    brand_logo = $18,
+    brand_color = $19
+WHERE client_id = $20 AND NOT builtin
+  AND COALESCE(brand_logo, '') = $21::text
 `
 
 type UpdateApplicationParams struct {
@@ -1227,6 +1231,7 @@ type UpdateApplicationParams struct {
 	WebhookUrl             string
 	WebhookSecret          []byte
 	BackchannelLogoutUri   string
+	HomeUrl                string
 	AppleAppIds            []string
 	AndroidApps            []byte
 	Jwks                   []byte
@@ -1255,6 +1260,7 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 		arg.WebhookUrl,
 		arg.WebhookSecret,
 		arg.BackchannelLogoutUri,
+		arg.HomeUrl,
 		arg.AppleAppIds,
 		arg.AndroidApps,
 		arg.Jwks,

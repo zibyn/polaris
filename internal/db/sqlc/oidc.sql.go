@@ -12,7 +12,7 @@ import (
 )
 
 const application = `-- name: Application :one
-SELECT client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, session_idle_timeout, builtin, created_at, refresh_tokens, webhook_url, webhook_secret, webhook_secret_updated_at, apple_app_ids, android_apps, backchannel_logout_uri, require_role, token_auth_method, jwks, session_max_lifetime, login_methods, brand_name, brand_logo, brand_color FROM applications WHERE client_id = $1
+SELECT client_id, name, type, secret_hash, redirect_uris, post_logout_redirect_uris, default_api, session_idle_timeout, builtin, created_at, refresh_tokens, webhook_url, webhook_secret, webhook_secret_updated_at, apple_app_ids, android_apps, backchannel_logout_uri, require_role, token_auth_method, jwks, session_max_lifetime, login_methods, brand_name, brand_logo, brand_color, home_url FROM applications WHERE client_id = $1
 `
 
 func (q *Queries) Application(ctx context.Context, clientID string) (Application, error) {
@@ -44,7 +44,26 @@ func (q *Queries) Application(ctx context.Context, clientID string) (Application
 		&i.BrandName,
 		&i.BrandLogo,
 		&i.BrandColor,
+		&i.HomeUrl,
 	)
+	return i, err
+}
+
+const applicationHome = `-- name: ApplicationHome :one
+SELECT name, home_url::text AS home_url FROM applications WHERE client_id = $1 AND home_url IS NOT NULL
+`
+
+type ApplicationHomeRow struct {
+	Name    string
+	HomeUrl string
+}
+
+// The Application client_id's name and 首页地址, for the account center's
+// way back to it (ADR 0034); no row without a 首页地址.
+func (q *Queries) ApplicationHome(ctx context.Context, clientID string) (ApplicationHomeRow, error) {
+	row := q.db.QueryRow(ctx, applicationHome, clientID)
+	var i ApplicationHomeRow
+	err := row.Scan(&i.Name, &i.HomeUrl)
 	return i, err
 }
 

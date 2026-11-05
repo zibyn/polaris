@@ -41,6 +41,7 @@ type Application struct {
 	BrandName              pgtype.Text
 	BrandLogo              pgtype.Text
 	BrandColor             pgtype.Text
+	HomeUrl                pgtype.Text
 }
 
 type ApplicationRole struct {

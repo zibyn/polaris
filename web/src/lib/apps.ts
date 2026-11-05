@@ -90,6 +90,24 @@ export const backchannelSchema = z.object({
 	),
 });
 
+// homeURL is a 首页地址: a link Users follow, so https, or http on
+// localhost; the server checks the same.
+export const homeURL = z
+	.string()
+	.trim()
+	.refine((v) => {
+		const u = URL.parse(v);
+		return (
+			!v ||
+			((u?.protocol === "https:" ||
+				(u?.protocol === "http:" &&
+					(u.hostname === "localhost" ||
+						u.hostname === "[::1]" ||
+						/^127\.\d+\.\d+\.\d+$/.test(u.hostname)))) &&
+				!v.includes("#"))
+		);
+	}, "请输入 https 开头的地址（本机可用 http），不能包含 #。");
+
 const days = z
 	.string()
 	.trim()
@@ -103,6 +121,7 @@ const days = z
 export const loginSchema = z.object({
 	redirectUris: uriLines,
 	postLogoutRedirectUris: uriLines,
+	homeUrl: homeURL,
 	idleDays: days,
 	maxDays: days,
 	refreshTokens: z.boolean(),

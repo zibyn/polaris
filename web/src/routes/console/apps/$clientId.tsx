@@ -676,6 +676,7 @@ function LoginTab({ app, editable }: TabProps) {
 		defaultValues: {
 			redirectUris: app.redirectUris.join("\n"),
 			postLogoutRedirectUris: app.postLogoutRedirectUris.join("\n"),
+			homeUrl: app.homeUrl ?? "",
 			idleDays: app.sessionIdleTimeout
 				? `${app.sessionIdleTimeout / day}`
 				: "0",
@@ -689,6 +690,7 @@ function LoginTab({ app, editable }: TabProps) {
 				{
 					redirectUris: lines(value.redirectUris),
 					postLogoutRedirectUris: lines(value.postLogoutRedirectUris),
+					homeUrl: value.homeUrl.trim(),
 					sessionIdleTimeout: Number(value.idleDays.trim() || 0) * day,
 					sessionMaxLifetime: Number(value.maxDays.trim() || 0) * day,
 					refreshTokens: value.refreshTokens,
@@ -742,6 +744,24 @@ function LoginTab({ app, editable }: TabProps) {
 											{...control}
 											className="font-mono"
 											placeholder="每行一个，如 https://shop.example.com"
+										/>
+									)}
+								</FormField>
+							)}
+						</form.Field>
+						<form.Field name="homeUrl">
+							{(field) => (
+								<FormField
+									field={field}
+									label="首页地址"
+									en="home URL"
+									help="账号中心通过 /account?client_id= 打开时，显示「返回」链接回到这里。留空则不显示。"
+								>
+									{(control) => (
+										<Input
+											{...control}
+											className="font-mono"
+											placeholder="https://shop.example.com"
 										/>
 									)}
 								</FormField>
