@@ -8,6 +8,10 @@
 独立部署的中心化身份服务,所有 Application 的 User 身份都由它持有和验证。
 _Avoid_: 认证库, 认证框架, SSO 平台
 
+**运营方**:
+部署并运营一个 Polaris 实例的组织或个人:拥有这个实例的用户池,自己开发和运营其上的全部 Application,并对合规事项(协议、实名等开关)作判断。它是现实中的一方,不是 User;它在 Polaris 里通过管理员操作。
+_Avoid_: Operator, 租户, 站长
+
 **管理员**(Admin):
 在 Management API 上持有任一 Role 的 User,负责配置登录方式、通道与 Application;部署实例的人即首个所有者。旧称 Operator。
 _Avoid_: Operator, 站长, 租户
