@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Runs the Basic OP, Config OP and RP-Initiated Logout conformance plans
-# against the harness OP (PG-backed, see compose.yaml). Used by CI and for
-# local regression runs.
+# Runs the Basic OP, Config OP, RP-Initiated Logout and Back-Channel Logout
+# conformance plans against the harness OP (PG-backed, see compose.yaml). Used
+# by CI and for local regression runs.
 #
 #   CS_DIR   built conformance-suite checkout (default ./conformance-suite):
 #            git clone --branch release-v5.1.45 --depth=1 https://gitlab.com/openid/conformance-suite.git
@@ -45,6 +45,7 @@ wait_for https://localhost:8443/api/runner/available
 wait_for "$ISSUER/.well-known/openid-configuration"
 
 sed "s#https://auth.localhost/#$ISSUER/#" "$here/config.json" > "$out/config.json"
+sed "s#https://auth.localhost/#$ISSUER/#" "$here/config-backchannel.json" > "$out/config-backchannel.json"
 cp "$here/failures.json" "$here/skips.json" "$out/"
 
 # The runner talks to the suite over the compose network, so the host needs
@@ -58,6 +59,7 @@ docker run --rm --network polaris-conformance_default \
       "oidcc-basic-certification-test-plan[server_metadata=discovery][client_registration=static_client]" config.json \
       "oidcc-config-certification-test-plan" config.json \
       "oidcc-rp-initiated-logout-certification-test-plan[response_type=code][client_registration=static_client]" config.json \
+      "oidcc-backchannel-rp-initiated-logout-certification-test-plan[client_registration=static_client]" config-backchannel.json \
       --expected-failures-file failures.json \
       --expected-skips-file skips.json \
       --export-dir /out'

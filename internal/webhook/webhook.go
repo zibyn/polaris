@@ -54,6 +54,10 @@ func New(pool *pgxpool.Pool, keyring *crypt.Keyring, issuer string) *Sender {
 		client: &http.Client{Timeout: 10 * time.Second}}
 }
 
+// SetHTTPClient makes deliveries through client instead of the default (the
+// conformance harness posts to the suite's self-signed endpoint).
+func (s *Sender) SetHTTPClient(client *http.Client) { s.client = client }
+
 // Run delivers what is due every 10 seconds until ctx ends.
 func (s *Sender) Run(ctx context.Context) {
 	t := time.NewTicker(10 * time.Second)

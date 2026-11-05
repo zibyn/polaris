@@ -23,6 +23,7 @@ import (
 	"github.com/zibyn/polaris/internal/oidc/goidc"
 	"github.com/zibyn/polaris/internal/oidc/provider"
 	"github.com/zibyn/polaris/internal/oidcstore"
+	"github.com/zibyn/polaris/internal/webhook"
 )
 
 func main() {
@@ -44,6 +45,7 @@ func main() {
 		log.Fatal(err)
 	}
 	store := oidcstore.New(pool, keyring)
+	authutil.UseSessions(store, pool)
 	scopes := make([]string, len(authutil.Scopes))
 	for i, s := range authutil.Scopes {
 		scopes[i] = s.ID
@@ -52,6 +54,13 @@ func main() {
 	if err := createClients(ctx, pool, store); err != nil {
 		log.Fatal(err)
 	}
+	// Delivers the logout tokens that ending a Session queues for the Apps
+	// with a back-channel URI (ADR 0022). The suite's endpoint is self-signed.
+	client := authutil.HTTPClient(ctx)
+	client.Timeout = 10 * time.Second
+	sender := webhook.New(pool, keyring, authutil.Issuer)
+	sender.SetHTTPClient(client)
+	go sender.Run(ctx)
 
 	op, err := provider.New(
 		provider.Config{
@@ -103,7 +112,7 @@ func main() {
 		provider.WithLogout(provider.LogoutConfig{
 			Manager:    store,
 			HandleFunc: authutil.HandleLogout(),
-		}, provider.WithLogoutPolicies(authutil.LogoutPolicy())),
+		}, provider.WithLogoutPolicies(authutil.LogoutPolicy()), provider.WithBackChannelLogout()),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -131,23 +140,30 @@ func main() {
 }
 
 // createClients registers the Applications config.json names: two for the
-// client_secret_basic tests and one for client_secret_post.
+// client_secret_basic tests and one for client_secret_post. The back-channel
+// logout plan gets its own Application (config-backchannel.json): the suite
+// fails a test module on a callback it does not expect, so the other plans'
+// logouts must not queue a token for them.
 func createClients(ctx context.Context, pool *pgxpool.Pool, store *oidcstore.Store) error {
 	const cb = "https://localhost.emobix.co.uk:8443/test/a/goidc/"
-	for _, id := range []string{"client_one", "client_two", "client_three"} {
-		if _, err := store.Client(ctx, id); err == nil {
+	apps := []oidcstore.Application{
+		{ClientID: "client_one"},
+		{ClientID: "client_two"},
+		{ClientID: "client_three"},
+		{ClientID: "client_backchannel", BackchannelLogoutURI: cb + "backchannel_logout"},
+	}
+	for _, app := range apps {
+		if _, err := store.Client(ctx, app.ClientID); err == nil {
 			continue
 		} else if !errors.Is(err, goidc.ErrNotFound) {
 			return err
 		}
-		if err := oidcstore.CreateApplication(ctx, pool, oidcstore.Application{
-			ClientID: id,
-			Name:     id,
-			// 32+ bytes: the suite derives HS256 keys from it.
-			Secret:                 id + "_secret_0123456789abcdefghijklmnopqrstuvwxyz",
-			RedirectURIs:           []string{cb + "callback"},
-			PostLogoutRedirectURIs: []string{cb + "post_logout_redirect"},
-		}); err != nil {
+		app.Name = app.ClientID
+		// 32+ bytes: the suite derives HS256 keys from it.
+		app.Secret = app.ClientID + "_secret_0123456789abcdefghijklmnopqrstuvwxyz"
+		app.RedirectURIs = []string{cb + "callback"}
+		app.PostLogoutRedirectURIs = []string{cb + "post_logout_redirect"}
+		if err := oidcstore.CreateApplication(ctx, pool, app); err != nil {
 			return err
 		}
 	}

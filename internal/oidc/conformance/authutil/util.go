@@ -164,7 +164,12 @@ func LogoutPolicy() goidc.LogoutPolicy {
 				return goidc.StatusSuccess, nil
 			}
 
+			// Ending the Session queues its Applications' logout tokens.
+			if err := q.EndBrowserSession(r.Context(), hash(cookie.Value)); err != nil {
+				return goidc.StatusFailure, err
+			}
 			delete(userSessionStore, cookie.Value)
+			setSessionCookie(w, "", -1)
 			return goidc.StatusSuccess, nil
 		},
 	)

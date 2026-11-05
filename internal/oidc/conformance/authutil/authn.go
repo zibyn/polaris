@@ -1,17 +1,25 @@
 package authutil
 
 import (
+	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/oidc/conformance/ui"
 	"github.com/zibyn/polaris/internal/oidc/goidc"
 	"github.com/zibyn/polaris/internal/oidc/internal/timeutil"
+	"github.com/zibyn/polaris/internal/oidcstore"
 )
 
 func Policy() goidc.AuthnPolicy {
@@ -50,7 +58,7 @@ const (
 	stepIDFinishFlow    string = "step_finish_flow"
 
 	paramAuthTime          string = "auth_time"
-	paramUserSessionID     string = "user_session_id"
+	paramUserSessionToken  string = "user_session_token"
 	paramLogoURI           string = "logo_uri"
 	paramPolicyURI         string = "policy_uri"
 	paramTermsOfServiceURI string = "tos_uri"
@@ -69,6 +77,20 @@ const (
 
 var userSessionStore = map[string]userSession{}
 
+var (
+	sessions *oidcstore.Store
+	q        *sqlc.Queries
+)
+
+// UseSessions gives the harness Polaris's Session storage and queries. The
+// harness still keeps its login session in memory (a test fixture over
+// goidc's policy API); each one is mirrored into a Polaris Session, so that
+// ending it queues the Applications' logout tokens, which webhook.Sender
+// delivers (ADR 0022). Users are bare rows: the harness has no Identifiers.
+func UseSessions(store *oidcstore.Store, pool *pgxpool.Pool) {
+	sessions, q = store, sqlc.New(pool)
+}
+
 type authnPage struct {
 	Subject           string
 	BaseURL           string
@@ -81,6 +103,9 @@ type authnPage struct {
 }
 
 type userSession struct {
+	// Token is the browser cookie's value; ID is the Polaris Session row's
+	// id, the sid of the tokens issued in it.
+	Token    string
 	ID       string
 	Subject  string
 	AuthTime int
@@ -107,7 +132,7 @@ func (a authenticator) authenticate(w http.ResponseWriter, r *http.Request, as *
 	}
 
 	if as.Store[paramStepID] == stepIDCreateSession {
-		if status, err := a.createUserSession(w, as); status != goidc.StatusSuccess {
+		if status, err := a.createUserSession(w, r, as); status != goidc.StatusSuccess {
 			return status, err
 		}
 		as.Store[paramStepID] = stepIDConsent
@@ -146,7 +171,7 @@ func (a authenticator) loadUser(r *http.Request, as *goidc.AuthnSession) (goidc.
 
 	as.Subject = session.Subject
 	as.Store[paramAuthTime] = session.AuthTime
-	as.Store[paramUserSessionID] = session.ID
+	as.Store[paramUserSessionToken] = session.Token
 	return goidc.StatusSuccess, nil
 }
 
@@ -195,25 +220,66 @@ func (a authenticator) login(w http.ResponseWriter, r *http.Request, as *goidc.A
 	return goidc.StatusSuccess, nil
 }
 
-func (a authenticator) createUserSession(w http.ResponseWriter, as *goidc.AuthnSession) (goidc.Status, error) { //nolint:unparam
-	sessionID := rand.Text()
-	if id, ok := as.Store[paramUserSessionID]; ok && id != nil {
-		sessionID = id.(string)
+func (a authenticator) createUserSession(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession) (goidc.Status, error) {
+	token, _ := as.Store[paramUserSessionToken].(string)
+	session, ok := userSessionStore[token]
+	if ok && session.Subject != as.Subject {
+		// Another User on this browser: that Session ends, and its
+		// Applications get logout tokens.
+		if err := q.EndBrowserSession(r.Context(), hash(session.Token)); err != nil {
+			return goidc.StatusFailure, err
+		}
+		delete(userSessionStore, session.Token)
+		ok = false
 	}
-	userSessionStore[sessionID] = userSession{
-		ID:       sessionID,
-		Subject:  as.Subject,
-		AuthTime: must(storedAuthTime(as)),
+	if !ok {
+		var err error
+		session, err = newSession(r.Context(), as.ClientID, as.Subject, must(storedAuthTime(as)))
+		if err != nil {
+			return goidc.StatusFailure, err
+		}
 	}
+	userSessionStore[session.Token] = session
+	as.Store[paramUserSessionToken] = session.Token
+	as.Store[oidcstore.SessionKey] = session.ID
+	setSessionCookie(w, session.Token, 0)
+	return goidc.StatusSuccess, nil
+}
+
+// newSession signs sub in on this browser with a Polaris Session row. The
+// harness logs in any username; the User row it needs is made on first login.
+func newSession(ctx context.Context, clientID, sub string, authTime int) (userSession, error) {
+	if err := q.CreateUser(ctx, sub); err != nil {
+		// The same username signs in for many test modules.
+		var pg *pgconn.PgError
+		if !errors.As(err, &pg) || pg.ConstraintName != "users_pkey" {
+			return userSession{}, err
+		}
+	}
+	token := rand.Text()
+	row, err := sessions.CreateSession(ctx, hash(token), clientID, sub,
+		time.Unix(int64(authTime), 0), []string{string(goidc.AMRPassword)}, "password")
+	if err != nil {
+		return userSession{}, err
+	}
+	return userSession{Token: token, ID: row.ID, Subject: sub, AuthTime: authTime}, nil
+}
+
+func hash(token string) []byte {
+	sum := sha256.Sum256([]byte(token))
+	return sum[:]
+}
+
+func setSessionCookie(w http.ResponseWriter, token string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieUserSessionID,
-		Value:    sessionID,
+		Value:    token,
+		MaxAge:   maxAge,
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 		Path:     "/",
 	})
-	return goidc.StatusSuccess, nil
 }
 
 func (a authenticator) grantConsent(w http.ResponseWriter, r *http.Request, as *goidc.AuthnSession) (goidc.Status, error) {
@@ -237,6 +303,10 @@ func (a authenticator) finishFlow(as *goidc.AuthnSession) (goidc.Status, error) 
 	idTokenClaims := map[string]any{
 		goidc.ClaimAuthTime: must(storedAuthTime(as)),
 		goidc.ClaimACR:      string(goidc.ACRMaceIncommonIAPSilver),
+	}
+	// Back-Channel Logout names the Session by it.
+	if sid, ok := as.Store[oidcstore.SessionKey].(string); ok {
+		idTokenClaims["sid"] = sid
 	}
 	userInfoClaims := map[string]any{}
 

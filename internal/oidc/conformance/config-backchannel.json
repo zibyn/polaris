@@ -1,0 +1,55 @@
+{
+    "alias": "goidc",
+    "server": {
+        "discoveryUrl": "https://auth.localhost/.well-known/openid-configuration"
+    },
+    "client": {
+        "client_id": "client_backchannel",
+        "client_secret": "client_backchannel_secret_0123456789abcdefghijklmnopqrstuvwxyz"
+    },
+    "browser_verbose": true,
+    "browser": [
+        {
+            "match": "https://auth.localhost*/authorize*",
+            "tasks": [
+                {
+                    "task": "Login",
+                    "optional": true,
+                    "match": "https://auth.localhost*/authorize/*/login",
+                    "commands": [
+                        ["text", "id", "username", "random@gmail.com"],
+                        ["text", "id", "password", "pass"],
+                        ["click", "id", "submit_button"]
+                    ]
+                },
+                {
+                    "task": "Consent",
+                    "match": "https://auth.localhost*/authorize/*/consent",
+                    "commands": [
+                        ["click", "id", "submit_button"]
+                    ]
+                },
+                {
+                    "task": "Verify complete",
+                    "match": "https://localhost.emobix.co.uk:8443/test/a/goidc/callback*",
+                    "commands": [
+                        ["wait", "id", "submission_complete", 10]
+                    ]
+                }
+            ]
+        },
+        {
+            "match": "https://auth.localhost*/logout*",
+            "tasks": [
+                {
+                    "task": "Logout",
+                    "optional": true,
+                    "match": "https://auth.localhost*/logout/*",
+                    "commands": [
+                        ["click", "id", "confirm_button"]
+                    ]
+                }
+            ]
+        }
+    ]
+}
