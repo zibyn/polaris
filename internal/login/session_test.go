@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zibyn/polaris/internal/db/dbtest"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 )
 
@@ -352,6 +353,9 @@ func TestSessionRemembersItsDevice(t *testing.T) {
 func (e *env) ageAuth(d string) {
 	e.t.Helper()
 	if _, err := e.pool.Exec(context.Background(), "UPDATE sessions SET auth_time = auth_time - $1::interval", d); err != nil {
+		e.t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(context.Background(), dbtest.Relapse); err != nil {
 		e.t.Fatal(err)
 	}
 }

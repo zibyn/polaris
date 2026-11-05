@@ -72,7 +72,7 @@ DELETE FROM provider_logins WHERE state_hash = $1 AND provider = $2 AND expires_
 RETURNING nonce, verifier, authn_session, binder_hash, session_id, reauth, created_at;
 
 -- name: LiveSessionUser :one
-SELECT s.user_id FROM sessions s WHERE s.id = $1 AND s.id IN (SELECT l.id FROM live_sessions l);
+SELECT s.user_id FROM sessions s WHERE s.id = $1 AND s.ended_at IS NULL AND s.lapses_at > now();
 
 -- name: UserByExternalIdentity :one
 SELECT e.user_id, (u.disabled_at IS NOT NULL)::boolean AS disabled

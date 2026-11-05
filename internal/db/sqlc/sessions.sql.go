@@ -12,13 +12,17 @@ import (
 )
 
 const createSession = `-- name: CreateSession :one
-INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, login_method, ip, user_agent, idle_timeout, max_lifetime)
+WITH p AS (
+    SELECT COALESCE((SELECT session_idle_timeout FROM applications WHERE applications.client_id = $2),
+                    make_interval(secs => $9::int)) AS idle,
+           COALESCE((SELECT session_max_lifetime FROM applications WHERE applications.client_id = $2),
+                    make_interval(secs => $10::int)) AS cap
+)
+INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, login_method, ip, user_agent, idle_timeout, max_lifetime, lapses_at)
 SELECT $1, $2::text, u.id, $3, $4, $5::text, $6, $7,
-       COALESCE((SELECT session_idle_timeout FROM applications WHERE applications.client_id = $2),
-                make_interval(secs => $8::int)),
-       COALESCE((SELECT session_max_lifetime FROM applications WHERE applications.client_id = $2),
-                make_interval(secs => $9::int))
-FROM users u WHERE u.id = $10 AND u.disabled_at IS NULL
+       p.idle, p.cap, LEAST(now() + p.idle, $3::timestamptz + p.cap)
+FROM users u, p
+WHERE u.id = $8 AND u.disabled_at IS NULL
 RETURNING id, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs
 `
 
@@ -30,9 +34,9 @@ type CreateSessionParams struct {
 	LoginMethod     string
 	Ip              pgtype.Text
 	UserAgent       pgtype.Text
+	UserID          string
 	DefaultIdleSecs int32
 	DefaultMaxSecs  int32
-	UserID          string
 }
 
 type CreateSessionRow struct {
@@ -43,6 +47,10 @@ type CreateSessionRow struct {
 // A NULL id_hash makes an App Session. The idle timeout and lifespan cap
 // are the Application's, or the defaults given for the Session's kind
 // (oidcstore.SessionDefaults). No row for a disabled User.
+//
+// lapses_at is when the Session lapses unless it is used again: idle
+// timeout after it was last seen, but never past auth_time + lifespan cap.
+// Every query that moves last_seen_at or auth_time sets it the same way.
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (CreateSessionRow, error) {
 	row := q.db.QueryRow(ctx, createSession,
 		arg.IDHash,
@@ -52,9 +60,9 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (C
 		arg.LoginMethod,
 		arg.Ip,
 		arg.UserAgent,
+		arg.UserID,
 		arg.DefaultIdleSecs,
 		arg.DefaultMaxSecs,
-		arg.UserID,
 	)
 	var i CreateSessionRow
 	err := row.Scan(&i.ID, &i.IdleSecs)
@@ -63,7 +71,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (C
 
 const deleteOldSessions = `-- name: DeleteOldSessions :exec
 DELETE FROM sessions
-WHERE ended_at < now() - interval '30 days' OR session_lapses_at(sessions) < now() - interval '30 days'
+WHERE ended_at < now() - interval '30 days' OR lapses_at < now() - interval '30 days'
 `
 
 // Ended or lapsed for more than 30 days (docs/spec/security-compliance.md).
@@ -75,7 +83,7 @@ func (q *Queries) DeleteOldSessions(ctx context.Context) error {
 const endBrowserSession = `-- name: EndBrowserSession :exec
 WITH ended AS (
     UPDATE sessions SET ended_at = now() WHERE id_hash = $1 AND ended_at IS NULL
-    RETURNING sessions.id, sessions.user_id, session_lapses_at(sessions) > now() AS live
+    RETURNING sessions.id, sessions.user_id, sessions.lapses_at > now() AS live
 )
 INSERT INTO webhook_deliveries (client_id, kind, payload)
 SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)
@@ -93,8 +101,8 @@ func (q *Queries) EndBrowserSession(ctx context.Context, idHash []byte) error {
 const endUserSession = `-- name: EndUserSession :execrows
 WITH ended AS (
     UPDATE sessions SET ended_at = now()
-    WHERE sessions.id = $3 AND sessions.user_id = $4 AND sessions.id IN (SELECT l.id FROM live_sessions l)
-    RETURNING sessions.id, sessions.user_id, session_lapses_at(sessions) > now() AS live
+    WHERE sessions.id = $3 AND sessions.user_id = $4 AND sessions.ended_at IS NULL AND sessions.lapses_at > now()
+    RETURNING sessions.id, sessions.user_id, sessions.lapses_at > now() AS live
 ), logout AS (
     INSERT INTO webhook_deliveries (client_id, kind, payload)
     SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)
@@ -129,9 +137,10 @@ func (q *Queries) EndUserSession(ctx context.Context, arg EndUserSessionParams) 
 
 const renewSession = `-- name: RenewSession :one
 UPDATE sessions SET id_hash = $1, auth_time = $2, amr = $3, login_method = $4::text, last_seen_at = now(),
+    lapses_at = LEAST(now() + idle_timeout, $2::timestamptz + max_lifetime),
     ip = $5, user_agent = $6
 WHERE sessions.id_hash = $7 AND sessions.user_id = $8
-  AND sessions.id IN (SELECT l.id FROM live_sessions l)
+  AND sessions.ended_at IS NULL AND sessions.lapses_at > now()
 RETURNING id, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs
 `
 
@@ -169,8 +178,9 @@ func (q *Queries) RenewSession(ctx context.Context, arg RenewSessionParams) (Ren
 }
 
 const touchSession = `-- name: TouchSession :one
-UPDATE sessions SET last_seen_at = now(), ip = $1, user_agent = $2
-WHERE sessions.id_hash = $3 AND sessions.id IN (SELECT l.id FROM live_sessions l)
+UPDATE sessions SET last_seen_at = now(), lapses_at = LEAST(now() + idle_timeout, auth_time + max_lifetime),
+    ip = $1, user_agent = $2
+WHERE sessions.id_hash = $3 AND sessions.ended_at IS NULL AND sessions.lapses_at > now()
 RETURNING id, user_id, auth_time, amr, COALESCE(login_method, '')::text AS login_method, EXTRACT(EPOCH FROM idle_timeout)::integer AS idle_secs
 `
 
@@ -206,8 +216,8 @@ func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) (Tou
 const userSessions = `-- name: UserSessions :many
 SELECT s.id, (s.id_hash IS NULL)::boolean AS app, s.client_id, COALESCE(a.name, s.client_id, '')::text AS application_name,
        s.auth_time, s.amr, s.last_seen_at, s.ip, s.user_agent,
-       session_lapses_at(s)::timestamptz AS expires_at, s.ended_at,
-       EXISTS (SELECT 1 FROM live_sessions l WHERE l.id = s.id)::boolean AS active
+       s.lapses_at AS expires_at, s.ended_at,
+       (s.ended_at IS NULL AND s.lapses_at > now())::boolean AS active
 FROM sessions s LEFT JOIN applications a USING (client_id) WHERE s.user_id = $1
 ORDER BY s.last_seen_at DESC
 `

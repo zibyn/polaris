@@ -49,7 +49,7 @@ func passkeyUserAt(t *testing.T, e *env, a *passkeytest.Authenticator, kind, val
 	}
 	// The account center's registration challenge hangs off its Session.
 	if _, err := e.pool.Exec(context.Background(),
-		"INSERT INTO sessions (id, id_hash, user_id, auth_time, amr) VALUES ('pk-enroll', '\x02', $1, now(), '{}')", sub); err != nil {
+		"INSERT INTO sessions (id, id_hash, user_id, auth_time, amr, lapses_at) VALUES ('pk-enroll', '\x02', $1, now(), '{}', now() + interval '30 days')", sub); err != nil {
 		t.Fatal(err)
 	}
 	store, err := passkey.New(e.pool, e.issuer)

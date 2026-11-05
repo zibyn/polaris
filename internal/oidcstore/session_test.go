@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/zibyn/polaris/internal/db/dbtest"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/oidc/goidc"
 )
@@ -105,9 +108,9 @@ func TestCreateSession(t *testing.T) {
 	}
 }
 
-// Whether a Session still lives is one rule (session_lapses_at): the
-// live_sessions view, the console's list, the logout tokens sent when it is
-// ended, and the cleanup must all agree on it.
+// Whether a Session still lives is one rule (sessions.lapses_at, unended):
+// the queries that check it, the console's list, the logout tokens sent when
+// it is ended, and the cleanup must all agree on it.
 func TestSessionLivenessAgrees(t *testing.T) {
 	pool, keyring := setup(t)
 	s := New(pool, keyring)
@@ -142,8 +145,10 @@ func TestSessionLivenessAgrees(t *testing.T) {
 		switch state {
 		case "idle":
 			exec("UPDATE sessions SET last_seen_at = now() - interval '31 days' WHERE id = $1", sess.ID)
+			exec(dbtest.Relapse)
 		case "capped":
 			exec("UPDATE sessions SET auth_time = now() - interval '91 days' WHERE id = $1", sess.ID)
+			exec(dbtest.Relapse)
 		case "ended":
 			exec("UPDATE sessions SET ended_at = now() WHERE id = $1", sess.ID)
 		}
@@ -180,8 +185,8 @@ func TestSessionLivenessAgrees(t *testing.T) {
 	} {
 		t.Run(c.state, func(t *testing.T) {
 			id, _ := start(c.state)
-			if got := exists("SELECT 1 FROM live_sessions WHERE id = $1", id); got != c.live {
-				t.Errorf("in live_sessions = %v", got)
+			if got := exists("SELECT 1 FROM sessions WHERE id = $1 AND ended_at IS NULL AND lapses_at > now()", id); got != c.live {
+				t.Errorf("live = %v", got)
 			}
 			rows, err := q.UserSessions(ctx, "ALICE")
 			if err != nil {
@@ -204,6 +209,7 @@ func TestSessionLivenessAgrees(t *testing.T) {
 			id, _ = start(c.state)
 			exec(`UPDATE sessions SET auth_time = auth_time - interval '31 days', last_seen_at = last_seen_at - interval '31 days',
 				ended_at = ended_at - interval '31 days' WHERE id = $1`, id)
+			exec(dbtest.Relapse)
 			if err := q.DeleteOldSessions(ctx); err != nil {
 				t.Fatal(err)
 			}
@@ -258,6 +264,7 @@ func TestEveryEndingQueuesLogoutTokens(t *testing.T) {
 		exec("INSERT INTO session_applications (session_id, client_id) VALUES ($1, 'rp2'), ($1, 'quiet')", sess.ID)
 		if lapsed {
 			exec("UPDATE sessions SET last_seen_at = now() - interval '100 days' WHERE id = $1", sess.ID)
+			exec(dbtest.Relapse)
 		}
 		exec("DELETE FROM webhook_deliveries")
 		return sub, sess.ID, idHash
@@ -319,4 +326,68 @@ func TestEveryEndingQueuesLogoutTokens(t *testing.T) {
 			})
 		}
 	}
+}
+
+// Every query that moves last_seen_at or auth_time keeps lapses_at to the
+// one rule: idle timeout after last seen, never past auth_time + lifespan
+// cap. Each step first scrambles lapses_at, so a query that forgets it
+// leaves the rule broken.
+func TestEveryWriterKeepsLapsesAt(t *testing.T) {
+	pool, keyring := setup(t)
+	s := New(pool, keyring)
+	q := sqlc.New(pool)
+	ctx := context.Background()
+	if err := q.CreateUser(ctx, "ALICE"); err != nil {
+		t.Fatal(err)
+	}
+	now := func(d time.Duration) pgtype.Timestamptz {
+		return pgtype.Timestamptz{Time: time.Now().Add(d), Valid: true}
+	}
+	day := 24 * time.Hour
+	hash := []byte{1}
+	// Signed in 80 days ago: the cap (90 days) comes before the idle timeout.
+	sess, err := s.CreateSession(ctx, hash, "polaris-console", "ALICE", time.Now().Add(-80*day), []string{"pwd"}, "password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "INSERT INTO oidc_grants (id, refresh_token_hash, sealed, session_id) VALUES ('g', '\\x01', '\\x00', $1)", sess.ID); err != nil {
+		t.Fatal(err)
+	}
+	check := func(step string) {
+		t.Helper()
+		var ok bool
+		if err := pool.QueryRow(ctx, "SELECT lapses_at = LEAST(last_seen_at + idle_timeout, auth_time + max_lifetime) FROM sessions WHERE id = $1", sess.ID).Scan(&ok); err != nil {
+			t.Fatal(err)
+		}
+		if !ok {
+			t.Errorf("%s left lapses_at off the rule", step)
+		}
+		if _, err := pool.Exec(ctx, "UPDATE sessions SET lapses_at = now() + interval '1 minute', last_seen_at = now() - interval '1 hour' WHERE id = $1", sess.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check("CreateSession")
+	if _, err := q.TouchSession(ctx, sqlc.TouchSessionParams{IDHash: hash}); err != nil {
+		t.Fatal(err)
+	}
+	check("TouchSession")
+	if _, err := q.RenewSession(ctx, sqlc.RenewSessionParams{NewHash: []byte{2}, AuthTime: now(-85 * day), Amr: []string{"pwd"},
+		LoginMethod: "password", OldHash: hash, UserID: "ALICE"}); err != nil {
+		t.Fatal(err)
+	}
+	check("RenewSession")
+	if err := q.Reauthenticate(ctx, sqlc.ReauthenticateParams{Amr: []string{"pwd"}, ID: sess.ID, UserID: "ALICE"}); err != nil {
+		t.Fatal(err)
+	}
+	check("Reauthenticate")
+	if n, err := q.RotateRefreshToken(ctx, sqlc.RotateRefreshTokenParams{OldHash: []byte{1}, NewHash: []byte{2}, ExpiresAt: now(day),
+		Sealed: []byte{0}, ID: "g"}); err != nil || n != 1 {
+		t.Fatal(n, err)
+	}
+	check("RotateRefreshToken")
+	if n, err := q.GraceRotateRefreshToken(ctx, sqlc.GraceRotateRefreshTokenParams{OldHash: []byte{1}, GraceSecs: 60, NewHash: []byte{3},
+		ExpiresAt: now(day), Sealed: []byte{0}}); err != nil || n != 1 {
+		t.Fatal(n, err)
+	}
+	check("GraceRotateRefreshToken")
 }

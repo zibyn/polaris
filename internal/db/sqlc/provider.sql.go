@@ -344,7 +344,7 @@ func (q *Queries) ListProviders(ctx context.Context) ([]ListProvidersRow, error)
 }
 
 const liveSessionUser = `-- name: LiveSessionUser :one
-SELECT s.user_id FROM sessions s WHERE s.id = $1 AND s.id IN (SELECT l.id FROM live_sessions l)
+SELECT s.user_id FROM sessions s WHERE s.id = $1 AND s.ended_at IS NULL AND s.lapses_at > now()
 `
 
 func (q *Queries) LiveSessionUser(ctx context.Context, id string) (string, error) {

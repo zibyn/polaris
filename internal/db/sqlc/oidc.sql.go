@@ -214,7 +214,7 @@ WITH spent AS (
 ), ended AS (
     UPDATE sessions SET ended_at = now()
     WHERE sessions.id IN (SELECT spent.session_id FROM spent) AND sessions.ended_at IS NULL
-    RETURNING sessions.id, sessions.user_id, session_lapses_at(sessions) > now() AS live
+    RETURNING sessions.id, sessions.user_id, sessions.lapses_at > now() AS live
 ), logout AS (
     INSERT INTO webhook_deliveries (client_id, kind, payload)
     SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)
@@ -266,7 +266,8 @@ WITH spent AS (
     FROM cur WHERE oidc_grants.id = cur.id
     RETURNING oidc_grants.id, oidc_grants.session_id, cur.refresh_token_hash AS old_hash
 ), touched AS (
-    UPDATE sessions SET last_seen_at = now(), ip = $6, user_agent = $7
+    UPDATE sessions SET last_seen_at = now(), lapses_at = LEAST(now() + idle_timeout, auth_time + max_lifetime),
+        ip = $6, user_agent = $7
     WHERE sessions.id = (SELECT g.session_id FROM g)
     RETURNING sessions.id, sessions.user_id
 ), audited AS (
@@ -308,7 +309,8 @@ func (q *Queries) GraceRotateRefreshToken(ctx context.Context, arg GraceRotateRe
 const grant = `-- name: Grant :one
 SELECT id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id FROM oidc_grants
 WHERE oidc_grants.id = $1 AND (expires_at IS NULL OR expires_at > now())
-  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM live_sessions l WHERE l.id = oidc_grants.session_id))
+  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM sessions s
+                                    WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()))
 `
 
 // The Session check is a correlated EXISTS: OR with IN (SELECT ...) plans as
@@ -330,7 +332,8 @@ func (q *Queries) Grant(ctx context.Context, id string) (OidcGrant, error) {
 const grantByAuthCodeHash = `-- name: GrantByAuthCodeHash :one
 SELECT id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id FROM oidc_grants
 WHERE auth_code_hash = $1 AND (expires_at IS NULL OR expires_at > now())
-  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM live_sessions l WHERE l.id = oidc_grants.session_id))
+  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM sessions s
+                                    WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()))
 `
 
 func (q *Queries) GrantByAuthCodeHash(ctx context.Context, authCodeHash []byte) (OidcGrant, error) {
@@ -350,7 +353,8 @@ func (q *Queries) GrantByAuthCodeHash(ctx context.Context, authCodeHash []byte) 
 const grantByRefreshTokenHash = `-- name: GrantByRefreshTokenHash :one
 SELECT id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id FROM oidc_grants
 WHERE refresh_token_hash = $1 AND (expires_at IS NULL OR expires_at > now())
-  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM live_sessions l WHERE l.id = oidc_grants.session_id))
+  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM sessions s
+                                    WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()))
 `
 
 func (q *Queries) GrantByRefreshTokenHash(ctx context.Context, refreshTokenHash []byte) (OidcGrant, error) {
@@ -434,7 +438,8 @@ WITH g AS (
     WHERE oidc_grants.id = $5 AND oidc_grants.refresh_token_hash = $1
     RETURNING oidc_grants.id, oidc_grants.session_id
 ), touched AS (
-    UPDATE sessions SET last_seen_at = now(), ip = $6, user_agent = $7
+    UPDATE sessions SET last_seen_at = now(), lapses_at = LEAST(now() + idle_timeout, auth_time + max_lifetime),
+        ip = $6, user_agent = $7
     WHERE sessions.id = (SELECT g.session_id FROM g)
 )
 INSERT INTO oidc_spent_refresh_tokens (hash, grant_id) SELECT $1, g.id FROM g
@@ -520,7 +525,7 @@ WITH g AS (
     UPDATE sessions SET ended_at = now()
     WHERE $8::boolean AND sessions.id_hash IS NULL AND sessions.ended_at IS NULL
       AND sessions.id = (SELECT g.session_id FROM g)
-    RETURNING sessions.id, sessions.user_id, session_lapses_at(sessions) > now() AS live
+    RETURNING sessions.id, sessions.user_id, sessions.lapses_at > now() AS live
 )
 INSERT INTO webhook_deliveries (client_id, kind, payload)
 SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)

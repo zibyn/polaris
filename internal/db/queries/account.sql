@@ -5,7 +5,7 @@
 -- request pays nothing extra for the check.
 SELECT s.auth_time, u.pending
 FROM sessions s JOIN users u ON u.id = s.user_id
-WHERE s.id = @id AND s.user_id = @user_id AND s.id IN (SELECT l.id FROM live_sessions l);
+WHERE s.id = @id AND s.user_id = @user_id AND s.ended_at IS NULL AND s.lapses_at > now();
 
 -- name: AccountUser :one
 SELECT u.created_at,
@@ -44,8 +44,10 @@ SELECT (s.passkey_login AND s.admins_need_two_factor AND NOT totp_confirmed(@sub
 FROM settings s;
 
 -- name: Reauthenticate :exec
--- The User proved themselves again in this Session.
-UPDATE sessions SET auth_time = now(), amr = @amr WHERE id = @id AND user_id = @user_id;
+-- The User proved themselves again in this Session; the lifespan cap
+-- counts from now (see CreateSession for lapses_at).
+UPDATE sessions SET auth_time = now(), amr = @amr, lapses_at = LEAST(last_seen_at + idle_timeout, now() + max_lifetime)
+WHERE id = @id AND user_id = @user_id;
 
 -- name: LockUser :one
 -- Serialises changes to a User's login paths.

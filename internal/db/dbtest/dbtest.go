@@ -63,3 +63,8 @@ func dbName(name string) string {
 	sum := sha256.Sum256([]byte(name))
 	return strings.ToValidUTF8(name[:54], "") + "_" + hex.EncodeToString(sum[:4])
 }
+
+// Relapse recomputes sessions.lapses_at the way the Session queries set it
+// (see CreateSession), for a test that moved last_seen_at or auth_time by
+// hand.
+const Relapse = "UPDATE sessions SET lapses_at = LEAST(last_seen_at + idle_timeout, auth_time + max_lifetime)"

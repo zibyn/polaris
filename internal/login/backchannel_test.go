@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/zibyn/polaris/internal/crypt"
+	"github.com/zibyn/polaris/internal/db/dbtest"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/oidcstore"
 	"github.com/zibyn/polaris/internal/webhook"
@@ -202,6 +203,9 @@ func TestExpiredSessionSendsNothing(t *testing.T) {
 			e, r, sub, sid := signedInEverywhere(t)
 			ctx := context.Background()
 			if _, err := e.pool.Exec(ctx, "UPDATE sessions SET "+c.lapse+" WHERE id = $1", sid); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := e.pool.Exec(ctx, dbtest.Relapse); err != nil {
 				t.Fatal(err)
 			}
 			q := sqlc.New(e.pool)

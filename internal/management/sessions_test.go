@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zibyn/polaris/internal/db/dbtest"
 	"github.com/zibyn/polaris/internal/oidcstore"
 )
 
@@ -121,6 +122,9 @@ func TestApplicationSetsTheSessionLifespanCap(t *testing.T) {
 	if _, err := e.pool.Exec(t.Context(), "UPDATE sessions SET auth_time = now() - interval '5 days' WHERE id = $1", sid); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := e.pool.Exec(t.Context(), dbtest.Relapse); err != nil {
+		t.Fatal(err)
+	}
 	if got := expiry(sid); got != 5*day {
 		t.Errorf("Session signed in 5 days ago ends in %v, want 5 days", got)
 	}
@@ -132,6 +136,9 @@ func TestApplicationSetsTheSessionLifespanCap(t *testing.T) {
 	}
 	app, browser := e.session("ALICE", id, false), e.session("ALICE", id, true)
 	if _, err := e.pool.Exec(t.Context(), "UPDATE sessions SET auth_time = now() - CASE WHEN id = $1 THEN interval '100 days' ELSE interval '85 days' END WHERE id IN ($1, $2)", app, browser); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(t.Context(), dbtest.Relapse); err != nil {
 		t.Fatal(err)
 	}
 	if got := expiry(app); got != 80*day {

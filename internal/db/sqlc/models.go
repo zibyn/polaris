@@ -113,10 +113,6 @@ type Invite struct {
 	CreatedAt pgtype.Timestamptz
 }
 
-type LiveSession struct {
-	ID string
-}
-
 type Lockout struct {
 	Key   string
 	Until pgtype.Timestamptz
@@ -276,6 +272,7 @@ type Session struct {
 	// The default is a browser Session's, only for direct INSERTs (tests); oidcstore.SessionDefaults decides.
 	MaxLifetime pgtype.Interval
 	LoginMethod pgtype.Text
+	LapsesAt    pgtype.Timestamptz
 }
 
 type SessionApplication struct {

@@ -143,8 +143,8 @@ func (e *env) signIn(sub string, ago time.Duration) string {
 	cookie := rand.Text()
 	idHash := sha256.Sum256([]byte(cookie))
 	if err := e.pool.QueryRow(context.Background(), `
-		INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr)
-		VALUES ($3, 'polaris-account', $1, now() - $2 * interval '1 second', '{sms}') RETURNING id`,
+		INSERT INTO sessions (id_hash, client_id, user_id, auth_time, amr, lapses_at)
+		VALUES ($3, 'polaris-account', $1, now() - $2 * interval '1 second', '{sms}', now() + interval '30 days') RETURNING id`,
 		sub, ago.Seconds(), idHash[:]).Scan(&sid); err != nil {
 		e.t.Fatal(err)
 	}

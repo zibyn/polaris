@@ -14,7 +14,7 @@ import (
 const accountSession = `-- name: AccountSession :one
 SELECT s.auth_time, u.pending
 FROM sessions s JOIN users u ON u.id = s.user_id
-WHERE s.id = $1 AND s.user_id = $2 AND s.id IN (SELECT l.id FROM live_sessions l)
+WHERE s.id = $1 AND s.user_id = $2 AND s.ended_at IS NULL AND s.lapses_at > now()
 `
 
 type AccountSessionParams struct {
@@ -178,7 +178,8 @@ func (q *Queries) PutPassword(ctx context.Context, arg PutPasswordParams) error 
 }
 
 const reauthenticate = `-- name: Reauthenticate :exec
-UPDATE sessions SET auth_time = now(), amr = $1 WHERE id = $2 AND user_id = $3
+UPDATE sessions SET auth_time = now(), amr = $1, lapses_at = LEAST(last_seen_at + idle_timeout, now() + max_lifetime)
+WHERE id = $2 AND user_id = $3
 `
 
 type ReauthenticateParams struct {
@@ -187,7 +188,8 @@ type ReauthenticateParams struct {
 	UserID string
 }
 
-// The User proved themselves again in this Session.
+// The User proved themselves again in this Session; the lifespan cap
+// counts from now (see CreateSession for lapses_at).
 func (q *Queries) Reauthenticate(ctx context.Context, arg ReauthenticateParams) error {
 	_, err := q.db.Exec(ctx, reauthenticate, arg.Amr, arg.ID, arg.UserID)
 	return err

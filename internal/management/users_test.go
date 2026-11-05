@@ -137,7 +137,7 @@ func TestAdminDisablesAndRestoresAUser(t *testing.T) {
 	e.user("RO", []string{"readonly"})
 	owner, ro := e.token(e.owner, nil), e.token("RO", nil)
 	if _, err := e.pool.Exec(context.Background(), `
-		INSERT INTO sessions (user_id, auth_time, amr) VALUES ('ALICE', now(), '{pwd}'), ('ALICE', now(), '{sms}')`); err != nil {
+		INSERT INTO sessions (user_id, auth_time, amr, lapses_at) VALUES ('ALICE', now(), '{pwd}', now() + interval '30 days'), ('ALICE', now(), '{sms}', now() + interval '30 days')`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -344,8 +344,8 @@ func TestOverview(t *testing.T) {
 	e := start(t)
 	e.user("ALICE", nil)
 	if _, err := e.pool.Exec(context.Background(), `
-		INSERT INTO sessions (user_id, auth_time, amr) VALUES ('ALICE', now(), '{pwd}');
-		INSERT INTO sessions (user_id, auth_time, amr, ended_at) VALUES ('ALICE', now() - interval '3 days', '{pwd}', now())`); err != nil {
+		INSERT INTO sessions (user_id, auth_time, amr, lapses_at) VALUES ('ALICE', now(), '{pwd}', now() + interval '30 days');
+		INSERT INTO sessions (user_id, auth_time, amr, ended_at, lapses_at) VALUES ('ALICE', now() - interval '3 days', '{pwd}', now(), now() + interval '30 days')`); err != nil {
 		t.Fatal(err)
 	}
 	var o struct {
@@ -364,7 +364,7 @@ func TestSelfAuditedWrites(t *testing.T) {
 	owner := e.token(e.owner, nil)
 	var id string
 	if err := e.pool.QueryRow(context.Background(),
-		"INSERT INTO sessions (user_id, auth_time, amr) VALUES ('ALICE', now(), '{pwd}') RETURNING id").Scan(&id); err != nil {
+		"INSERT INTO sessions (user_id, auth_time, amr, lapses_at) VALUES ('ALICE', now(), '{pwd}', now() + interval '30 days') RETURNING id").Scan(&id); err != nil {
 		t.Fatal(err)
 	}
 	if code := e.call("DELETE", owner, "/users/ALICE/sessions/"+id, nil, nil); code != 204 {

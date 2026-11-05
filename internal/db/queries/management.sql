@@ -325,7 +325,7 @@ WITH changed AS (
 ), ended AS (
     UPDATE sessions SET ended_at = now()
     WHERE sessions.user_id IN (SELECT changed.id FROM changed) AND @disabled::boolean AND sessions.ended_at IS NULL
-    RETURNING sessions.id, sessions.user_id, session_lapses_at(sessions) > now() AS live
+    RETURNING sessions.id, sessions.user_id, sessions.lapses_at > now() AS live
 ), logout AS (
     INSERT INTO webhook_deliveries (client_id, kind, payload)
     SELECT a.client_id, 'logout', jsonb_build_object('sub', e.user_id, 'sid', e.id)
@@ -351,7 +351,7 @@ WITH gone AS (
     INSERT INTO webhook_deliveries (client_id, payload)
     SELECT e.client_id, e.payload FROM gone, user_event('user.deleted', gone.id) e
 ), ended AS (
-    SELECT s.id, s.user_id, session_lapses_at(s) > now() AS live
+    SELECT s.id, s.user_id, s.lapses_at > now() AS live
     FROM sessions s WHERE s.user_id IN (SELECT gone.id FROM gone) AND s.ended_at IS NULL
 ), logout AS (
     INSERT INTO webhook_deliveries (client_id, kind, payload)
@@ -396,7 +396,7 @@ LIMIT @lim;
 -- name: Overview :one
 SELECT (SELECT count(*) FROM users) AS users,
        (SELECT count(*) FROM sessions WHERE auth_time >= date_trunc('day', now())) AS logins_today,
-       (SELECT count(*) FROM live_sessions) AS live_sessions,
+       (SELECT count(*) FROM sessions WHERE ended_at IS NULL AND lapses_at > now()) AS live_sessions,
        (SELECT count(*) FROM applications) AS applications,
        (SELECT count(*) FROM sends WHERE sent_at >= now() - interval '1 day') AS sends_last_day,
        (SELECT daily_send_limit FROM settings) AS daily_send_limit;
