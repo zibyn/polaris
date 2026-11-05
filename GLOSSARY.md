@@ -149,5 +149,5 @@ _Avoid_: 权限点, scope, 授权
 _Avoid_: 用户组, 身份, 职位
 
 **Management API**:
-Polaris 自带的内置 API,管理 User、Application、Role 与配置;管理端界面和业务后端都通过它操作,权限由其上的内置 Role(所有者、管理员、只读)或自定义 Role 决定。
+Polaris 自带的内置 API,管理 User、Application、Role 与配置;管理端界面和业务后端都通过它操作,权限由其上的内置 Role(所有者、管理员、只读)或自定义 Role 决定。它始终作用于整个用户池,不能限定到某个 Application 的 User。
 _Avoid_: 管理端 API, Admin API, 后台接口
