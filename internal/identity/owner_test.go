@@ -191,3 +191,32 @@ func TestConcurrentChangesKeepInvariants(t *testing.T) {
 		}
 	})
 }
+
+// While password login is off a username and password sign nobody in, so
+// they do not stand in for the last other way.
+func TestPasswordIsNoLoginPathWhileOff(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	sub, err := s.SignIn(ctx, "email", "alice@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.q.AddIdentifier(ctx, sqlc.AddIdentifierParams{UserID: sub, Kind: "username", Value: "alice"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetPassword(ctx, sub, "correct horse"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, "UPDATE settings SET password_login = 'off'"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveIdentifier(ctx, sub, "email"); !errors.Is(err, ErrLastLoginPath) {
+		t.Errorf("remove email with password login off: %v, want ErrLastLoginPath", err)
+	}
+	if _, err := s.pool.Exec(ctx, "UPDATE settings SET password_login = 'on'"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveIdentifier(ctx, sub, "email"); err != nil {
+		t.Errorf("remove email with password login on: %v", err)
+	}
+}

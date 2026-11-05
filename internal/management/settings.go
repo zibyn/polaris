@@ -57,18 +57,6 @@ func (s *Service) putSettings(ctx context.Context, in *policyBody) (*struct{}, e
 		}
 	}
 	c := ctx.Value(callerKey{}).(caller)
-	// With password login off, an admin who has nothing else to sign in with
-	// is out of the console for good; refuse rather than let them do it. An
-	// M2M Application holds no Identifiers, so it has nothing to lose.
-	if b.PasswordLogin == "off" && !c.application {
-		otherPath, err := s.ids.OtherLoginPath(ctx, c.sub)
-		if err != nil {
-			return nil, err
-		}
-		if !otherPath {
-			return nil, huma.Error422UnprocessableEntity("请先为自己绑定邮箱、手机号或外部账号,关闭密码登录后你就进不了管理端了")
-		}
-	}
 	// With the switch on, an admin here satisfies it (两步验证 or a Passkey)
 	// already; this stops one turning it on and locking themselves out.
 	if b.AdminsNeedTwoFactor && !c.satisfied {
@@ -81,7 +69,21 @@ func (s *Service) putSettings(ctx context.Context, in *policyBody) (*struct{}, e
 		return nil, huma.Error422UnprocessableEntity("请先为自己开启两步验证")
 	}
 	// Leaving the Logo out removes it; the transaction deletes its blob.
-	return nil, db.Retry(ctx, s.pool, func(tx pgx.Tx) error {
+	// SERIALIZABLE, as identity's guards: the caller unbinding their last
+	// other path meanwhile is refused there or here, not both let through.
+	return nil, db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
+		// With password login off, an admin who has nothing else to sign in with
+		// is out of the console for good; refuse rather than let them do it. An
+		// M2M Application holds no Identifiers, so it has nothing to lose.
+		if b.PasswordLogin == "off" && !c.application {
+			otherPath, err := s.ids.OtherLoginPath(ctx, tx, c.sub)
+			if err != nil {
+				return err
+			}
+			if !otherPath {
+				return huma.Error422UnprocessableEntity("请先为自己绑定邮箱、手机号或外部账号,关闭密码登录后你就进不了管理端了")
+			}
+		}
 		q := s.q.WithTx(tx)
 		logo, err := q.InstanceLogo(ctx)
 		if err != nil {

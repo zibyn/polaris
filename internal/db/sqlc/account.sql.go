@@ -86,7 +86,9 @@ func (q *Queries) AccountUser(ctx context.Context, id string) (AccountUserRow, e
 
 const loginPaths = `-- name: LoginPaths :one
 SELECT COALESCE(array_agg(kind ORDER BY kind) FILTER (WHERE kind IS NOT NULL), '{}')::text[] AS identifiers,
-       EXISTS (SELECT 1 FROM passwords p WHERE p.user_id = $1) AS has_password,
+       -- A password is no way in while password login is off.
+       EXISTS (SELECT 1 FROM passwords p, settings s
+               WHERE p.user_id = $1 AND s.password_login = 'on') AS password_counts,
        EXISTS (SELECT 1 FROM external_identities e JOIN providers pr ON pr.id = e.provider
                WHERE e.user_id = $1 AND pr.enabled) AS has_external_identity
 FROM identifiers WHERE user_id = $1
@@ -94,7 +96,7 @@ FROM identifiers WHERE user_id = $1
 
 type LoginPathsRow struct {
 	Identifiers         []string
-	HasPassword         bool
+	PasswordCounts      bool
 	HasExternalIdentity bool
 }
 
@@ -102,7 +104,7 @@ type LoginPathsRow struct {
 func (q *Queries) LoginPaths(ctx context.Context, userID string) (LoginPathsRow, error) {
 	row := q.db.QueryRow(ctx, loginPaths, userID)
 	var i LoginPathsRow
-	err := row.Scan(&i.Identifiers, &i.HasPassword, &i.HasExternalIdentity)
+	err := row.Scan(&i.Identifiers, &i.PasswordCounts, &i.HasExternalIdentity)
 	return i, err
 }
 

@@ -89,8 +89,8 @@ func bound(n int64, err error) error {
 // username on its own does not count — it only works with a password. This is
 // the whole of what a password-login switch must leave in place before it may
 // go off (management.putSettings).
-func (s *Store) OtherLoginPath(ctx context.Context, sub string) (bool, error) {
-	paths, err := s.q.LoginPaths(ctx, sub)
+func (s *Store) OtherLoginPath(ctx context.Context, tx pgx.Tx, sub string) (bool, error) {
+	paths, err := s.q.WithTx(tx).LoginPaths(ctx, sub)
 	return otherLoginPath(paths), err
 }
 
@@ -123,7 +123,7 @@ func (s *Store) changeLoginPaths(ctx context.Context, sub string, change func(*s
 		if err != nil {
 			return err
 		}
-		if otherLoginPath(paths) || paths.HasPassword && slices.Contains(paths.Identifiers, "username") {
+		if otherLoginPath(paths) || paths.PasswordCounts && slices.Contains(paths.Identifiers, "username") {
 			return nil
 		}
 		return ErrLastLoginPath
