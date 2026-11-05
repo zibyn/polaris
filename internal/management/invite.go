@@ -2,11 +2,9 @@ package management
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/zibyn/polaris/internal/db/sqlc"
 )
@@ -18,15 +16,15 @@ var errPasswordOff = huma.Error422UnprocessableEntity("密码登录已关闭,不
 
 // invite reads a User's 注册邀请 out of their row. A link still on file is
 // 已发出, and its expiry is the one the link itself has. One the User has
-// spent is 已接受 — accepting deletes the row, so the audit log is the only
-// place that still says so. Everything else (never sent, revoked, expired) is
+// spent is 已接受 — accepting deletes the row and stamps the User's
+// invite_accepted_at, which the next invite sent clears. Everything else (never sent, revoked, expired) is
 // 没发出: there is no link anybody can use.
 func invite(r sqlc.GetUserRow) Invite {
 	if r.InviteExpiresAt.Valid {
 		at := r.InviteExpiresAt.Time
 		return Invite{State: "sent", ExpiresAt: &at}
 	}
-	if r.InviteEvent == "invite.accepted" {
+	if r.InviteAccepted {
 		return Invite{State: "accepted"}
 	}
 	return Invite{State: "none"}
@@ -55,8 +53,7 @@ func (s *Service) sendInvite(ctx context.Context, sub string) error {
 		}
 		return err
 	}
-	detail, _ := json.Marshal(map[string]string{"by": callerSub(ctx)})
-	return s.q.Audit(ctx, sqlc.AuditParams{Event: "invite.sent", Sub: pgtype.Text{String: sub, Valid: true}, Detail: detail})
+	return s.q.InviteSent(ctx, sqlc.InviteSentParams{UserID: sub, ByID: callerActor(ctx).ID, ByType: callerActor(ctx).Type})
 }
 
 // inviteUser sends — or re-sends — a User's 注册邀请.
@@ -83,6 +80,6 @@ func (s *Service) revokeInvite(ctx context.Context, in *subPath) (*struct{}, err
 	if err := s.mayManage(ctx, in.Sub); err != nil {
 		return nil, err
 	}
-	_, err := s.ids.RevokeInvite(ctx, in.Sub, callerSub(ctx))
+	_, err := s.ids.RevokeInvite(ctx, in.Sub, callerActor(ctx))
 	return nil, err
 }

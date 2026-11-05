@@ -91,7 +91,7 @@ func (s *Service) putSettings(ctx context.Context, in *policyBody) (*struct{}, e
 			return err
 		}
 		if err := q.UpdateSettings(ctx, sqlc.UpdateSettingsParams{
-			By: c.sub, PasswordLogin: b.PasswordLogin, RequirePhone: b.RequirePhone, DailySendLimit: b.DailySendLimit,
+			ByID: callerActor(ctx).ID, ByType: callerActor(ctx).Type, PasswordLogin: b.PasswordLogin, RequirePhone: b.RequirePhone, DailySendLimit: b.DailySendLimit,
 			TermsUrl: b.TermsURL, PrivacyUrl: b.PrivacyURL, TermsUrlEn: b.TermsURLEn, PrivacyUrlEn: b.PrivacyURLEn, TermsVersion: b.TermsVersion, AuditRetentionDays: b.AuditRetentionDays,
 			AdminsNeedTwoFactor: b.AdminsNeedTwoFactor, PasskeyLogin: b.PasskeyLogin, OpenRegistration: b.OpenRegistration,
 			BrandName: own.Name, BrandLogo: logoKey(own.Logo), BrandColor: own.Color,
@@ -130,7 +130,7 @@ func (s *Service) listKeys(ctx context.Context, _ *struct{}) (*listKeysOutput, e
 }
 
 func (s *Service) rotateKeys(ctx context.Context, _ *struct{}) (*struct{}, error) {
-	return nil, s.keys.Rotate(ctx, ctx.Value(callerKey{}).(caller).sub)
+	return nil, s.keys.Rotate(ctx, callerActor(ctx))
 }
 
 // DeleteOldAudit removes audit events past the retention period; run by

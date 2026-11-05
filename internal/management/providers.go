@@ -51,7 +51,7 @@ type createProviderInput struct {
 
 func (s *Service) createProvider(ctx context.Context, in *createProviderInput) (*struct{}, error) {
 	b := in.Body
-	return nil, providerErr(s.providers.Create(ctx, b.ID, b.Type, b.Name, b.Config, callerSub(ctx)))
+	return nil, providerErr(s.providers.Create(ctx, b.ID, b.Type, b.Name, b.Config, callerActor(ctx)))
 }
 
 type providerPath struct {
@@ -62,19 +62,19 @@ func (s *Service) updateProvider(ctx context.Context, in *struct {
 	ID   string `path:"id"`
 	Body ProviderSettings
 }) (*struct{}, error) {
-	return nil, providerErr(s.providers.Update(ctx, in.ID, in.Body.Name, in.Body.Config, callerSub(ctx)))
+	return nil, providerErr(s.providers.Update(ctx, in.ID, in.Body.Name, in.Body.Config, callerActor(ctx)))
 }
 
 func (s *Service) enableProvider(ctx context.Context, in *providerPath) (*struct{}, error) {
-	return nil, providerErr(s.providers.SetEnabled(ctx, in.ID, true, callerSub(ctx)))
+	return nil, providerErr(s.providers.SetEnabled(ctx, in.ID, true, callerActor(ctx)))
 }
 
 func (s *Service) disableProvider(ctx context.Context, in *providerPath) (*struct{}, error) {
-	return nil, providerErr(s.providers.SetEnabled(ctx, in.ID, false, callerSub(ctx)))
+	return nil, providerErr(s.providers.SetEnabled(ctx, in.ID, false, callerActor(ctx)))
 }
 
 func (s *Service) deleteProvider(ctx context.Context, in *providerPath) (*struct{}, error) {
-	return nil, providerErr(s.providers.Delete(ctx, in.ID, callerSub(ctx)))
+	return nil, providerErr(s.providers.Delete(ctx, in.ID, callerActor(ctx)))
 }
 
 type listExternalIdentitiesOutput struct {
@@ -99,7 +99,7 @@ func (s *Service) unbindExternalIdentity(ctx context.Context, in *struct {
 	if err := s.mayManage(ctx, in.Sub); err != nil {
 		return nil, err
 	}
-	err := s.providers.Unbind(ctx, in.Sub, in.Provider, callerSub(ctx))
+	err := s.providers.Unbind(ctx, in.Sub, in.Provider, callerActor(ctx))
 	switch {
 	case errors.Is(err, identity.ErrNotBound):
 		return nil, huma.Error404NotFound("该用户没有绑定这个 Provider")

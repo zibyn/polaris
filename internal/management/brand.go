@@ -100,14 +100,14 @@ func (s *Service) putLogo(ctx context.Context, raw []byte, set func(*sqlc.Querie
 
 func (s *Service) setInstanceLogo(ctx context.Context, in *logoInput) (*logoOutput, error) {
 	return s.putLogo(ctx, in.RawBody, func(q *sqlc.Queries, key string) error {
-		return q.SetInstanceLogo(ctx, sqlc.SetInstanceLogoParams{Logo: key, By: callerSub(ctx)})
+		return q.SetInstanceLogo(ctx, sqlc.SetInstanceLogoParams{Logo: key, ByID: callerActor(ctx).ID, ByType: callerActor(ctx).Type})
 	})
 }
 
 func (s *Service) removeInstanceLogo(ctx context.Context, _ *struct{}) (*struct{}, error) {
 	return nil, pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if err := q.SetInstanceLogo(ctx, sqlc.SetInstanceLogoParams{By: callerSub(ctx)}); err != nil {
+		if err := q.SetInstanceLogo(ctx, sqlc.SetInstanceLogoParams{ByID: callerActor(ctx).ID, ByType: callerActor(ctx).Type}); err != nil {
 			return err
 		}
 		return q.DeleteUnusedLogos(ctx)

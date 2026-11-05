@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/dbtest"
@@ -99,7 +100,7 @@ func TestChecks(t *testing.T) {
 	if err := s.UseRecoveryCode(ctx, "ALICE", "aaaa-aaaa"); !errors.Is(err, twofactor.ErrRecoveryCode) {
 		t.Errorf("made-up recovery code: %v", err)
 	}
-	if err := s.Disable(ctx, "ALICE", "mfa.reset", "ADMIN"); err != nil {
+	if err := s.Disable(ctx, "ALICE", "mfa.reset", audit.User("ADMIN")); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.UseRecoveryCode(ctx, "ALICE", codes[1]); !errors.Is(err, twofactor.ErrRecoveryCode) {

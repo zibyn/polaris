@@ -5,6 +5,8 @@ import (
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/zibyn/polaris/internal/audit"
 )
 
 // Deleting an account keeps its audit events, with no IP or UA left in any.
@@ -27,7 +29,7 @@ func TestDeleteScrubsIPAndUAFromAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.Delete(ctx, sub, sub); err != nil {
+	if err := s.Delete(ctx, sub, audit.User(sub)); err != nil {
 		t.Fatal(err)
 	}
 	var n, withIP int

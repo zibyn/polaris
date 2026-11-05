@@ -11,6 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const auditDailyCap = `-- name: AuditDailyCap :execrows
+WITH claimed AS (
+    UPDATE settings SET daily_cap_audited_at = $1::timestamptz
+    WHERE daily_cap_audited_at IS NULL OR daily_cap_audited_at + interval '24 hours' <= $1::timestamptz
+    RETURNING daily_send_limit
+)
+INSERT INTO audit_log (event, detail)
+SELECT 'send.daily_cap_reached', jsonb_build_object('limit', daily_send_limit) FROM claimed
+`
+
+// Audits hitting the daily send limit at most once in 24 hours: the first
+// refusal is the one worth an event, the rest are the same person pressing
+// the button again. No row when it was audited within the day.
+func (q *Queries) AuditDailyCap(ctx context.Context, now pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, auditDailyCap, now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteCode = `-- name: DeleteCode :execrows
 DELETE FROM codes WHERE identifier = $1 AND code = $2
 `

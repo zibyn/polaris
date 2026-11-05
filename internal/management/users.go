@@ -2,7 +2,6 @@ package management
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/profile"
@@ -80,7 +80,7 @@ func (s *Service) createUser(ctx context.Context, in *createUserInput) (*createU
 	}
 	// The generic audit only records path parameters, and this write has
 	// none: audited here, with the User it made.
-	detail, _ := json.Marshal(map[string]string{"by": callerSub(ctx)})
+	detail := callerActor(ctx).Detail(nil)
 	if err := s.q.Audit(ctx, sqlc.AuditParams{Event: "user.created", Sub: pgtype.Text{String: sub, Valid: true}, Detail: detail}); err != nil {
 		return nil, err
 	}
@@ -158,7 +158,7 @@ func (s *Service) setDisabled(ctx context.Context, sub string, disabled bool) er
 	if err := s.mayManage(ctx, sub); err != nil {
 		return err
 	}
-	return ownerErr(s.ids.SetDisabled(ctx, sub, disabled, callerSub(ctx)))
+	return ownerErr(s.ids.SetDisabled(ctx, sub, disabled, callerActor(ctx)))
 }
 
 // deleteUser removes the User and all their data; only audit events keep
@@ -168,7 +168,7 @@ func (s *Service) deleteUser(ctx context.Context, in *subPath) (*struct{}, error
 		return nil, err
 	}
 	return nil, s.providers.DeleteUser(ctx, in.Sub, func(ctx context.Context, sub string) error {
-		return ownerErr(s.ids.Delete(ctx, sub, callerSub(ctx)))
+		return ownerErr(s.ids.Delete(ctx, sub, callerActor(ctx)))
 	})
 }
 
@@ -181,7 +181,7 @@ func (s *Service) setProfile(ctx context.Context, in *setProfileInput) (*struct{
 	if err := s.mayManage(ctx, in.Sub); err != nil {
 		return nil, err
 	}
-	err := s.profiles.Update(ctx, in.Sub, in.Body, callerSub(ctx))
+	err := s.profiles.Update(ctx, in.Sub, in.Body, callerActor(ctx))
 	var invalid profile.Invalid
 	if errors.As(err, &invalid) {
 		return nil, huma.Error400BadRequest(invalid.Error())
@@ -195,7 +195,7 @@ func (s *Service) removeAvatar(ctx context.Context, in *subPath) (*struct{}, err
 	if err := s.mayManage(ctx, in.Sub); err != nil {
 		return nil, err
 	}
-	return nil, s.profiles.RemoveAvatar(ctx, in.Sub, callerSub(ctx))
+	return nil, s.profiles.RemoveAvatar(ctx, in.Sub, callerActor(ctx))
 }
 
 type replaceIdentifierInput struct {
@@ -224,7 +224,7 @@ func (s *Service) replaceIdentifier(ctx context.Context, in *replaceIdentifierIn
 	if err != nil {
 		return nil, huma.Error422UnprocessableEntity(err.Error())
 	}
-	err = s.ids.ReplaceIdentifier(ctx, in.Sub, in.Kind, value, callerSub(ctx))
+	err = s.ids.ReplaceIdentifier(ctx, in.Sub, in.Kind, value, callerActor(ctx))
 	if errors.Is(err, identity.ErrIdentifierTaken) {
 		return nil, huma.Error409Conflict(err.Error())
 	}
@@ -237,11 +237,19 @@ func (s *Service) resetTwoFactor(ctx context.Context, in *subPath) (*struct{}, e
 	if err := s.mayManage(ctx, in.Sub); err != nil {
 		return nil, err
 	}
-	err := s.twoFactor.Disable(ctx, in.Sub, "mfa.reset", callerSub(ctx))
+	err := s.twoFactor.Disable(ctx, in.Sub, "mfa.reset", callerActor(ctx))
 	if errors.Is(err, twofactor.ErrOff) || errors.Is(err, twofactor.ErrNotBegun) {
 		return nil, huma.Error409Conflict("该 User 未开启两步验证")
 	}
 	return nil, err
 }
 
-func callerSub(ctx context.Context) string { return ctx.Value(callerKey{}).(caller).sub }
+// callerActor is who an audited change is by: the caller, a User or an M2M
+// Application calling as itself.
+func callerActor(ctx context.Context) audit.Actor {
+	c := ctx.Value(callerKey{}).(caller)
+	if c.application {
+		return audit.Application(c.sub)
+	}
+	return audit.User(c.sub)
+}

@@ -303,6 +303,7 @@ type Setting struct {
 	BrandName           string
 	BrandLogo           string
 	BrandColor          string
+	DailyCapAuditedAt   pgtype.Timestamptz
 }
 
 type SigningKey struct {
@@ -328,6 +329,7 @@ type User struct {
 	Avatar           pgtype.Text
 	Profile          []byte
 	ProfileUpdatedAt pgtype.Timestamptz
+	InviteAcceptedAt pgtype.Timestamptz
 }
 
 type UserRole struct {

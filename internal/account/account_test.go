@@ -29,6 +29,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zibyn/polaris/internal/account"
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/channel"
 	_ "github.com/zibyn/polaris/internal/channel/webhook"
 	"github.com/zibyn/polaris/internal/crypt"
@@ -88,7 +89,7 @@ func start(t *testing.T) *env {
 	hook := httptest.NewServer(e.inbox)
 	t.Cleanup(hook.Close)
 	for _, kind := range []string{"phone", "email"} {
-		if err := channel.NewStore(pool, keyring).Put(ctx, kind, "webhook", map[string]string{"url": hook.URL, "secret": "s"}, ""); err != nil {
+		if err := channel.NewStore(pool, keyring).Put(ctx, kind, "webhook", map[string]string{"url": hook.URL, "secret": "s"}, audit.User("")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1002,7 +1003,7 @@ func TestDeleteAccountRevokesApple(t *testing.T) {
 	ctx := context.Background()
 	apple := appletest.Start(t)
 	providers := provider.NewStore(e.pool, e.keyring)
-	if err := providers.Create(ctx, "apple", "apple", "Apple", apple.Config(), ""); err != nil {
+	if err := providers.Create(ctx, "apple", "apple", "Apple", apple.Config(), audit.User("")); err != nil {
 		t.Fatal(err)
 	}
 	// Signed up with Apple, which is then disabled: deleting still revokes.
@@ -1016,7 +1017,7 @@ func TestDeleteAccountRevokesApple(t *testing.T) {
 		t.Fatal(err)
 	}
 	sub := f.Sub
-	if err := providers.SetEnabled(ctx, "apple", false, ""); err != nil {
+	if err := providers.SetEnabled(ctx, "apple", false, audit.User("")); err != nil {
 		t.Fatal(err)
 	}
 

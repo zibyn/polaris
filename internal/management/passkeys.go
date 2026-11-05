@@ -40,7 +40,7 @@ func (s *Service) removePasskey(ctx context.Context, in *struct {
 	if err := s.mayManage(ctx, in.Sub); err != nil {
 		return nil, err
 	}
-	err := s.passkeys.Remove(ctx, in.Sub, in.ID, callerSub(ctx))
+	err := s.passkeys.Remove(ctx, in.Sub, in.ID, callerActor(ctx))
 	if errors.Is(err, passkey.ErrGone) {
 		return nil, huma.Error404NotFound("no such Passkey")
 	}

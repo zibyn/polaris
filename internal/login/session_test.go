@@ -280,7 +280,7 @@ func TestDisablingAUserEndsTheirSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	q := sqlc.New(e.pool)
-	if _, err := q.SetUserDisabled(context.Background(), sqlc.SetUserDisabledParams{UserID: sub, Disabled: true, By: "ADMIN"}); err != nil {
+	if _, err := q.SetUserDisabled(context.Background(), sqlc.SetUserDisabledParams{UserID: sub, Disabled: true, ByID: "ADMIN", ByType: "user"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -298,7 +298,7 @@ func TestDisablingAUserEndsTheirSessions(t *testing.T) {
 		t.Errorf("direct login: %+v", r)
 	}
 
-	if _, err := q.SetUserDisabled(context.Background(), sqlc.SetUserDisabledParams{UserID: sub, Disabled: false, By: "ADMIN"}); err != nil {
+	if _, err := q.SetUserDisabled(context.Background(), sqlc.SetUserDisabledParams{UserID: sub, Disabled: false, ByID: "ADMIN", ByType: "user"}); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.challenge(url.Values{"username": {"owner"}, "password": {"password1"}, "altcha": {e.solve()}}); r.Status != 200 {

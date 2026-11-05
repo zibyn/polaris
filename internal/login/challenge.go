@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/oidc/goidc"
@@ -491,7 +492,7 @@ func (s *Service) terms(w http.ResponseWriter, r *http.Request) {
 // same deletion as 注销, minus the browser Session a 待激活 User cannot have.
 func (s *Service) deletePending(ctx context.Context, sub string) error {
 	err := s.providers.DeleteUser(ctx, sub, func(ctx context.Context, sub string) error {
-		return s.ids.Delete(ctx, sub, sub)
+		return s.ids.Delete(ctx, sub, audit.User(sub))
 	})
 	if errors.Is(err, identity.ErrLastOwner) {
 		return invalid(identity.ErrLastOwner.Error())

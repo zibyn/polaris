@@ -38,7 +38,7 @@ WITH added AS (
     RETURNING provider, user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'external_identity.added', user_id, jsonb_build_object('provider', provider, 'by', user_id) FROM added
+SELECT 'external_identity.added', user_id, jsonb_build_object('provider', provider, 'by', user_id, 'byType', 'user') FROM added
 `
 
 type BindExternalIdentityParams struct {
@@ -60,25 +60,26 @@ func (q *Queries) BindExternalIdentity(ctx context.Context, arg BindExternalIden
 
 const deleteProvider = `-- name: DeleteProvider :execrows
 WITH gone AS (
-    DELETE FROM providers WHERE providers.id = $2 RETURNING providers.id
+    DELETE FROM providers WHERE providers.id = $3 RETURNING providers.id
 ), unnamed AS (
-    UPDATE applications SET login_methods = array_remove(login_methods, 'provider:' || $2::text)
-    WHERE 'provider:' || $2::text = ANY (login_methods) AND EXISTS (SELECT 1 FROM gone)
+    UPDATE applications SET login_methods = array_remove(login_methods, 'provider:' || $3::text)
+    WHERE 'provider:' || $3::text = ANY (login_methods) AND EXISTS (SELECT 1 FROM gone)
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'provider.deleted', NULL, jsonb_build_object('id', gone.id, 'by', $1::text) FROM gone
+SELECT 'provider.deleted', NULL, jsonb_build_object('id', gone.id, 'by', $1::text, 'byType', NULLIF($2::text, '')) FROM gone
 `
 
 type DeleteProviderParams struct {
-	By string
-	ID string
+	ByID   string
+	ByType string
+	ID     string
 }
 
 // Audited with who did it.
 // Applications that named it stop naming it: a Provider created later under
 // the same id is not the one they chose.
 func (q *Queries) DeleteProvider(ctx context.Context, arg DeleteProviderParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteProvider, arg.By, arg.ID)
+	result, err := q.db.Exec(ctx, deleteProvider, arg.ByID, arg.ByType, arg.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -403,7 +404,7 @@ WITH gone AS (
     DELETE FROM external_identities WHERE user_id = $1 AND provider = $2 RETURNING user_id, provider, subject, token
 ), audited AS (
     INSERT INTO audit_log (event, sub, detail)
-    SELECT 'external_identity.removed', user_id, jsonb_build_object('provider', provider, 'by', $3::text) FROM gone
+    SELECT 'external_identity.removed', user_id, jsonb_build_object('provider', provider, 'by', $3::text, 'byType', NULLIF($4::text, '')) FROM gone
 )
 SELECT subject, token FROM gone
 `
@@ -411,7 +412,8 @@ SELECT subject, token FROM gone
 type RemoveExternalIdentityParams struct {
 	UserID   string
 	Provider string
-	By       string
+	ByID     string
+	ByType   string
 }
 
 type RemoveExternalIdentityRow struct {
@@ -421,7 +423,12 @@ type RemoveExternalIdentityRow struct {
 
 // Audited as done by by.
 func (q *Queries) RemoveExternalIdentity(ctx context.Context, arg RemoveExternalIdentityParams) (RemoveExternalIdentityRow, error) {
-	row := q.db.QueryRow(ctx, removeExternalIdentity, arg.UserID, arg.Provider, arg.By)
+	row := q.db.QueryRow(ctx, removeExternalIdentity,
+		arg.UserID,
+		arg.Provider,
+		arg.ByID,
+		arg.ByType,
+	)
 	var i RemoveExternalIdentityRow
 	err := row.Scan(&i.Subject, &i.Token)
 	return i, err
@@ -444,23 +451,29 @@ func (q *Queries) SetExternalIdentityToken(ctx context.Context, arg SetExternalI
 
 const setProviderEnabled = `-- name: SetProviderEnabled :execrows
 WITH put AS (
-    UPDATE providers SET enabled = $1 WHERE providers.id = $3 RETURNING providers.id
+    UPDATE providers SET enabled = $1 WHERE providers.id = $4 RETURNING providers.id
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT CASE WHEN $1::boolean THEN 'provider.enabled' ELSE 'provider.disabled' END, NULL,
-       jsonb_build_object('id', put.id, 'by', $2::text)
+       jsonb_build_object('id', put.id, 'by', $2::text, 'byType', NULLIF($3::text, ''))
 FROM put
 `
 
 type SetProviderEnabledParams struct {
 	Enabled bool
-	By      string
+	ByID    string
+	ByType  string
 	ID      string
 }
 
 // Audited with who did it.
 func (q *Queries) SetProviderEnabled(ctx context.Context, arg SetProviderEnabledParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setProviderEnabled, arg.Enabled, arg.By, arg.ID)
+	result, err := q.db.Exec(ctx, setProviderEnabled,
+		arg.Enabled,
+		arg.ByID,
+		arg.ByType,
+		arg.ID,
+	)
 	if err != nil {
 		return 0, err
 	}

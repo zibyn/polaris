@@ -84,22 +84,28 @@ func (q *Queries) EndBrowserSession(ctx context.Context, idHash []byte) error {
 const endUserSession = `-- name: EndUserSession :execrows
 WITH ended AS (
     UPDATE sessions SET ended_at = now()
-    WHERE sessions.id = $2 AND sessions.user_id = $3 AND sessions.id IN (SELECT l.id FROM live_sessions l)
+    WHERE sessions.id = $3 AND sessions.user_id = $4 AND sessions.id IN (SELECT l.id FROM live_sessions l)
     RETURNING sessions.id, sessions.user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'session.ended', ended.user_id, jsonb_build_object('session', ended.id, 'by', $1::text) FROM ended
+SELECT 'session.ended', ended.user_id, jsonb_build_object('session', ended.id, 'by', $1::text, 'byType', NULLIF($2::text, '')) FROM ended
 `
 
 type EndUserSessionParams struct {
-	By     string
+	ByID   string
+	ByType string
 	ID     string
 	UserID string
 }
 
 // An admin signs a User out of one Session; audited with who did it.
 func (q *Queries) EndUserSession(ctx context.Context, arg EndUserSessionParams) (int64, error) {
-	result, err := q.db.Exec(ctx, endUserSession, arg.By, arg.ID, arg.UserID)
+	result, err := q.db.Exec(ctx, endUserSession,
+		arg.ByID,
+		arg.ByType,
+		arg.ID,
+		arg.UserID,
+	)
 	if err != nil {
 		return 0, err
 	}

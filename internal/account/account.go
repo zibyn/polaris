@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/channel"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db/sqlc"
@@ -339,7 +340,7 @@ func (s *Service) unbindProvider(ctx context.Context, in *providerPath) (*struct
 		return nil, err
 	}
 	sub := callerOf(ctx).sub
-	return nil, fail(s.providers.Unbind(ctx, sub, in.ID, sub))
+	return nil, fail(s.providers.Unbind(ctx, sub, in.ID, audit.User(sub)))
 }
 
 // fresh refuses a sensitive action unless the User authenticated in this
@@ -560,7 +561,7 @@ func (s *Service) putIdentifier(ctx context.Context, in *identifierInput) (*stru
 		err = s.ids.FromIP(ctx, c.from.IP, func() error { return s.codes.Check(ctx, value, in.Body.Code) })
 	}
 	if err == nil {
-		err = s.ids.ReplaceIdentifier(ctx, c.sub, in.Kind, value, c.sub)
+		err = s.ids.ReplaceIdentifier(ctx, c.sub, in.Kind, value, audit.User(c.sub))
 	}
 	if errors.Is(err, identity.ErrIdentifierTaken) {
 		return nil, huma.Error409Conflict(err.Error())
@@ -682,7 +683,7 @@ func (s *Service) disableTwoFactor(ctx context.Context, _ *struct{}) (*struct{},
 	} else if must {
 		return nil, huma.Error409Conflict("管理员必须启用两步验证或 Passkey,你持有管理员角色,不能关闭")
 	}
-	return nil, twoFactorErr(s.twoFactor.Disable(ctx, sub, "mfa.disabled", sub))
+	return nil, twoFactorErr(s.twoFactor.Disable(ctx, sub, "mfa.disabled", audit.User(sub)))
 }
 
 func (s *Service) regenerateRecoveryCodes(ctx context.Context, _ *struct{}) (*recoveryCodesOutput, error) {
@@ -719,7 +720,7 @@ func (s *Service) deleteAccount(ctx context.Context, _ *struct{}) (*struct{}, er
 
 // deleteOwn is 注销: the User deletes their own account.
 func (s *Service) deleteOwn(ctx context.Context, sub string) error {
-	return s.ids.Delete(ctx, sub, sub)
+	return s.ids.Delete(ctx, sub, audit.User(sub))
 }
 
 // directDelete is account deletion for Apps: the App's access token, issued
@@ -836,7 +837,7 @@ type renamePasskeyInput struct {
 
 func (s *Service) renamePasskey(ctx context.Context, in *renamePasskeyInput) (*struct{}, error) {
 	c := callerOf(ctx)
-	return nil, passkeyErr(s.passkeys.Rename(ctx, c.sub, in.ID, in.Body.Name, c.sub))
+	return nil, passkeyErr(s.passkeys.Rename(ctx, c.sub, in.ID, in.Body.Name, audit.User(c.sub)))
 }
 
 func (s *Service) removePasskey(ctx context.Context, in *providerPath) (*struct{}, error) {
@@ -851,5 +852,5 @@ func (s *Service) removePasskey(ctx context.Context, in *providerPath) (*struct{
 	} else if must {
 		return nil, huma.Error409Conflict("管理员必须启用两步验证或 Passkey,你持有管理员角色,不能删除最后一把 Passkey")
 	}
-	return nil, passkeyErr(s.passkeys.Remove(ctx, c.sub, in.ID, c.sub))
+	return nil, passkeyErr(s.passkeys.Remove(ctx, c.sub, in.ID, audit.User(c.sub)))
 }

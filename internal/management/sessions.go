@@ -61,7 +61,7 @@ func (s *Service) endSession(ctx context.Context, in *struct {
 	Sub string `path:"sub"`
 	ID  string `path:"id"`
 }) (*struct{}, error) {
-	n, err := s.q.EndUserSession(ctx, sqlc.EndUserSessionParams{ID: in.ID, UserID: in.Sub, By: ctx.Value(callerKey{}).(caller).sub})
+	n, err := s.q.EndUserSession(ctx, sqlc.EndUserSessionParams{ID: in.ID, UserID: in.Sub, ByID: callerActor(ctx).ID, ByType: callerActor(ctx).Type})
 	if err != nil {
 		return nil, err
 	}

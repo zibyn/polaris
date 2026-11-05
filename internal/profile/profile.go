@@ -30,6 +30,7 @@ import (
 	"golang.org/x/image/webp"
 	"golang.org/x/text/language"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/blob"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 )
@@ -165,7 +166,7 @@ func (s *Store) Picture(key string) string {
 }
 
 // Update checks p and applies it; audited as done by by.
-func (s *Store) Update(ctx context.Context, sub string, p Patch, by string) error {
+func (s *Store) Update(ctx context.Context, sub string, p Patch, by audit.Actor) error {
 	arg, err := p.params()
 	if err != nil {
 		return err
@@ -178,7 +179,7 @@ func (s *Store) Update(ctx context.Context, sub string, p Patch, by string) erro
 		} else if n == 0 {
 			return ErrNoUser
 		}
-		return audit(ctx, q, "user.profile_updated", sub, by)
+		return writeAudit(ctx, q, "user.profile_updated", sub, by)
 	})
 }
 
@@ -320,7 +321,7 @@ func checkLocale(label, s string) (string, error) {
 // SetAvatar takes an uploaded image, crops it to the centre square, and
 // keeps it as a 512×512 JPEG (no EXIF) under a new key, deleting the old
 // one. Audited as done by by.
-func (s *Store) SetAvatar(ctx context.Context, sub string, upload io.Reader, by string) error {
+func (s *Store) SetAvatar(ctx context.Context, sub string, upload io.Reader, by audit.Actor) error {
 	jpg, err := Avatar(upload)
 	if err != nil {
 		return err
@@ -332,11 +333,11 @@ func (s *Store) SetAvatar(ctx context.Context, sub string, upload io.Reader, by 
 }
 
 // RemoveAvatar deletes the User's avatar; audited as done by by.
-func (s *Store) RemoveAvatar(ctx context.Context, sub, by string) error {
+func (s *Store) RemoveAvatar(ctx context.Context, sub string, by audit.Actor) error {
 	return s.replaceAvatar(ctx, sub, "", func(blob.Store) error { return nil }, "user.avatar_removed", by)
 }
 
-func (s *Store) replaceAvatar(ctx context.Context, sub, key string, put func(blob.Store) error, event, by string) error {
+func (s *Store) replaceAvatar(ctx context.Context, sub, key string, put func(blob.Store) error, event string, by audit.Actor) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		store := blob.NewPG(q)
@@ -357,7 +358,7 @@ func (s *Store) replaceAvatar(ctx context.Context, sub, key string, put func(blo
 				return err
 			}
 		}
-		return audit(ctx, q, event, sub, by)
+		return writeAudit(ctx, q, event, sub, by)
 	})
 }
 
@@ -373,8 +374,8 @@ func DeleteAvatar(ctx context.Context, q *sqlc.Queries, sub string) error {
 	return blob.NewPG(q).Delete(ctx, r.Avatar)
 }
 
-func audit(ctx context.Context, q *sqlc.Queries, event, sub, by string) error {
-	detail, _ := json.Marshal(map[string]string{"by": by})
+func writeAudit(ctx context.Context, q *sqlc.Queries, event, sub string, by audit.Actor) error {
+	detail := by.Detail(nil)
 	return q.Audit(ctx, sqlc.AuditParams{Event: event, Sub: pgtype.Text{String: sub, Valid: true}, Detail: detail})
 }
 

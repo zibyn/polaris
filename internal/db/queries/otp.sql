@@ -39,3 +39,15 @@ DELETE FROM codes WHERE identifier = $1 AND code = $2;
 -- name: DeleteExpiredOTP :exec
 WITH c AS (DELETE FROM codes WHERE codes.expires_at < now())
 DELETE FROM sends WHERE sends.sent_at < now() - interval '1 day';
+
+-- name: AuditDailyCap :execrows
+-- Audits hitting the daily send limit at most once in 24 hours: the first
+-- refusal is the one worth an event, the rest are the same person pressing
+-- the button again. No row when it was audited within the day.
+WITH claimed AS (
+    UPDATE settings SET daily_cap_audited_at = @now::timestamptz
+    WHERE daily_cap_audited_at IS NULL OR daily_cap_audited_at + interval '24 hours' <= @now::timestamptz
+    RETURNING daily_send_limit
+)
+INSERT INTO audit_log (event, detail)
+SELECT 'send.daily_cap_reached', jsonb_build_object('limit', daily_send_limit) FROM claimed;

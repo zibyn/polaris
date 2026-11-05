@@ -21,7 +21,7 @@ WITH put AS (
     RETURNING id, name, created_at
 ), audit AS (
     INSERT INTO audit_log (event, sub, detail)
-    SELECT 'passkey.added', $1::text, jsonb_build_object('by', $10::text, 'name', put.name) FROM put
+    SELECT 'passkey.added', $1::text, jsonb_build_object('by', $10::text, 'byType', NULLIF($11::text, ''), 'name', put.name) FROM put
 )
 SELECT id, name, created_at FROM put
 `
@@ -36,7 +36,8 @@ type AddPasskeyParams struct {
 	BackupState    bool
 	Transports     []string
 	Name           string
-	By             string
+	ByID           string
+	ByType         string
 }
 
 type AddPasskeyRow struct {
@@ -57,7 +58,8 @@ func (q *Queries) AddPasskey(ctx context.Context, arg AddPasskeyParams) (AddPass
 		arg.BackupState,
 		arg.Transports,
 		arg.Name,
-		arg.By,
+		arg.ByID,
+		arg.ByType,
 	)
 	var i AddPasskeyRow
 	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
@@ -93,21 +95,27 @@ func (q *Queries) DeleteExpiredPasskeyChallenges(ctx context.Context) error {
 
 const deletePasskey = `-- name: DeletePasskey :execrows
 WITH gone AS (
-    DELETE FROM passkeys WHERE passkeys.id = $2 AND user_id = $3 RETURNING user_id, name
+    DELETE FROM passkeys WHERE passkeys.id = $3 AND user_id = $4 RETURNING user_id, name
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'passkey.removed', gone.user_id, jsonb_build_object('by', $1::text, 'name', gone.name) FROM gone
+SELECT 'passkey.removed', gone.user_id, jsonb_build_object('by', $1::text, 'byType', NULLIF($2::text, ''), 'name', gone.name) FROM gone
 `
 
 type DeletePasskeyParams struct {
-	By     string
+	ByID   string
+	ByType string
 	ID     string
 	UserID string
 }
 
 // Audited as passkey.removed. No row when the Passkey is not the User's.
 func (q *Queries) DeletePasskey(ctx context.Context, arg DeletePasskeyParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deletePasskey, arg.By, arg.ID, arg.UserID)
+	result, err := q.db.Exec(ctx, deletePasskey,
+		arg.ByID,
+		arg.ByType,
+		arg.ID,
+		arg.UserID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -216,14 +224,15 @@ func (q *Queries) PutPasskeyChallenge(ctx context.Context, arg PutPasskeyChallen
 
 const renamePasskey = `-- name: RenamePasskey :execrows
 WITH renamed AS (
-    UPDATE passkeys SET name = $2 WHERE passkeys.id = $3 AND user_id = $4 RETURNING user_id
+    UPDATE passkeys SET name = $3 WHERE passkeys.id = $4 AND user_id = $5 RETURNING user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'passkey.renamed', renamed.user_id, jsonb_build_object('by', $1::text, 'name', $2::text) FROM renamed
+SELECT 'passkey.renamed', renamed.user_id, jsonb_build_object('by', $1::text, 'byType', NULLIF($2::text, ''), 'name', $3::text) FROM renamed
 `
 
 type RenamePasskeyParams struct {
-	By     string
+	ByID   string
+	ByType string
 	Name   string
 	ID     string
 	UserID string
@@ -232,7 +241,8 @@ type RenamePasskeyParams struct {
 // Audited as passkey.renamed. No row when the Passkey is not the User's.
 func (q *Queries) RenamePasskey(ctx context.Context, arg RenamePasskeyParams) (int64, error) {
 	result, err := q.db.Exec(ctx, renamePasskey,
-		arg.By,
+		arg.ByID,
+		arg.ByType,
 		arg.Name,
 		arg.ID,
 		arg.UserID,

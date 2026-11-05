@@ -32,7 +32,7 @@ WITH gone AS (
     DELETE FROM channels WHERE kind = @kind RETURNING kind
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'channel.deleted', NULL, jsonb_build_object('kind', gone.kind, 'by', @by::text) FROM gone;
+SELECT 'channel.deleted', NULL, jsonb_build_object('kind', gone.kind, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM gone;
 
 -- name: ChannelKinds :many
 SELECT kind FROM channels;

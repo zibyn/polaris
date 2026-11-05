@@ -39,7 +39,7 @@ WITH put AS (
     RETURNING id, name, created_at
 ), audit AS (
     INSERT INTO audit_log (event, sub, detail)
-    SELECT 'passkey.added', @user_id::text, jsonb_build_object('by', @by::text, 'name', put.name) FROM put
+    SELECT 'passkey.added', @user_id::text, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, ''), 'name', put.name) FROM put
 )
 SELECT id, name, created_at FROM put;
 
@@ -49,7 +49,7 @@ WITH renamed AS (
     UPDATE passkeys SET name = @name WHERE passkeys.id = @id AND user_id = @user_id RETURNING user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'passkey.renamed', renamed.user_id, jsonb_build_object('by', @by::text, 'name', @name::text) FROM renamed;
+SELECT 'passkey.renamed', renamed.user_id, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, ''), 'name', @name::text) FROM renamed;
 
 -- name: DeletePasskey :execrows
 -- Audited as passkey.removed. No row when the Passkey is not the User's.
@@ -57,7 +57,7 @@ WITH gone AS (
     DELETE FROM passkeys WHERE passkeys.id = @id AND user_id = @user_id RETURNING user_id, name
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'passkey.removed', gone.user_id, jsonb_build_object('by', @by::text, 'name', gone.name) FROM gone;
+SELECT 'passkey.removed', gone.user_id, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, ''), 'name', gone.name) FROM gone;
 
 -- name: PutPasskeyChallenge :exec
 -- A registration challenge in flight for this Session, replacing one

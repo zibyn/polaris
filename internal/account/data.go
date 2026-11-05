@@ -65,7 +65,7 @@ func (s *Service) endSession(ctx context.Context, in *struct {
 	ID string `path:"id"`
 }) (*struct{}, error) {
 	sub := callerOf(ctx).sub
-	n, err := s.q.EndUserSession(ctx, sqlc.EndUserSessionParams{ID: in.ID, UserID: sub, By: sub})
+	n, err := s.q.EndUserSession(ctx, sqlc.EndUserSessionParams{ID: in.ID, UserID: sub, ByID: sub, ByType: "user"})
 	if err == nil && n == 0 {
 		err = huma.Error404NotFound("no such live Session")
 	}

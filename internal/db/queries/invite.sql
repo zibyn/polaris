@@ -23,7 +23,7 @@ WITH gone AS (
     DELETE FROM invites WHERE user_id = @user_id RETURNING user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'invite.revoked', gone.user_id, jsonb_build_object('by', @by::text) FROM gone;
+SELECT 'invite.revoked', gone.user_id, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM gone;
 
 -- name: AcceptInvite :one
 -- 接受: 花掉这条邀请、把密码写成本人自己的、待激活的随即激活, 审计的操作人
@@ -36,15 +36,23 @@ WITH spent AS (
       AND user_id IN (SELECT id FROM users WHERE disabled_at IS NULL)
     RETURNING user_id
 ), activated AS (
-    UPDATE users SET status = 'active' WHERE users.id IN (SELECT user_id FROM spent) RETURNING users.id
+    UPDATE users SET status = 'active', invite_accepted_at = now()
+    WHERE users.id IN (SELECT user_id FROM spent) RETURNING users.id
 ), put AS (
     INSERT INTO passwords (user_id, hash) SELECT spent.user_id, @hash::text FROM spent
     ON CONFLICT (user_id) DO UPDATE SET hash = EXCLUDED.hash
     RETURNING user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'invite.accepted', put.user_id, jsonb_build_object('by', put.user_id) FROM put
+SELECT 'invite.accepted', put.user_id, jsonb_build_object('by', put.user_id, 'byType', 'user') FROM put
 RETURNING sub;
+
+-- name: InviteSent :exec
+-- 邀请邮件发出去了: 审计的操作人是管理员, 之前的「已接受」让位给这一封。
+-- 发信失败不走这里, 所以重发失败的账号仍是「已接受」。
+WITH sent AS (UPDATE users SET invite_accepted_at = NULL WHERE users.id = @user_id)
+INSERT INTO audit_log (event, sub, detail)
+VALUES ('invite.sent', @user_id::text, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, '')));
 
 -- name: DeleteExpiredInvites :exec
 DELETE FROM invites WHERE expires_at < now();

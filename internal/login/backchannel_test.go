@@ -153,15 +153,15 @@ func TestEndingASessionSendsLogoutTokens(t *testing.T) {
 	want := []string{"codeonly", "web"}
 	ends := map[string]func(e *env, sub, sid string) error{
 		"admin ends it": func(e *env, sub, sid string) error {
-			_, err := sqlc.New(e.pool).EndUserSession(context.Background(), sqlc.EndUserSessionParams{ID: sid, UserID: sub, By: "ADMIN"})
+			_, err := sqlc.New(e.pool).EndUserSession(context.Background(), sqlc.EndUserSessionParams{ID: sid, UserID: sub, ByID: "ADMIN", ByType: "user"})
 			return err
 		},
 		"User disabled": func(e *env, sub, _ string) error {
-			_, err := sqlc.New(e.pool).SetUserDisabled(context.Background(), sqlc.SetUserDisabledParams{UserID: sub, Disabled: true, By: "ADMIN"})
+			_, err := sqlc.New(e.pool).SetUserDisabled(context.Background(), sqlc.SetUserDisabledParams{UserID: sub, Disabled: true, ByID: "ADMIN", ByType: "user"})
 			return err
 		},
 		"User deleted": func(e *env, sub, _ string) error {
-			_, err := sqlc.New(e.pool).DeleteUser(context.Background(), sqlc.DeleteUserParams{UserID: sub, By: "ADMIN"})
+			_, err := sqlc.New(e.pool).DeleteUser(context.Background(), sqlc.DeleteUserParams{UserID: sub, ByID: "ADMIN", ByType: "user"})
 			return err
 		},
 		"User signs out": func(e *env, _, _ string) error {
@@ -210,9 +210,9 @@ func TestExpiredSessionSendsNothing(t *testing.T) {
 			case "cleanup":
 				err = q.DeleteOldSessions(ctx)
 			case "delete":
-				_, err = q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: "ADMIN"})
+				_, err = q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, ByID: "ADMIN", ByType: "user"})
 			case "disable":
-				_, err = q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{Disabled: true, UserID: sub, By: "ADMIN"})
+				_, err = q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{Disabled: true, UserID: sub, ByID: "ADMIN", ByType: "user"})
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -235,7 +235,7 @@ func TestExpiredSessionSendsNothing(t *testing.T) {
 func TestLogoutTokenIsRetried(t *testing.T) {
 	e, r, sub, sid := signedInEverywhere(t)
 	ctx := context.Background()
-	if _, err := sqlc.New(e.pool).EndUserSession(ctx, sqlc.EndUserSessionParams{ID: sid, UserID: sub, By: "ADMIN"}); err != nil {
+	if _, err := sqlc.New(e.pool).EndUserSession(ctx, sqlc.EndUserSessionParams{ID: sid, UserID: sub, ByID: "ADMIN", ByType: "user"}); err != nil {
 		t.Fatal(err)
 	}
 	r.fail(true)

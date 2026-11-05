@@ -68,7 +68,7 @@ WITH gone AS (
     SELECT e.client_id, e.payload FROM gone, user_event('user.updated', gone.user_id, ARRAY[@kind::text]) e
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'identifier.removed', gone.user_id, jsonb_build_object('kind', @kind::text, 'by', gone.user_id) FROM gone;
+SELECT 'identifier.removed', gone.user_id, jsonb_build_object('kind', @kind::text, 'by', gone.user_id, 'byType', 'user') FROM gone;
 
 -- name: PutPassword :exec
 -- Audited as done by the User.
@@ -77,7 +77,7 @@ WITH put AS (
     ON CONFLICT (user_id) DO UPDATE SET hash = EXCLUDED.hash
 )
 INSERT INTO audit_log (event, sub, detail)
-VALUES ('password.changed', @user_id::text, jsonb_build_object('by', @user_id::text));
+VALUES ('password.changed', @user_id::text, jsonb_build_object('by', @user_id::text, 'byType', 'user'));
 
 -- name: RemovePassword :execrows
 -- Audited as done by the User.
@@ -85,7 +85,7 @@ WITH gone AS (
     DELETE FROM passwords WHERE user_id = @user_id RETURNING user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'password.removed', gone.user_id, jsonb_build_object('by', gone.user_id) FROM gone;
+SELECT 'password.removed', gone.user_id, jsonb_build_object('by', gone.user_id, 'byType', 'user') FROM gone;
 
 -- name: UserConsents :many
 SELECT version, client_id, at FROM consents WHERE user_id = $1 ORDER BY at;

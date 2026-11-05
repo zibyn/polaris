@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
@@ -64,7 +65,7 @@ func (s *Store) List(ctx context.Context) ([]Settings, error) {
 // Put enables plugin for kind with config. An empty secret field keeps the
 // stored value, so the console never needs to read secrets back; switching
 // plugin drops the old plugin's secrets. Audited as done by by.
-func (s *Store) Put(ctx context.Context, kind, plugin string, config map[string]string, by string) error {
+func (s *Store) Put(ctx context.Context, kind, plugin string, config map[string]string, by audit.Actor) error {
 	p := Get(plugin)
 	if p == nil {
 		return identity.Invalid("没有这个 Channel 插件:" + plugin)
@@ -135,7 +136,7 @@ func (s *Store) Put(ctx context.Context, kind, plugin string, config map[string]
 				return err
 			}
 		}
-		detail, _ := json.Marshal(map[string]string{"kind": kind, "by": by})
+		detail := by.Detail(map[string]string{"kind": kind})
 		return q.Audit(ctx, sqlc.AuditParams{Event: "channel.saved", Detail: detail})
 	})
 }
@@ -156,8 +157,8 @@ func (f Field) Check(v string) error {
 }
 
 // Delete turns off codes of kind, audited as done by by.
-func (s *Store) Delete(ctx context.Context, kind, by string) error {
-	return sqlc.New(s.pool).DeleteChannel(ctx, sqlc.DeleteChannelParams{Kind: kind, By: by})
+func (s *Store) Delete(ctx context.Context, kind string, by audit.Actor) error {
+	return sqlc.New(s.pool).DeleteChannel(ctx, sqlc.DeleteChannelParams{Kind: kind, ByID: by.ID, ByType: by.Type})
 }
 
 // Channel returns the enabled Channel for kind, or ErrNotConfigured.

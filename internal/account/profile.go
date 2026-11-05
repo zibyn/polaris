@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/oidcstore"
 	"github.com/zibyn/polaris/internal/profile"
 )
@@ -31,7 +32,7 @@ func (s *Service) profileOf(ctx context.Context, sub string) (*profileOutput, er
 
 func (s *Service) setProfile(ctx context.Context, in *profileInput) (*profileOutput, error) {
 	sub := callerOf(ctx).sub
-	if err := profileErr(s.profiles.Update(ctx, sub, in.Body, sub)); err != nil {
+	if err := profileErr(s.profiles.Update(ctx, sub, in.Body, audit.User(sub))); err != nil {
 		return nil, err
 	}
 	return s.profileOf(ctx, sub)
@@ -43,7 +44,7 @@ type avatarInput struct {
 
 func (s *Service) setAvatar(ctx context.Context, in *avatarInput) (*profileOutput, error) {
 	sub := callerOf(ctx).sub
-	if err := profileErr(s.profiles.SetAvatar(ctx, sub, bytes.NewReader(in.RawBody), sub)); err != nil {
+	if err := profileErr(s.profiles.SetAvatar(ctx, sub, bytes.NewReader(in.RawBody), audit.User(sub))); err != nil {
 		return nil, err
 	}
 	return s.profileOf(ctx, sub)
@@ -51,7 +52,7 @@ func (s *Service) setAvatar(ctx context.Context, in *avatarInput) (*profileOutpu
 
 func (s *Service) removeAvatar(ctx context.Context, _ *struct{}) (*profileOutput, error) {
 	sub := callerOf(ctx).sub
-	if err := s.profiles.RemoveAvatar(ctx, sub, sub); err != nil {
+	if err := s.profiles.RemoveAvatar(ctx, sub, audit.User(sub)); err != nil {
 		return nil, err
 	}
 	return s.profileOf(ctx, sub)
@@ -109,12 +110,12 @@ func (s *Service) registerDirectProfile(mux *http.ServeMux) {
 		if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&body); err != nil {
 			return profile.Invalid("请求体须为 JSON 对象,如 {\"nickname\": \"...\"}")
 		}
-		return s.profiles.Update(r.Context(), sub, body, sub)
+		return s.profiles.Update(r.Context(), sub, body, audit.User(sub))
 	}))
 	mux.HandleFunc("PUT "+ProfilePath+"/avatar", direct(func(r *http.Request, sub string) error {
-		return s.profiles.SetAvatar(r.Context(), sub, r.Body, sub)
+		return s.profiles.SetAvatar(r.Context(), sub, r.Body, audit.User(sub))
 	}))
 	mux.HandleFunc("DELETE "+ProfilePath+"/avatar", direct(func(r *http.Request, sub string) error {
-		return s.profiles.RemoveAvatar(r.Context(), sub, sub)
+		return s.profiles.RemoveAvatar(r.Context(), sub, audit.User(sub))
 	}))
 }

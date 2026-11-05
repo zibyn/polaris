@@ -45,7 +45,7 @@ WITH put AS (
     WHERE NOT EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = put.user_id AND i.kind = @kind AND i.value = @value)
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', @kind::text, 'by', @by::text) FROM put;
+SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', @kind::text, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM put;
 
 -- name: SetPassword :exec
 INSERT INTO passwords (user_id, hash) VALUES ($1, $2)
@@ -121,7 +121,7 @@ WITH activated AS (
     RETURNING user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'password.changed', put.user_id, jsonb_build_object('by', put.user_id) FROM put;
+SELECT 'password.changed', put.user_id, jsonb_build_object('by', put.user_id, 'byType', 'user') FROM put;
 
 -- name: MaySignUp :one
 -- Whether value may be signed in with by code (ADR 0021): a User holds it,

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/zibyn/polaris/internal/audit"
 )
 
 // The instance always keeps one usable owner: disabling, deleting or
@@ -14,13 +16,13 @@ func TestLastOwnerIsKept(t *testing.T) {
 	ctx := context.Background()
 	root := owner(t, s)
 
-	if err := s.SetDisabled(ctx, root, true, "ADMIN"); !errors.Is(err, ErrLastOwner) {
+	if err := s.SetDisabled(ctx, root, true, audit.User("ADMIN")); !errors.Is(err, ErrLastOwner) {
 		t.Errorf("disable: %v, want ErrLastOwner", err)
 	}
-	if err := s.Delete(ctx, root, root); !errors.Is(err, ErrLastOwner) {
+	if err := s.Delete(ctx, root, audit.User(root)); !errors.Is(err, ErrLastOwner) {
 		t.Errorf("delete: %v, want ErrLastOwner", err)
 	}
-	if err := s.SetRoles(ctx, root, ManagementAPI, []string{"admin"}, root); !errors.Is(err, ErrLastOwner) {
+	if err := s.SetRoles(ctx, root, ManagementAPI, []string{"admin"}, audit.User(root)); !errors.Is(err, ErrLastOwner) {
 		t.Errorf("demote: %v, want ErrLastOwner", err)
 	}
 	if got := rolesOf(t, s, root); !slices.Equal(got, []string{"owner"}) {
@@ -37,10 +39,10 @@ func TestPendingOwnerDoesNotCount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetRoles(ctx, pending, ManagementAPI, []string{"owner"}, root); err != nil {
+	if err := s.SetRoles(ctx, pending, ManagementAPI, []string{"owner"}, audit.User(root)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetDisabled(ctx, root, true, root); !errors.Is(err, ErrLastOwner) {
+	if err := s.SetDisabled(ctx, root, true, audit.User(root)); !errors.Is(err, ErrLastOwner) {
 		t.Errorf("disable the last active owner: %v, want ErrLastOwner", err)
 	}
 }
@@ -53,16 +55,16 @@ func TestOwnerGoesWhileAnotherRemains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetRoles(ctx, other, ManagementAPI, []string{"owner"}, root); err != nil {
+	if err := s.SetRoles(ctx, other, ManagementAPI, []string{"owner"}, audit.User(root)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetRoles(ctx, root, ManagementAPI, []string{"admin"}, root); err != nil {
+	if err := s.SetRoles(ctx, root, ManagementAPI, []string{"admin"}, audit.User(root)); err != nil {
 		t.Errorf("demote: %v", err)
 	}
-	if err := s.SetDisabled(ctx, root, true, other); err != nil {
+	if err := s.SetDisabled(ctx, root, true, audit.User(other)); err != nil {
 		t.Errorf("disable: %v", err)
 	}
-	if err := s.Delete(ctx, root, other); err != nil {
+	if err := s.Delete(ctx, root, audit.User(other)); err != nil {
 		t.Errorf("delete: %v", err)
 	}
 	if n := audited(t, s, "user.deleted"); n != 1 {
@@ -81,19 +83,19 @@ func TestSetBusinessRoles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.SetRoles(ctx, root, "https://track.example", []string{"member"}, root); err != nil {
+	if err := s.SetRoles(ctx, root, "https://track.example", []string{"member"}, audit.User(root)); err != nil {
 		t.Fatal(err)
 	}
 	if got := rolesOf(t, s, root); !slices.Equal(got, []string{"member", "owner"}) {
 		t.Errorf("roles: %v", got)
 	}
-	if err := s.SetRoles(ctx, root, "https://track.example", nil, root); err != nil || !slices.Equal(rolesOf(t, s, root), []string{"owner"}) {
+	if err := s.SetRoles(ctx, root, "https://track.example", nil, audit.User(root)); err != nil || !slices.Equal(rolesOf(t, s, root), []string{"owner"}) {
 		t.Errorf("clear: %v %v", err, rolesOf(t, s, root))
 	}
-	if err := s.SetRoles(ctx, root, "https://track.example", []string{"nope"}, root); !errors.Is(err, ErrNoSuchRole) {
+	if err := s.SetRoles(ctx, root, "https://track.example", []string{"nope"}, audit.User(root)); !errors.Is(err, ErrNoSuchRole) {
 		t.Errorf("unknown Role: %v, want ErrNoSuchRole", err)
 	}
-	if err := s.SetRoles(ctx, root, ManagementAPI, []string{"owner", "nope"}, root); !errors.Is(err, ErrNoSuchRole) {
+	if err := s.SetRoles(ctx, root, ManagementAPI, []string{"owner", "nope"}, audit.User(root)); !errors.Is(err, ErrNoSuchRole) {
 		t.Errorf("unknown Management API Role: %v, want ErrNoSuchRole", err)
 	}
 }

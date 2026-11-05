@@ -11,7 +11,6 @@ import (
 	"crypto/sha1"
 	"encoding/base32"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -22,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
@@ -103,14 +103,14 @@ func (s *Store) Confirm(ctx context.Context, sub, code string) ([]string, error)
 		if codes, err = s.newRecoveryCodes(ctx, q, sub); err != nil {
 			return err
 		}
-		return audit(ctx, q, "mfa.enabled", sub, sub)
+		return writeAudit(ctx, q, "mfa.enabled", sub, audit.User(sub))
 	})
 	return codes, err
 }
 
 // Disable turns 两步验证 off, deleting the TOTP and every 恢复码; audited as
 // event done by by.
-func (s *Store) Disable(ctx context.Context, sub, event, by string) error {
+func (s *Store) Disable(ctx context.Context, sub, event string, by audit.Actor) error {
 	return s.locked(ctx, sub, func(q *sqlc.Queries, t sqlc.LockTOTPRow) error {
 		if !t.ConfirmedAt.Valid {
 			return ErrOff
@@ -121,7 +121,7 @@ func (s *Store) Disable(ctx context.Context, sub, event, by string) error {
 		if err := q.DeleteRecoveryCodes(ctx, sub); err != nil {
 			return err
 		}
-		return audit(ctx, q, event, sub, by)
+		return writeAudit(ctx, q, event, sub, by)
 	})
 }
 
@@ -136,7 +136,7 @@ func (s *Store) RegenerateRecoveryCodes(ctx context.Context, sub string) ([]stri
 		if codes, err = s.newRecoveryCodes(ctx, q, sub); err != nil {
 			return err
 		}
-		return audit(ctx, q, "recovery_codes.regenerated", sub, sub)
+		return writeAudit(ctx, q, "recovery_codes.regenerated", sub, audit.User(sub))
 	})
 	return codes, err
 }
@@ -251,7 +251,7 @@ func (s *Store) newRecoveryCodes(ctx context.Context, q *sqlc.Queries, sub strin
 	return codes, q.AddRecoveryCodes(ctx, sqlc.AddRecoveryCodesParams{UserID: sub, Macs: macs})
 }
 
-func audit(ctx context.Context, q *sqlc.Queries, event, sub, by string) error {
-	detail, _ := json.Marshal(map[string]string{"by": by})
+func writeAudit(ctx context.Context, q *sqlc.Queries, event, sub string, by audit.Actor) error {
+	detail := by.Detail(nil)
 	return q.Audit(ctx, sqlc.AuditParams{Event: event, Sub: pgtype.Text{String: sub, Valid: true}, Detail: detail})
 }

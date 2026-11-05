@@ -259,7 +259,7 @@ func (s *Service) updateApplication(ctx context.Context, in *struct {
 
 // auditApplication records event about an Application, done by the caller.
 func auditApplication(ctx context.Context, q *sqlc.Queries, event, clientID string) error {
-	detail, _ := json.Marshal(map[string]string{"clientId": clientID, "by": callerSub(ctx)})
+	detail := callerActor(ctx).Detail(map[string]string{"clientId": clientID})
 	return q.Audit(ctx, sqlc.AuditParams{Event: event, Detail: detail})
 }
 
@@ -456,7 +456,7 @@ func (s *Service) deleteApplication(ctx context.Context, in *clientIDPath) (*str
 	// Its own Logo goes with it.
 	return nil, pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if err := q.DeleteApplication(ctx, sqlc.DeleteApplicationParams{ClientID: in.ClientID, By: callerSub(ctx)}); err != nil {
+		if err := q.DeleteApplication(ctx, sqlc.DeleteApplicationParams{ClientID: in.ClientID, ByID: callerActor(ctx).ID, ByType: callerActor(ctx).Type}); err != nil {
 			return err
 		}
 		return q.DeleteUnusedLogos(ctx)
@@ -512,7 +512,7 @@ func (s *Service) setApplicationRoles(ctx context.Context, in *setApplicationRol
 			return nil, huma.Error422UnprocessableEntity("「所有者」不能分配给 Application")
 		}
 	}
-	err = s.q.SetApplicationRoles(ctx, sqlc.SetApplicationRolesParams{ClientID: in.ClientID, Api: app.DefaultAPI, Roles: in.Body.Roles, By: callerSub(ctx)})
+	err = s.q.SetApplicationRoles(ctx, sqlc.SetApplicationRolesParams{ClientID: in.ClientID, Api: app.DefaultAPI, Roles: in.Body.Roles, ByID: callerActor(ctx).ID, ByType: callerActor(ctx).Type})
 	if isFKViolation(err) {
 		return nil, huma.Error422UnprocessableEntity(string(identity.ErrNoSuchRole))
 	}
@@ -577,7 +577,7 @@ type newSecretOutput struct {
 func (s *Service) newSecret(ctx context.Context, in *clientIDPath) (*newSecretOutput, error) {
 	out := &newSecretOutput{}
 	out.Body.Secret = rand.Text()
-	n, err := s.q.SetApplicationSecret(ctx, sqlc.SetApplicationSecretParams{ClientID: in.ClientID, SecretHash: oidcstore.SecretHash(out.Body.Secret), By: callerSub(ctx)})
+	n, err := s.q.SetApplicationSecret(ctx, sqlc.SetApplicationSecretParams{ClientID: in.ClientID, SecretHash: oidcstore.SecretHash(out.Body.Secret), ByID: callerActor(ctx).ID, ByType: callerActor(ctx).Type})
 	if err != nil || n > 0 {
 		return out, err
 	}
@@ -626,7 +626,7 @@ func (s *Service) setAuthMethod(ctx context.Context, in *setAuthMethodInput) (*s
 		return nil, huma.Error409Conflict("public Application 不做客户端认证")
 	}
 	out := &setAuthMethodOutput{}
-	params := sqlc.SetTokenAuthMethodParams{ClientID: in.ClientID, Method: in.Body.Method, By: callerSub(ctx)}
+	params := sqlc.SetTokenAuthMethodParams{ClientID: in.ClientID, Method: in.Body.Method, ByID: callerActor(ctx).ID, ByType: callerActor(ctx).Type}
 	if in.Body.Method == clientSecretBasic {
 		out.Body.Secret = rand.Text()
 		params.SecretHash = oidcstore.SecretHash(out.Body.Secret)

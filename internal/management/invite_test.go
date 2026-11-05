@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/channel"
 	"github.com/zibyn/polaris/internal/identity"
 )
@@ -50,7 +51,7 @@ func (e *env) mailer() *outbox {
 	ts := httptest.NewServer(o)
 	e.t.Cleanup(ts.Close)
 	if err := channel.NewStore(e.pool, e.keyring).Put(context.Background(), "email", "webhook",
-		map[string]string{"url": ts.URL, "secret": "s"}, ""); err != nil {
+		map[string]string{"url": ts.URL, "secret": "s"}, audit.User("")); err != nil {
 		e.t.Fatal(err)
 	}
 	return o
@@ -405,5 +406,16 @@ func TestUserDetailShowsTheInviteState(t *testing.T) {
 	}
 	if detail.Invite.State != "accepted" {
 		t.Errorf("接受之后: %+v", detail.Invite)
+	}
+	// 状态不从审计里读: 审计过了保留期被清掉, 仍是「已接受」。
+	if _, err := e.pool.Exec(ctx, "DELETE FROM audit_log"); err != nil {
+		t.Fatal(err)
+	}
+	detail.Invite = inviteState{}
+	if code := e.get(owner, "/users/"+created.Sub, &detail); code != 200 {
+		t.Fatalf("get after the audit log is gone: %d", code)
+	}
+	if detail.Invite.State != "accepted" {
+		t.Errorf("审计清掉之后: %+v", detail.Invite)
 	}
 }

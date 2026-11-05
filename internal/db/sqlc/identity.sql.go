@@ -18,7 +18,7 @@ WITH activated AS (
     RETURNING user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'password.changed', put.user_id, jsonb_build_object('by', put.user_id) FROM put
+SELECT 'password.changed', put.user_id, jsonb_build_object('by', put.user_id, 'byType', 'user') FROM put
 `
 
 type ActivateUserParams struct {
@@ -257,21 +257,22 @@ func (q *Queries) RegistrationOpen(ctx context.Context) (bool, error) {
 const replaceIdentifier = `-- name: ReplaceIdentifier :execrows
 WITH put AS (
     INSERT INTO identifiers (user_id, kind, value)
-    SELECT users.id, $1, $3 FROM users WHERE users.id = $4
+    SELECT users.id, $1, $4 FROM users WHERE users.id = $5
     ON CONFLICT (user_id, kind) DO UPDATE SET value = EXCLUDED.value
     RETURNING identifiers.user_id
 ), hooks AS (
     INSERT INTO webhook_deliveries (client_id, payload)
     SELECT e.client_id, e.payload FROM put, user_event('user.updated', put.user_id, ARRAY[$1::text]) e
-    WHERE NOT EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = put.user_id AND i.kind = $1 AND i.value = $3)
+    WHERE NOT EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = put.user_id AND i.kind = $1 AND i.value = $4)
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', $1::text, 'by', $2::text) FROM put
+SELECT 'identifier.replaced', put.user_id, jsonb_build_object('kind', $1::text, 'by', $2::text, 'byType', NULLIF($3::text, '')) FROM put
 `
 
 type ReplaceIdentifierParams struct {
 	Kind   string
-	By     string
+	ByID   string
+	ByType string
 	Value  string
 	UserID string
 }
@@ -282,7 +283,8 @@ type ReplaceIdentifierParams struct {
 func (q *Queries) ReplaceIdentifier(ctx context.Context, arg ReplaceIdentifierParams) (int64, error) {
 	result, err := q.db.Exec(ctx, replaceIdentifier,
 		arg.Kind,
-		arg.By,
+		arg.ByID,
+		arg.ByType,
 		arg.Value,
 		arg.UserID,
 	)

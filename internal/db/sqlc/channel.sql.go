@@ -66,20 +66,21 @@ func (q *Queries) ChannelSecrets(ctx context.Context, kind string) ([]ChannelSec
 
 const deleteChannel = `-- name: DeleteChannel :exec
 WITH gone AS (
-    DELETE FROM channels WHERE kind = $2 RETURNING kind
+    DELETE FROM channels WHERE kind = $3 RETURNING kind
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'channel.deleted', NULL, jsonb_build_object('kind', gone.kind, 'by', $1::text) FROM gone
+SELECT 'channel.deleted', NULL, jsonb_build_object('kind', gone.kind, 'by', $1::text, 'byType', NULLIF($2::text, '')) FROM gone
 `
 
 type DeleteChannelParams struct {
-	By   string
-	Kind string
+	ByID   string
+	ByType string
+	Kind   string
 }
 
 // Audited with who did it, when there was one to delete.
 func (q *Queries) DeleteChannel(ctx context.Context, arg DeleteChannelParams) error {
-	_, err := q.db.Exec(ctx, deleteChannel, arg.By, arg.Kind)
+	_, err := q.db.Exec(ctx, deleteChannel, arg.ByID, arg.ByType, arg.Kind)
 	return err
 }
 

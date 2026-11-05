@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
@@ -87,7 +88,7 @@ func (s *Store) List(ctx context.Context) ([]Settings, error) {
 var idRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
 // Create adds an enabled Provider of type typ, audited as done by by.
-func (s *Store) Create(ctx context.Context, id, typ, name string, config map[string]string, by string) error {
+func (s *Store) Create(ctx context.Context, id, typ, name string, config map[string]string, by audit.Actor) error {
 	t := GetType(typ)
 	if t == nil {
 		return identity.Invalid("没有这个 Provider 类型:" + typ)
@@ -110,7 +111,7 @@ func (s *Store) Create(ctx context.Context, id, typ, name string, config map[str
 		if err := s.putSecrets(ctx, q, id, fresh); err != nil {
 			return err
 		}
-		detail, _ := json.Marshal(map[string]string{"id": id, "type": typ, "by": by})
+		detail := by.Detail(map[string]string{"id": id, "type": typ})
 		return q.Audit(ctx, sqlc.AuditParams{Event: "provider.created", Detail: detail})
 	})
 }
@@ -118,7 +119,7 @@ func (s *Store) Create(ctx context.Context, id, typ, name string, config map[str
 // Update changes a Provider's name and settings, audited as done by by. An
 // empty secret field keeps the stored value; an Immutable field must stay as
 // it is.
-func (s *Store) Update(ctx context.Context, id, name string, config map[string]string, by string) error {
+func (s *Store) Update(ctx context.Context, id, name string, config map[string]string, by audit.Actor) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		r, err := q.GetProviderForUpdate(ctx, id)
@@ -145,7 +146,7 @@ func (s *Store) Update(ctx context.Context, id, name string, config map[string]s
 		if err := s.putSecrets(ctx, q, id, fresh); err != nil {
 			return err
 		}
-		detail, _ := json.Marshal(map[string]string{"id": id, "by": by})
+		detail := by.Detail(map[string]string{"id": id})
 		return q.Audit(ctx, sqlc.AuditParams{Event: "provider.updated", Detail: detail})
 	})
 }
@@ -211,8 +212,8 @@ func (s *Store) putSecrets(ctx context.Context, q *sqlc.Queries, id string, fres
 
 // SetEnabled turns a Provider on or off. A disabled one leaves the login
 // page, and its External Identities sign nobody in. Audited as done by by.
-func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool, by string) error {
-	n, err := s.q.SetProviderEnabled(ctx, sqlc.SetProviderEnabledParams{ID: id, Enabled: enabled, By: by})
+func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool, by audit.Actor) error {
+	n, err := s.q.SetProviderEnabled(ctx, sqlc.SetProviderEnabledParams{ID: id, Enabled: enabled, ByID: by.ID, ByType: by.Type})
 	if err == nil && n == 0 {
 		return ErrNotFound
 	}
@@ -220,8 +221,8 @@ func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool, by stri
 }
 
 // Delete removes a Provider no External Identity uses, audited as done by by.
-func (s *Store) Delete(ctx context.Context, id, by string) error {
-	n, err := s.q.DeleteProvider(ctx, sqlc.DeleteProviderParams{ID: id, By: by})
+func (s *Store) Delete(ctx context.Context, id string, by audit.Actor) error {
+	n, err := s.q.DeleteProvider(ctx, sqlc.DeleteProviderParams{ID: id, ByID: by.ID, ByType: by.Type})
 	if isCode(err, "23503") {
 		return ErrBound
 	} else if err == nil && n == 0 {
@@ -421,7 +422,7 @@ func (s *Store) build(ctx context.Context, id string, enabledOnly bool) (Redirec
 // Unbind removes the User's External Identity at the Provider id, unless it
 // is their last way to sign in, then runs the Provider's unlink hook.
 // Audited as done by by: the User, or an admin.
-func (s *Store) Unbind(ctx context.Context, userID, id, by string) error {
+func (s *Store) Unbind(ctx context.Context, userID, id string, by audit.Actor) error {
 	subject, sealedToken, err := identity.New(s.pool, s.keyring).RemoveExternalIdentity(ctx, userID, id, by)
 	if err != nil {
 		return err

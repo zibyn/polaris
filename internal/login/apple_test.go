@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/provider"
 	"github.com/zibyn/polaris/internal/provider/apple/appletest"
@@ -18,7 +19,7 @@ import (
 func (e *env) addApple() *appletest.Fake {
 	e.t.Helper()
 	f := appletest.Start(e.t)
-	if err := e.providers().Create(context.Background(), "apple", "apple", "Apple", f.Config(), ""); err != nil {
+	if err := e.providers().Create(context.Background(), "apple", "apple", "Apple", f.Config(), audit.User("")); err != nil {
 		e.t.Fatal(err)
 	}
 	return f
@@ -140,13 +141,13 @@ func TestUnbindingAppleRevokesItsToken(t *testing.T) {
 	resp, _, code := e.signInWithApple(f, page)
 	sub := e.idToken(e.code(resp))["sub"].(string)
 
-	if err := e.providers().Unbind(ctx, sub, "apple", sub); err == nil || len(f.Revoked) != 0 {
+	if err := e.providers().Unbind(ctx, sub, "apple", audit.User(sub)); err == nil || len(f.Revoked) != 0 {
 		t.Fatalf("unbound the only way to sign in: %v, revoked %v", err, f.Revoked)
 	}
 	if err := sqlc.New(e.pool).AddIdentifier(ctx, sqlc.AddIdentifierParams{UserID: sub, Kind: "phone", Value: "+8613900139000"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.providers().Unbind(ctx, sub, "apple", sub); err != nil {
+	if err := e.providers().Unbind(ctx, sub, "apple", audit.User(sub)); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.Revoked) != 1 || f.Revoked[0].Get("token") != "rt-"+code ||
@@ -170,7 +171,7 @@ func TestAppleRevokeFailureIsAuditedNotBlocking(t *testing.T) {
 	}
 
 	f.FailRevoke = true
-	if err := e.providers().Unbind(ctx, sub, "apple", sub); err != nil {
+	if err := e.providers().Unbind(ctx, sub, "apple", audit.User(sub)); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.Revoked) != 1 || len(e.appleTokens()) != 0 || e.audits("provider.unlink_failed") != 1 {
@@ -217,7 +218,7 @@ func TestSignInWithAppleInTheApp(t *testing.T) {
 	if err := sqlc.New(e.pool).AddIdentifier(ctx, sqlc.AddIdentifierParams{UserID: sub, Kind: "phone", Value: "+8613900139000"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.providers().Unbind(ctx, sub, "apple", sub); err != nil {
+	if err := e.providers().Unbind(ctx, sub, "apple", audit.User(sub)); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.Revoked) != 1 || f.Revoked[0].Get("client_id") != appletest.BundleID {
@@ -283,7 +284,7 @@ func TestAppleInTheAppRefusals(t *testing.T) {
 
 	// Disabled: refused before Apple is asked.
 	f.FailToken = false
-	if err := e.providers().SetEnabled(context.Background(), "apple", false, ""); err != nil {
+	if err := e.providers().SetEnabled(context.Background(), "apple", false, audit.User("")); err != nil {
 		t.Fatal(err)
 	}
 	asked := len(f.ClientSecrets)

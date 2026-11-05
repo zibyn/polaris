@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/identity"
 )
 
@@ -130,7 +131,7 @@ func TestAnInviteLinkThatIsNoGood(t *testing.T) {
 
 	// 撤销。
 	carol, revoked := e.invited("carol@example.com")
-	if _, err := e.ids.RevokeInvite(ctx, carol, "ADMIN"); err != nil {
+	if _, err := e.ids.RevokeInvite(ctx, carol, audit.User("ADMIN")); err != nil {
 		t.Fatal(err)
 	}
 	noGood("revoked", revoked)

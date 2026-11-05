@@ -26,22 +26,6 @@ func (q *Queries) Audit(ctx context.Context, arg AuditParams) error {
 	return err
 }
 
-const auditedSince = `-- name: AuditedSince :one
-SELECT EXISTS (SELECT 1 FROM audit_log WHERE event = $1 AND at > $2)
-`
-
-type AuditedSinceParams struct {
-	Event string
-	At    pgtype.Timestamptz
-}
-
-func (q *Queries) AuditedSince(ctx context.Context, arg AuditedSinceParams) (bool, error) {
-	row := q.db.QueryRow(ctx, auditedSince, arg.Event, arg.At)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const deleteOldAudit = `-- name: DeleteOldAudit :exec
 DELETE FROM audit_log WHERE at < now() - make_interval(days => (SELECT audit_retention_days FROM settings))
 `

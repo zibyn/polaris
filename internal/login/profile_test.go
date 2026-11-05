@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/blob"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/profile"
@@ -52,10 +53,10 @@ func TestProfileClaims(t *testing.T) {
 	ctx := context.Background()
 	profiles := profile.New(e.pool, e.issuer)
 	nickname, name, city := " 小明 ", "王小明", "上海"
-	if err := profiles.Update(ctx, sub, profile.Patch{Nickname: &nickname, Name: &name, Address: &profile.Address{Locality: city}}, sub); err != nil {
+	if err := profiles.Update(ctx, sub, profile.Patch{Nickname: &nickname, Name: &name, Address: &profile.Address{Locality: city}}, audit.User(sub)); err != nil {
 		t.Fatal(err)
 	}
-	if err := profiles.SetAvatar(ctx, sub, bytes.NewReader(pngBytes(t)), sub); err != nil {
+	if err := profiles.SetAvatar(ctx, sub, bytes.NewReader(pngBytes(t)), audit.User(sub)); err != nil {
 		t.Fatal(err)
 	}
 	id, info = login("openid+profile")

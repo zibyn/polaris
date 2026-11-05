@@ -47,11 +47,11 @@ var userEventCases = []struct {
 	// has is a unique violation, which rolls the whole write back.
 
 	{"ReplaceIdentifier", "new value", "", func(ctx context.Context, q *sqlc.Queries) error {
-		_, err := q.ReplaceIdentifier(ctx, sqlc.ReplaceIdentifierParams{UserID: "ALICE", Kind: "email", Value: "alice@new.example", By: "OWNER"})
+		_, err := q.ReplaceIdentifier(ctx, sqlc.ReplaceIdentifierParams{UserID: "ALICE", Kind: "email", Value: "alice@new.example", ByID: "OWNER", ByType: "user"})
 		return err
 	}, []hook{updated("ALICE", "email")}},
 	{"ReplaceIdentifier", "same value", "", func(ctx context.Context, q *sqlc.Queries) error {
-		_, err := q.ReplaceIdentifier(ctx, sqlc.ReplaceIdentifierParams{UserID: "ALICE", Kind: "email", Value: "alice@example.com", By: "OWNER"})
+		_, err := q.ReplaceIdentifier(ctx, sqlc.ReplaceIdentifierParams{UserID: "ALICE", Kind: "email", Value: "alice@example.com", ByID: "OWNER", ByType: "user"})
 		return err
 	}, nil},
 
@@ -103,13 +103,13 @@ var userEventCases = []struct {
 	}, nil},
 
 	{"SetUserRoles", "other Roles", "", func(ctx context.Context, q *sqlc.Queries) error {
-		return q.SetUserRoles(ctx, sqlc.SetUserRolesParams{UserID: "ALICE", Api: "track", Roles: []string{"viewer", "editor"}, By: "OWNER"})
+		return q.SetUserRoles(ctx, sqlc.SetUserRolesParams{UserID: "ALICE", Api: "track", Roles: []string{"viewer", "editor"}, ByID: "OWNER", ByType: "user"})
 	}, []hook{updated("ALICE", "roles")}},
 	{"SetUserRoles", "fewer Roles", "", func(ctx context.Context, q *sqlc.Queries) error {
-		return q.SetUserRoles(ctx, sqlc.SetUserRolesParams{UserID: "ALICE", Api: "track", Roles: []string{}, By: "OWNER"})
+		return q.SetUserRoles(ctx, sqlc.SetUserRolesParams{UserID: "ALICE", Api: "track", Roles: []string{}, ByID: "OWNER", ByType: "user"})
 	}, []hook{updated("ALICE", "roles")}},
 	{"SetUserRoles", "same Roles", "", func(ctx context.Context, q *sqlc.Queries) error {
-		return q.SetUserRoles(ctx, sqlc.SetUserRolesParams{UserID: "ALICE", Api: "track", Roles: []string{"viewer"}, By: "OWNER"})
+		return q.SetUserRoles(ctx, sqlc.SetUserRolesParams{UserID: "ALICE", Api: "track", Roles: []string{"viewer"}, ByID: "OWNER", ByType: "user"})
 	}, nil},
 
 	{"DeleteAPI", "held", "", func(ctx context.Context, q *sqlc.Queries) error {
@@ -131,28 +131,28 @@ var userEventCases = []struct {
 	}, nil},
 
 	{"SetUserDisabled", "disable", "", func(ctx context.Context, q *sqlc.Queries) error {
-		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: "ALICE", Disabled: true, By: "OWNER"})
+		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: "ALICE", Disabled: true, ByID: "OWNER", ByType: "user"})
 		return err
 	}, []hook{bare("user.disabled", "ALICE")}},
 	{"SetUserDisabled", "enable", "UPDATE users SET disabled_at = now() WHERE id = 'ALICE'", func(ctx context.Context, q *sqlc.Queries) error {
-		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: "ALICE", Disabled: false, By: "OWNER"})
+		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: "ALICE", Disabled: false, ByID: "OWNER", ByType: "user"})
 		return err
 	}, []hook{bare("user.enabled", "ALICE")}},
 	{"SetUserDisabled", "already enabled", "", func(ctx context.Context, q *sqlc.Queries) error {
-		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: "ALICE", Disabled: false, By: "OWNER"})
+		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: "ALICE", Disabled: false, ByID: "OWNER", ByType: "user"})
 		return err
 	}, nil},
 	{"SetUserDisabled", "already disabled", "UPDATE users SET disabled_at = now() WHERE id = 'ALICE'", func(ctx context.Context, q *sqlc.Queries) error {
-		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: "ALICE", Disabled: true, By: "OWNER"})
+		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: "ALICE", Disabled: true, ByID: "OWNER", ByType: "user"})
 		return err
 	}, nil},
 
 	{"DeleteUser", "exists", "", func(ctx context.Context, q *sqlc.Queries) error {
-		_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: "ALICE", By: "OWNER"})
+		_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: "ALICE", ByID: "OWNER", ByType: "user"})
 		return err
 	}, []hook{bare("user.deleted", "ALICE")}},
 	{"DeleteUser", "no such User", "", func(ctx context.Context, q *sqlc.Queries) error {
-		_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: "NOBODY", By: "OWNER"})
+		_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: "NOBODY", ByID: "OWNER", ByType: "user"})
 		return err
 	}, nil},
 

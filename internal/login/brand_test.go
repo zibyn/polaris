@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/oidcstore"
 
 	_ "github.com/zibyn/polaris/internal/provider/dingtalk"
@@ -24,7 +25,7 @@ func TestNamedProviderButtons(t *testing.T) {
 	ctx := context.Background()
 	create := func(typ, name string, config map[string]string) {
 		t.Helper()
-		if err := e.providers().Create(ctx, typ, typ, name, config, ""); err != nil {
+		if err := e.providers().Create(ctx, typ, typ, name, config, audit.User("")); err != nil {
 			t.Fatal(err)
 		}
 	}

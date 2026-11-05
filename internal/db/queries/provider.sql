@@ -37,7 +37,7 @@ WITH put AS (
 )
 INSERT INTO audit_log (event, sub, detail)
 SELECT CASE WHEN @enabled::boolean THEN 'provider.enabled' ELSE 'provider.disabled' END, NULL,
-       jsonb_build_object('id', put.id, 'by', @by::text)
+       jsonb_build_object('id', put.id, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, ''))
 FROM put;
 
 -- name: DeleteProvider :execrows
@@ -51,7 +51,7 @@ WITH gone AS (
     WHERE 'provider:' || @id::text = ANY (login_methods) AND EXISTS (SELECT 1 FROM gone)
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'provider.deleted', NULL, jsonb_build_object('id', gone.id, 'by', @by::text) FROM gone;
+SELECT 'provider.deleted', NULL, jsonb_build_object('id', gone.id, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM gone;
 
 -- name: ProviderSecrets :many
 SELECT field, value FROM provider_secrets WHERE provider = $1;
@@ -94,7 +94,7 @@ WITH added AS (
     RETURNING provider, user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'external_identity.added', user_id, jsonb_build_object('provider', provider, 'by', user_id) FROM added;
+SELECT 'external_identity.added', user_id, jsonb_build_object('provider', provider, 'by', user_id, 'byType', 'user') FROM added;
 
 -- name: ExternalIdentitySubject :one
 SELECT subject FROM external_identities WHERE user_id = $1 AND provider = $2;
@@ -112,6 +112,6 @@ WITH gone AS (
     DELETE FROM external_identities WHERE user_id = @user_id AND provider = @provider RETURNING user_id, provider, subject, token
 ), audited AS (
     INSERT INTO audit_log (event, sub, detail)
-    SELECT 'external_identity.removed', user_id, jsonb_build_object('provider', provider, 'by', @by::text) FROM gone
+    SELECT 'external_identity.removed', user_id, jsonb_build_object('provider', provider, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM gone
 )
 SELECT subject, token FROM gone;

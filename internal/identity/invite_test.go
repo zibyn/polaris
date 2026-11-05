@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/zibyn/polaris/internal/audit"
 )
 
 // 邀请: 发出来的是一条一次性链接, 表里只有它的 SHA-256; 接受即写密码、
@@ -126,7 +128,7 @@ func TestInviteExpiresAndRevokes(t *testing.T) {
 	}
 	// 撤销也是删: 链接立刻不可用, 而且只有真的撤掉了一条才算一次撤销。
 	second, _, _ := s.MintInvite(ctx, sub)
-	if ok, err := s.RevokeInvite(ctx, sub, "ADMIN"); err != nil || !ok {
+	if ok, err := s.RevokeInvite(ctx, sub, audit.User("ADMIN")); err != nil || !ok {
 		t.Fatalf("revoke: %v %v", ok, err)
 	}
 	if live, _ := s.InviteLive(ctx, second); live {
@@ -135,7 +137,7 @@ func TestInviteExpiresAndRevokes(t *testing.T) {
 	if _, err := s.AcceptInvite(ctx, second, "her-own-password"); !errors.Is(err, ErrInviteSpent) {
 		t.Errorf("accepting a revoked invite: %v, want ErrInviteSpent", err)
 	}
-	if ok, err := s.RevokeInvite(ctx, sub, "ADMIN"); err != nil || ok {
+	if ok, err := s.RevokeInvite(ctx, sub, audit.User("ADMIN")); err != nil || ok {
 		t.Errorf("revoking nothing = %v %v, want false", ok, err)
 	}
 }

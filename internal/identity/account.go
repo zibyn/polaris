@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/profile"
 )
@@ -59,11 +60,11 @@ func (s *Store) RemoveIdentifier(ctx context.Context, sub, kind string) error {
 // RemoveExternalIdentity unbinds the User's External Identity at provider,
 // unless it is their last way to sign in, and returns the Provider's subject
 // and the binding's sealed token. Audited as done by by.
-func (s *Store) RemoveExternalIdentity(ctx context.Context, sub, provider, by string) (subject string, sealedToken []byte, err error) {
+func (s *Store) RemoveExternalIdentity(ctx context.Context, sub, provider string, by audit.Actor) (subject string, sealedToken []byte, err error) {
 	var row sqlc.RemoveExternalIdentityRow
 	err = s.changeLoginPaths(ctx, sub, func(q *sqlc.Queries) error {
 		var err error
-		row, err = q.RemoveExternalIdentity(ctx, sqlc.RemoveExternalIdentityParams{UserID: sub, Provider: provider, By: by})
+		row, err = q.RemoveExternalIdentity(ctx, sqlc.RemoveExternalIdentityParams{UserID: sub, Provider: provider, ByID: by.ID, ByType: by.Type})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotBound
 		}
@@ -133,8 +134,8 @@ func (s *Store) changeLoginPaths(ctx context.Context, sub string, change func(*s
 // ReplaceIdentifier binds value as the User's Identifier of kind, replacing
 // the one they had; never one another User holds (ADR 0003). Audited as done
 // by by.
-func (s *Store) ReplaceIdentifier(ctx context.Context, sub, kind, value, by string) error {
-	_, err := s.q.ReplaceIdentifier(ctx, sqlc.ReplaceIdentifierParams{UserID: sub, Kind: kind, Value: value, By: by})
+func (s *Store) ReplaceIdentifier(ctx context.Context, sub, kind, value string, by audit.Actor) error {
+	_, err := s.q.ReplaceIdentifier(ctx, sqlc.ReplaceIdentifierParams{UserID: sub, Kind: kind, Value: value, ByID: by.ID, ByType: by.Type})
 	if isUniqueViolation(err) {
 		return ErrIdentifierTaken
 	}
@@ -173,9 +174,9 @@ func (s *Store) guardOwners(ctx context.Context, change func(*sqlc.Queries) erro
 
 // SetDisabled disables or re-enables the User; never the last usable owner.
 // Audited as done by by.
-func (s *Store) SetDisabled(ctx context.Context, sub string, disabled bool, by string) error {
+func (s *Store) SetDisabled(ctx context.Context, sub string, disabled bool, by audit.Actor) error {
 	return s.guardOwners(ctx, func(q *sqlc.Queries) error {
-		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: sub, Disabled: disabled, By: by})
+		_, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{UserID: sub, Disabled: disabled, ByID: by.ID, ByType: by.Type})
 		return err
 	})
 }
@@ -183,12 +184,12 @@ func (s *Store) SetDisabled(ctx context.Context, sub string, disabled bool, by s
 // Delete deletes the User's account with all their data; never the last
 // usable owner. Audited as done by by: sub itself when they leave on their
 // own.
-func (s *Store) Delete(ctx context.Context, sub, by string) error {
+func (s *Store) Delete(ctx context.Context, sub string, by audit.Actor) error {
 	return s.guardOwners(ctx, func(q *sqlc.Queries) error {
 		if err := profile.DeleteAvatar(ctx, q, sub); err != nil {
 			return err
 		}
-		_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, By: by})
+		_, err := q.DeleteUser(ctx, sqlc.DeleteUserParams{UserID: sub, ByID: by.ID, ByType: by.Type})
 		return err
 	})
 }
@@ -198,12 +199,12 @@ const ErrNoSuchRole Invalid = "没有这个 Role"
 
 // SetRoles makes roles the User's Roles on api, taking away the rest; on the
 // Management API never the last usable owner's. Audited as done by by.
-func (s *Store) SetRoles(ctx context.Context, sub, api string, roles []string, by string) error {
+func (s *Store) SetRoles(ctx context.Context, sub, api string, roles []string, by audit.Actor) error {
 	if roles == nil {
 		roles = []string{} // NULL would match no Role to take away
 	}
 	set := func(q *sqlc.Queries) error {
-		err := q.SetUserRoles(ctx, sqlc.SetUserRolesParams{UserID: sub, Api: api, Roles: roles, By: by})
+		err := q.SetUserRoles(ctx, sqlc.SetUserRolesParams{UserID: sub, Api: api, Roles: roles, ByID: by.ID, ByType: by.Type})
 		if isFKViolation(err) {
 			return ErrNoSuchRole
 		}

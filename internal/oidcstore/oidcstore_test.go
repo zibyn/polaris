@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/dbtest"
@@ -115,7 +116,7 @@ func TestRotationKeepsOldKeysForAnHour(t *testing.T) {
 	}
 	oldToken := sign(t, before.Keys[0])
 
-	if err := keys.Rotate(ctx, "test"); err != nil {
+	if err := keys.Rotate(ctx, audit.User("test")); err != nil {
 		t.Fatal(err)
 	}
 	after, err := keys.JWKS(ctx)
@@ -134,7 +135,7 @@ func TestRotationKeepsOldKeysForAnHour(t *testing.T) {
 
 	// A second rotation within the hour keeps all three.
 	midToken := sign(t, after.Keys[0])
-	if err := keys.Rotate(ctx, "test"); err != nil {
+	if err := keys.Rotate(ctx, audit.User("test")); err != nil {
 		t.Fatal(err)
 	}
 	last, err := keys.JWKS(ctx)
@@ -502,7 +503,7 @@ func TestManualRotationRestartsRotateDueClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	age(t, pool, "100 days")
-	if err := keys.Rotate(ctx, "test"); err != nil {
+	if err := keys.Rotate(ctx, audit.User("test")); err != nil {
 		t.Fatal(err)
 	}
 	age(t, pool, "89 days") // the manual key is 89 days old, its predecessor 189

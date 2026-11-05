@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/provider/github"
 	"github.com/zibyn/polaris/internal/provider/oauth2/oauth2test"
 )
@@ -18,7 +19,7 @@ func (e *env) addGitHub() *oauth2test.Fake {
 	github.Endpoint, github.API = f.URL, f.API
 	e.t.Cleanup(func() { github.Endpoint, github.API = endpoint, api })
 	if err := e.providers().Create(context.Background(), "github", "github", "GitHub",
-		map[string]string{"client_id": oauth2test.ClientID, "client_secret": oauth2test.ClientSecret}, ""); err != nil {
+		map[string]string{"client_id": oauth2test.ClientID, "client_secret": oauth2test.ClientSecret}, audit.User("")); err != nil {
 		e.t.Fatal(err)
 	}
 	return f

@@ -24,6 +24,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/oidc/goidc"
@@ -252,7 +253,7 @@ func (s *Store) Finish(ctx context.Context, sub, session string, response []byte
 		UserID: sub, CredentialID: cred.ID, PublicKey: cred.PublicKey,
 		SignCount: int64(cred.Authenticator.SignCount), Aaguid: uuidToPG(cred.Authenticator.AAGUID),
 		BackupEligible: cred.Flags.BackupEligible, BackupState: cred.Flags.BackupState,
-		Transports: transportsOf(cred.Transport), Name: defaultName(cred.Authenticator.AAGUID), By: sub,
+		Transports: transportsOf(cred.Transport), Name: defaultName(cred.Authenticator.AAGUID), ByID: sub, ByType: "user",
 	})
 	if errors.Is(err, pgx.ErrNoRows) { // the credential is already someone's
 		return Passkey{}, ErrDuplicate
@@ -438,12 +439,12 @@ func (u loginuser) WebAuthnCredentials() []webauthn.Credential {
 }
 
 // Rename gives one of the User's Passkeys a name they know it by.
-func (s *Store) Rename(ctx context.Context, sub, id, name, by string) error {
+func (s *Store) Rename(ctx context.Context, sub, id, name string, by audit.Actor) error {
 	name = strings.TrimSpace(name)
 	if name == "" || utf8.RuneCountInString(name) > 64 {
 		return ErrName
 	}
-	n, err := s.q.RenamePasskey(ctx, sqlc.RenamePasskeyParams{By: by, Name: name, ID: id, UserID: sub})
+	n, err := s.q.RenamePasskey(ctx, sqlc.RenamePasskeyParams{ByID: by.ID, ByType: by.Type, Name: name, ID: id, UserID: sub})
 	if err == nil && n == 0 {
 		err = ErrGone
 	}
@@ -451,8 +452,8 @@ func (s *Store) Rename(ctx context.Context, sub, id, name, by string) error {
 }
 
 // Remove deletes one of the User's Passkeys.
-func (s *Store) Remove(ctx context.Context, sub, id, by string) error {
-	n, err := s.q.DeletePasskey(ctx, sqlc.DeletePasskeyParams{By: by, ID: id, UserID: sub})
+func (s *Store) Remove(ctx context.Context, sub, id string, by audit.Actor) error {
+	n, err := s.q.DeletePasskey(ctx, sqlc.DeletePasskeyParams{ByID: by.ID, ByType: by.Type, ID: id, UserID: sub})
 	if err == nil && n == 0 {
 		err = ErrGone
 	}

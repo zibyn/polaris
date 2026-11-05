@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/oidc/goidc"
@@ -66,7 +66,7 @@ func (k *Keys) Ensure(ctx context.Context) error {
 
 // Rotate makes a new key current and audits it as done by by. The old ones
 // retire by age (see KeyRetention); the hourly cleanup deletes them.
-func (k *Keys) Rotate(ctx context.Context, by string) error {
+func (k *Keys) Rotate(ctx context.Context, by audit.Actor) error {
 	tx, err := k.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -94,17 +94,17 @@ func (k *Keys) RotateDue(ctx context.Context) error {
 	if err != nil || len(keys) == 0 || time.Since(keys[0].CreatedAt.Time) < KeyLifetime {
 		return err
 	}
-	if err := k.rotate(ctx, q, "system"); err != nil {
+	if err := k.rotate(ctx, q, audit.System); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
-func (k *Keys) rotate(ctx context.Context, q *sqlc.Queries, by string) error {
+func (k *Keys) rotate(ctx context.Context, q *sqlc.Queries, by audit.Actor) error {
 	if err := add(ctx, q, k.keyring); err != nil {
 		return err
 	}
-	detail, _ := json.Marshal(map[string]string{"by": by})
+	detail := by.Detail(nil)
 	return q.Audit(ctx, sqlc.AuditParams{Event: "keys.rotated", Detail: detail})
 }
 

@@ -186,11 +186,8 @@ func (s *Service) reserve(ctx context.Context, value, ip, code string) error {
 // the caller's transaction when it wrote that event, because the caller is
 // about to roll it back to refuse the send.
 func (s *Service) overDailyCap(ctx context.Context, tx pgx.Tx, q *sqlc.Queries, c sqlc.SendCountsRow, now time.Time) error {
-	audited, err := q.AuditedSince(ctx, sqlc.AuditedSinceParams{Event: auditDailyCap, At: ts(now.Add(-24 * time.Hour))})
-	if err != nil || audited {
-		return err
-	}
-	if err := q.Audit(ctx, sqlc.AuditParams{Event: auditDailyCap, Detail: fmt.Appendf(nil, `{"limit": %d}`, c.DailyLimit)}); err != nil {
+	n, err := q.AuditDailyCap(ctx, ts(now))
+	if err != nil || n == 0 {
 		return err
 	}
 	return tx.Commit(ctx)

@@ -3,7 +3,6 @@ package management
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -45,11 +44,11 @@ type putChannelInput struct {
 }
 
 func (s *Service) putChannel(ctx context.Context, in *putChannelInput) (*struct{}, error) {
-	return nil, invalid(s.channels.Put(ctx, in.Kind, in.Body.Plugin, in.Body.Config, callerSub(ctx)))
+	return nil, invalid(s.channels.Put(ctx, in.Kind, in.Body.Plugin, in.Body.Config, callerActor(ctx)))
 }
 
 func (s *Service) deleteChannel(ctx context.Context, in *kindPath) (*struct{}, error) {
-	return nil, s.channels.Delete(ctx, in.Kind, callerSub(ctx))
+	return nil, s.channels.Delete(ctx, in.Kind, callerActor(ctx))
 }
 
 type testChannelInput struct {
@@ -91,7 +90,7 @@ func (s *Service) testChannel(ctx context.Context, in *testChannelInput) (*testC
 	}
 	// Nothing in PG changed, so there is no transaction to share; the
 	// recipient stays out of the log.
-	detail, _ := json.Marshal(map[string]string{"kind": in.Kind, "by": callerSub(ctx)})
+	detail := callerActor(ctx).Detail(map[string]string{"kind": in.Kind})
 	return out, s.q.Audit(ctx, sqlc.AuditParams{Event: "channel.tested", Detail: detail})
 }
 

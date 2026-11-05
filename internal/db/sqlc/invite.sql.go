@@ -18,14 +18,15 @@ WITH spent AS (
       AND user_id IN (SELECT id FROM users WHERE disabled_at IS NULL)
     RETURNING user_id
 ), activated AS (
-    UPDATE users SET status = 'active' WHERE users.id IN (SELECT user_id FROM spent) RETURNING users.id
+    UPDATE users SET status = 'active', invite_accepted_at = now()
+    WHERE users.id IN (SELECT user_id FROM spent) RETURNING users.id
 ), put AS (
     INSERT INTO passwords (user_id, hash) SELECT spent.user_id, $2::text FROM spent
     ON CONFLICT (user_id) DO UPDATE SET hash = EXCLUDED.hash
     RETURNING user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'invite.accepted', put.user_id, jsonb_build_object('by', put.user_id) FROM put
+SELECT 'invite.accepted', put.user_id, jsonb_build_object('by', put.user_id, 'byType', 'user') FROM put
 RETURNING sub
 `
 
@@ -61,6 +62,25 @@ DELETE FROM invites WHERE user_id = $1
 // 发信失败时把刚铸出来的 token 丢掉, 不留一条可用链接。
 func (q *Queries) DeleteInvite(ctx context.Context, userID string) error {
 	_, err := q.db.Exec(ctx, deleteInvite, userID)
+	return err
+}
+
+const inviteSent = `-- name: InviteSent :exec
+WITH sent AS (UPDATE users SET invite_accepted_at = NULL WHERE users.id = $1)
+INSERT INTO audit_log (event, sub, detail)
+VALUES ('invite.sent', $1::text, jsonb_build_object('by', $2::text, 'byType', NULLIF($3::text, '')))
+`
+
+type InviteSentParams struct {
+	UserID string
+	ByID   string
+	ByType string
+}
+
+// 邀请邮件发出去了: 审计的操作人是管理员, 之前的「已接受」让位给这一封。
+// 发信失败不走这里, 所以重发失败的账号仍是「已接受」。
+func (q *Queries) InviteSent(ctx context.Context, arg InviteSentParams) error {
+	_, err := q.db.Exec(ctx, inviteSent, arg.UserID, arg.ByID, arg.ByType)
 	return err
 }
 
@@ -100,20 +120,21 @@ func (q *Queries) PutInvite(ctx context.Context, arg PutInviteParams) error {
 
 const revokeInvite = `-- name: RevokeInvite :execrows
 WITH gone AS (
-    DELETE FROM invites WHERE user_id = $2 RETURNING user_id
+    DELETE FROM invites WHERE user_id = $3 RETURNING user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'invite.revoked', gone.user_id, jsonb_build_object('by', $1::text) FROM gone
+SELECT 'invite.revoked', gone.user_id, jsonb_build_object('by', $1::text, 'byType', NULLIF($2::text, '')) FROM gone
 `
 
 type RevokeInviteParams struct {
-	By     string
+	ByID   string
+	ByType string
 	UserID string
 }
 
 // 撤销, 审计的操作人是管理员。撤销一条本来就没有的邀请不算一次撤销。
 func (q *Queries) RevokeInvite(ctx context.Context, arg RevokeInviteParams) (int64, error) {
-	result, err := q.db.Exec(ctx, revokeInvite, arg.By, arg.UserID)
+	result, err := q.db.Exec(ctx, revokeInvite, arg.ByID, arg.ByType, arg.UserID)
 	if err != nil {
 		return 0, err
 	}

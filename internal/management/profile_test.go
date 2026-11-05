@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/profile"
 )
 
@@ -18,7 +19,7 @@ func (e *env) avatar(sub string) {
 	if err := png.Encode(&b, image.NewRGBA(image.Rect(0, 0, 20, 20))); err != nil {
 		e.t.Fatal(err)
 	}
-	if err := profile.New(e.pool, e.issuer).SetAvatar(context.Background(), sub, &b, sub); err != nil {
+	if err := profile.New(e.pool, e.issuer).SetAvatar(context.Background(), sub, &b, audit.User(sub)); err != nil {
 		e.t.Fatal(err)
 	}
 }

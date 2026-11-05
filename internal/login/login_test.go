@@ -23,6 +23,7 @@ import (
 	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/channel"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db"
@@ -93,7 +94,7 @@ func start(t *testing.T) *env {
 	hook := httptest.NewServer(e.inbox)
 	t.Cleanup(hook.Close)
 	for _, kind := range []string{"phone", "email"} {
-		if err := channel.NewStore(pool, keyring).Put(ctx, kind, "webhook", map[string]string{"url": hook.URL, "secret": "s"}, ""); err != nil {
+		if err := channel.NewStore(pool, keyring).Put(ctx, kind, "webhook", map[string]string{"url": hook.URL, "secret": "s"}, audit.User("")); err != nil {
 			t.Fatal(err)
 		}
 	}

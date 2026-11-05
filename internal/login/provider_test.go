@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/oidc/goidc"
 	oidcop "github.com/zibyn/polaris/internal/oidc/provider"
@@ -76,7 +77,7 @@ func (e *env) addGoogle() *upstream {
 	e.t.Helper()
 	up := startUpstream(e.t, provider.CallbackURL(e.issuer, "google"))
 	if err := e.providers().Create(context.Background(), "google", "oidc", "Google",
-		map[string]string{"issuer": up.issuer, "client_id": "upstream", "client_secret": "shh"}, ""); err != nil {
+		map[string]string{"issuer": up.issuer, "client_id": "upstream", "client_secret": "shh"}, audit.User("")); err != nil {
 		e.t.Fatal(err)
 	}
 	return up
@@ -191,7 +192,7 @@ func TestDisabledProviderSignsNobodyIn(t *testing.T) {
 		t.Fatalf("button: %d", resp.StatusCode)
 	}
 	resp, _ = e.do("GET", resp.Header.Get("Location"), nil) // the upstream signs in
-	if err := e.providers().SetEnabled(ctx, "google", false, ""); err != nil {
+	if err := e.providers().SetEnabled(ctx, "google", false, audit.User("")); err != nil {
 		t.Fatal(err)
 	}
 	if resp, body := e.do("GET", resp.Header.Get("Location"), nil); resp.StatusCode != 400 {
@@ -215,7 +216,7 @@ func TestDeletedUserLeavesTheirExternalIdentity(t *testing.T) {
 	resp, _ := e.signInWith(page, "google")
 	sub := e.idToken(e.code(resp))["sub"].(string)
 
-	if err := e.ids.Delete(context.Background(), sub, sub); err != nil {
+	if err := e.ids.Delete(context.Background(), sub, audit.User(sub)); err != nil {
 		t.Fatal(err)
 	}
 	e.newBrowser()

@@ -58,13 +58,11 @@ SELECT u.id, u.created_at, u.disabled_at, u.pending,
        totp_confirmed(u.id) AS two_factor,
        two_factor_satisfied(u.id) AS two_factor_or_passkey,
        -- 注册邀请现在是什么状态: 表里还挂着一条还没到期的就是「已发出」, 上
-       -- 一条被本人用掉了就是「已接受」(接受即删行, 只在审计里留下痕迹), 其余
+       -- 一条被本人用掉了就是「已接受」(users.invite_accepted_at), 其余
        -- 是「没发出过」——撤销过、过期了都算, 不等清理任务把那行扫掉。
        (SELECT i.expires_at FROM invites i
         WHERE i.user_id = u.id AND i.expires_at > now()) AS invite_expires_at,
-       COALESCE((SELECT a.event FROM audit_log a
-                 WHERE a.sub = u.id AND a.event IN ('invite.sent', 'invite.accepted', 'invite.revoked')
-                 ORDER BY a.at DESC, a.id DESC LIMIT 1), '')::text AS invite_event
+       (u.invite_accepted_at IS NOT NULL)::boolean AS invite_accepted
 FROM users u
 WHERE u.id = $1;
 
@@ -91,7 +89,7 @@ WITH gone AS (
     WHERE EXISTS (SELECT 1 FROM gone) OR EXISTS (SELECT 1 FROM added)
 )
 INSERT INTO audit_log (event, sub, detail)
-VALUES ('roles.assigned', @user_id::text, jsonb_build_object('api', @api::text, 'roles', @roles::text[], 'by', @by::text));
+VALUES ('roles.assigned', @user_id::text, jsonb_build_object('api', @api::text, 'roles', @roles::text[], 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')));
 
 -- name: ListAPIs :many
 -- Every API with its Permissions and Roles; users and applications count who
@@ -121,7 +119,7 @@ WITH put AS (
     RETURNING apis.identifier
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'api.saved', NULL, jsonb_build_object('api', put.identifier, 'by', @by::text) FROM put;
+SELECT 'api.saved', NULL, jsonb_build_object('api', put.identifier, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM put;
 
 -- name: DeleteAPI :execrows
 -- Its Permissions, Roles and their assignments go with it, but only when
@@ -138,7 +136,7 @@ WITH gone AS (
                     user_event('user.updated', h.user_id, '{roles}') e
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'api.deleted', NULL, jsonb_build_object('api', gone.identifier, 'force', @force::boolean, 'by', @by::text) FROM gone;
+SELECT 'api.deleted', NULL, jsonb_build_object('api', gone.identifier, 'force', @force::boolean, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM gone;
 
 -- name: PutPermission :exec
 -- Audited with who did it.
@@ -147,7 +145,7 @@ WITH put AS (
     ON CONFLICT (api, key) DO UPDATE SET name = EXCLUDED.name
 )
 INSERT INTO audit_log (event, sub, detail)
-VALUES ('permission.saved', NULL, jsonb_build_object('api', @api::text, 'key', @key::text, 'by', @by::text));
+VALUES ('permission.saved', NULL, jsonb_build_object('api', @api::text, 'key', @key::text, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')));
 
 -- name: DeletePermission :execrows
 -- Its Roles lose it too (role_permissions cascades). Audited with who did it.
@@ -156,7 +154,7 @@ WITH gone AS (
     RETURNING permissions.api, permissions.key
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'permission.deleted', NULL, jsonb_build_object('api', gone.api, 'key', gone.key, 'by', @by::text) FROM gone;
+SELECT 'permission.deleted', NULL, jsonb_build_object('api', gone.api, 'key', gone.key, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM gone;
 
 -- name: PutRole :execrows
 -- default_role is only ever true for a business API Role; the Management API
@@ -197,7 +195,7 @@ WITH gone AS (
                     user_event('user.updated', ur.user_id, '{roles}') e
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'role.deleted', NULL, jsonb_build_object('api', gone.api, 'key', gone.key, 'force', @force::boolean, 'by', @by::text) FROM gone;
+SELECT 'role.deleted', NULL, jsonb_build_object('api', gone.api, 'key', gone.key, 'force', @force::boolean, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM gone;
 
 -- name: SetApplicationRoles :exec
 -- Makes roles an M2M Application's Roles on its default API, audited with
@@ -212,7 +210,7 @@ WITH gone AS (
 )
 INSERT INTO audit_log (event, sub, detail)
 VALUES ('application_roles.assigned', NULL,
-        jsonb_build_object('clientId', @client_id::text, 'api', @api::text, 'roles', @roles::text[], 'by', @by::text));
+        jsonb_build_object('clientId', @client_id::text, 'api', @api::text, 'roles', @roles::text[], 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')));
 
 -- name: ApplicationRoles :many
 -- Keys of the Roles an M2M Application holds on its API.
@@ -270,7 +268,7 @@ WITH put AS (
     RETURNING client_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'application.secret_regenerated', NULL, jsonb_build_object('clientId', put.client_id, 'by', @by::text) FROM put;
+SELECT 'application.secret_regenerated', NULL, jsonb_build_object('clientId', put.client_id, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM put;
 
 -- name: SetTokenAuthMethod :execrows
 -- Switches how the Application authenticates (ADR 0023): a secret_hash for
@@ -283,7 +281,7 @@ WITH put AS (
     RETURNING client_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'application.auth_method_changed', NULL, jsonb_build_object('clientId', put.client_id, 'by', @by::text) FROM put;
+SELECT 'application.auth_method_changed', NULL, jsonb_build_object('clientId', put.client_id, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM put;
 
 -- name: DeleteApplication :exec
 -- Audited with who did it.
@@ -292,7 +290,7 @@ WITH gone AS (
     RETURNING client_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'application.deleted', NULL, jsonb_build_object('clientId', gone.client_id, 'by', @by::text) FROM gone;
+SELECT 'application.deleted', NULL, jsonb_build_object('clientId', gone.client_id, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM gone;
 
 -- name: GetSettings :one
 SELECT password_login, require_phone, daily_send_limit, terms_url, privacy_url, terms_version, audit_retention_days,
@@ -311,7 +309,7 @@ WITH u AS (
         brand_name = @brand_name, brand_logo = @brand_logo, brand_color = @brand_color
 )
 INSERT INTO audit_log (event, sub, detail)
-VALUES ('settings.updated', NULL, jsonb_build_object('by', @by::text));
+VALUES ('settings.updated', NULL, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, '')));
 
 -- name: SetUserDisabled :execrows
 -- Disables or restores a User; disabling ends all their Sessions. Audited
@@ -328,7 +326,7 @@ WITH changed AS (
     WHERE sessions.user_id IN (SELECT changed.id FROM changed) AND @disabled::boolean AND sessions.ended_at IS NULL
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT CASE WHEN @disabled::boolean THEN 'user.disabled' ELSE 'user.enabled' END AS event, changed.id, jsonb_build_object('by', @by::text)
+SELECT CASE WHEN @disabled::boolean THEN 'user.disabled' ELSE 'user.enabled' END AS event, changed.id, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, ''))
 FROM changed;
 
 -- name: DeleteUser :execrows
@@ -346,7 +344,7 @@ WITH gone AS (
     SELECT e.client_id, e.payload FROM gone, user_event('user.deleted', gone.id) e
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'user.deleted', gone.id, jsonb_build_object('by', @by::text) FROM gone;
+SELECT 'user.deleted', gone.id, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM gone;
 
 -- name: ListAudit :many
 -- Newest first. sub matches the User an event is about or whoever did it
@@ -391,7 +389,7 @@ SELECT (SELECT count(*) FROM users) AS users,
 -- Replaces the instance's Logo; audited with who did it.
 WITH u AS (UPDATE settings SET brand_logo = @logo)
 INSERT INTO audit_log (event, sub, detail)
-VALUES ('settings.updated', NULL, jsonb_build_object('by', @by::text));
+VALUES ('settings.updated', NULL, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, '')));
 
 -- name: SetApplicationLogo :execrows
 -- Replaces an Application's own Logo; NULL follows the instance's.

@@ -35,7 +35,7 @@ WITH ended AS (
     RETURNING sessions.id, sessions.user_id
 )
 INSERT INTO audit_log (event, sub, detail)
-SELECT 'session.ended', ended.user_id, jsonb_build_object('session', ended.id, 'by', @by::text) FROM ended;
+SELECT 'session.ended', ended.user_id, jsonb_build_object('session', ended.id, 'by', @by_id::text, 'byType', NULLIF(@by_type::text, '')) FROM ended;
 
 -- name: UserSessions :many
 SELECT s.id, (s.id_hash IS NULL)::boolean AS app, s.client_id, COALESCE(a.name, s.client_id, '')::text AS application_name,

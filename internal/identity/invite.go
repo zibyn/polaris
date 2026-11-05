@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 )
 
@@ -53,8 +54,8 @@ func (s *Store) DropInvite(ctx context.Context, sub string) error {
 
 // RevokeInvite drops sub's invite, audited as done by the admin, and reports
 // whether there was one to drop.
-func (s *Store) RevokeInvite(ctx context.Context, sub, by string) (bool, error) {
-	n, err := s.q.RevokeInvite(ctx, sqlc.RevokeInviteParams{UserID: sub, By: by})
+func (s *Store) RevokeInvite(ctx context.Context, sub string, by audit.Actor) (bool, error) {
+	n, err := s.q.RevokeInvite(ctx, sqlc.RevokeInviteParams{UserID: sub, ByID: by.ID, ByType: by.Type})
 	return n > 0, err
 }
 
