@@ -48,7 +48,11 @@ export const appName = z
 	.max(64, "名称不能超过 64 个字符。");
 
 // basicSchema checks the 基本信息 section.
-export const basicSchema = z.object({ name: appName });
+export const basicSchema = z.object({
+	name: appName,
+	defaultApi: z.string(),
+	requireRole: z.boolean(),
+});
 
 // uriLines is a textarea of addresses, one per line; App callbacks use
 // their own scheme, so any absolute URL goes.

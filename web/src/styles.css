@@ -155,7 +155,9 @@
     color: var(--foreground);
     @apply bg-background text-foreground;
   }
+  /* The console and account center sit on the canvas; paint it on html
+     too so pulling past the page edge doesn't flash white. */
   html {
-    @apply font-sans;
+    @apply font-sans bg-canvas;
   }
 }

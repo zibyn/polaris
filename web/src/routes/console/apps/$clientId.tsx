@@ -21,7 +21,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { z } from "zod";
 import { CopyButton } from "#/components/copy-button";
 import { FormField, failed, saved } from "#/components/form";
-import { ItemList, PropRow } from "#/components/item-list";
+import { PropRow } from "#/components/item-list";
 import { Alert, AlertDescription } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -102,20 +102,42 @@ import { providersQuery } from "#/routes/console/providers/index";
 import { type Header, useCan } from "#/routes/console/route";
 import { date } from "#/routes/console/users/index";
 
-// tabsFor gives an Application's tabs in order; an M2M Application has no
-// login to configure, but does carry Roles.
-const tabsFor = (type: Application["type"]): [string, string][] => [
-	["basic", "基本"],
-	...(type === "m2m"
-		? ([["roles", "角色"]] as [string, string][])
-		: ([["login", "登录"]] as [string, string][])),
-	["webhook", "用户删除通知"],
-];
+// tabsFor gives an Application's tabs in order, one save each, like the
+// settings categories. An M2M Application has no login to configure but
+// carries Roles; the built-in ones always follow the instance's login
+// methods and brand.
+const tabsFor = (app: Application) => {
+	const login = app.type !== "m2m";
+	const own = login && !app.builtin;
+	return (
+		[
+			["basic", "基本", true],
+			["credentials", "凭据", app.type !== "public"],
+			["login", "登录", login],
+			["roles", "角色", !login],
+			["methods", "登录方式", own],
+			["brand", "品牌", own],
+			["native", "原生 App", app.type === "public"],
+			["webhook", "通知", true],
+		] as const
+	)
+		.filter((t) => t[2])
+		.map(([key, label]) => [key, label] as const);
+};
 
 const defaults = { tab: "basic" } as const;
 const search = z.object({
 	tab: z
-		.enum(["basic", "login", "roles", "webhook"])
+		.enum([
+			"basic",
+			"credentials",
+			"login",
+			"roles",
+			"methods",
+			"brand",
+			"native",
+			"webhook",
+		])
 		.default(defaults.tab)
 		.catch(defaults.tab),
 	// set once, by the create page: show the 接入清单 for this platform
@@ -208,7 +230,7 @@ function useHeader(): Header | null {
 			</>
 		),
 		ids: <IdLine label="client_id" value={app.clientId} />,
-		tabs: tabsFor(app.type),
+		tabs: tabsFor(app),
 		details: (
 			<>
 				{!editable && (
@@ -225,7 +247,7 @@ function useHeader(): Header | null {
 							<Link
 								to="/console/apps/$clientId"
 								params={{ clientId }}
-								search={{ tab: "login" }}
+								search={{ tab: "methods" }}
 							>
 								修改登录方式
 							</Link>
@@ -248,23 +270,44 @@ function ApplicationPage() {
 		throw notFound();
 	}
 	const editable = can("applications:write") && !app.builtin;
+	const shown = new Set<string>(tabsFor(app).map(([key]) => key));
 	return (
 		<>
 			<TabsContent value="basic">
 				<BasicTab app={app} editable={editable} />
 			</TabsContent>
-			{app.type !== "m2m" && (
+			{shown.has("credentials") && (
+				<TabsContent value="credentials">
+					<ClientAuthn app={app} editable={editable} />
+				</TabsContent>
+			)}
+			{shown.has("login") && (
 				<TabsContent value="login">
 					<LoginTab app={app} editable={editable} />
 				</TabsContent>
 			)}
-			{app.type === "m2m" && (
+			{shown.has("roles") && (
 				<TabsContent value="roles">
 					<RolesTab app={app} />
 				</TabsContent>
 			)}
+			{shown.has("methods") && (
+				<TabsContent value="methods">
+					<LoginMethods app={app} editable={editable} />
+				</TabsContent>
+			)}
+			{shown.has("brand") && (
+				<TabsContent value="brand">
+					<AppBrand app={app} editable={editable} />
+				</TabsContent>
+			)}
+			{shown.has("native") && (
+				<TabsContent value="native">
+					<NativeApps app={app} editable={editable} />
+				</TabsContent>
+			)}
 			<TabsContent value="webhook">
-				<WebhookTab app={app} editable={editable} />
+				<NotifyTab app={app} editable={editable} />
 			</TabsContent>
 		</>
 	);
@@ -274,7 +317,6 @@ type TabProps = { app: Application; editable: boolean };
 
 function BasicTab({ app, editable }: TabProps) {
 	const save = useSaveApplication(app);
-	const saveApi = useSaveApplication(app);
 	const isM2M = app.type === "m2m";
 	// An M2M Application may call the Management API; nothing may call the
 	// Account API (ADR 0015).
@@ -283,26 +325,31 @@ function BasicTab({ app, editable }: TabProps) {
 	const defaultAPIName =
 		registered.find((a) => a.identifier === app.defaultApi)?.name ??
 		app.defaultApi;
+	// An M2M Application's API is fixed at create; with none registered
+	// there is nothing to pick.
+	const picksApi = !isM2M && registered.length > 0;
 	const form = useForm({
-		defaultValues: { name: app.name },
-		validationLogic: revalidateLogic(),
-		validators: { onDynamic: basicSchema },
-		onSubmit: ({ value }) =>
-			save.mutate({ name: value.name.trim() }, { onSuccess: saved }),
-	});
-	const apiForm = useForm({
 		defaultValues: {
+			name: app.name,
 			defaultApi: app.defaultApi ?? "",
 			requireRole: app.requireRole ?? false,
 		},
+		validationLogic: revalidateLogic(),
+		validators: { onDynamic: basicSchema },
 		onSubmit: ({ value }) =>
-			saveApi.mutate(
-				// The Roles checked are on the default API: none, nothing to require.
-				{ ...value, requireRole: !!value.defaultApi && value.requireRole },
+			save.mutate(
+				{
+					name: value.name.trim(),
+					...(picksApi && {
+						defaultApi: value.defaultApi,
+						// The Roles checked are on the default API: none, nothing to require.
+						requireRole: !!value.defaultApi && value.requireRole,
+					}),
+				},
 				{ onSuccess: saved },
 			),
 	});
-	const chosenApi = useStore(apiForm.store, (s) => s.values.defaultApi);
+	const chosenApi = useStore(form.store, (s) => s.values.defaultApi);
 	return (
 		<div className="space-y-10">
 			<Section
@@ -316,21 +363,7 @@ function BasicTab({ app, editable }: TabProps) {
 					<PropRow label="类型" hint={typeWhy[app.type]}>
 						<span className="text-sm">{typeName[app.type]}</span>
 					</PropRow>
-				</div>
-				<form.Field name="name">
-					{(field) => (
-						<FormField field={field} label="名称">
-							{(control) => (
-								<Input {...control} placeholder="如：星选商城 App" />
-							)}
-						</FormField>
-					)}
-				</form.Field>
-			</Section>
-			{app.type !== "public" && <ClientAuthn app={app} editable={editable} />}
-			{isM2M ? (
-				<Section title="访问令牌" editable={false}>
-					<ItemList>
+					{isM2M && (
 						<PropRow
 							label="默认 API 资源"
 							hint="access token 仅对该 API 有效，创建后不能更改。调用其他 API 需另建后端服务。"
@@ -343,103 +376,103 @@ function BasicTab({ app, editable }: TabProps) {
 								{defaultAPIName}
 							</Link>
 						</PropRow>
-					</ItemList>
-				</Section>
-			) : (
-				<Section
-					title="访问令牌"
-					editable={editable}
-					form={apiForm}
-					footer={
-						editable && registered.length > 0 && <SaveBar save={saveApi} />
-					}
-				>
-					{registered.length === 0 ? (
-						<Field>
-							<FieldTitle>默认 API 资源</FieldTitle>
-							<Alert variant="warning">
-								<AlertDescription>
-									还没有 API 资源。
-									<Link to="/console/apis">添加 API 资源</Link>
-								</AlertDescription>
-							</Alert>
-						</Field>
-					) : (
-						<apiForm.Field name="defaultApi">
-							{(field) => (
-								<FormField
-									field={field}
-									label="默认 API 资源"
-									help="用户的 access token 用于调用该 API，并包含用户在其中的角色。不选时不含角色。"
-								>
-									{({ id }) => (
-										<div className="flex items-center gap-3">
-											<Select
-												disabled={!editable}
-												value={field.state.value}
-												onValueChange={(v) => field.handleChange(`${v ?? ""}`)}
+					)}
+				</div>
+				<form.Field name="name">
+					{(field) => (
+						<FormField field={field} label="名称">
+							{(control) => (
+								<Input {...control} placeholder="如：星选商城 App" />
+							)}
+						</FormField>
+					)}
+				</form.Field>
+				{!isM2M && registered.length === 0 && (
+					<Field>
+						<FieldTitle>默认 API 资源</FieldTitle>
+						<Alert variant="warning">
+							<AlertDescription>
+								还没有 API 资源。
+								<Link to="/console/apis">添加 API 资源</Link>
+							</AlertDescription>
+						</Alert>
+					</Field>
+				)}
+				{picksApi && (
+					<form.Field name="defaultApi">
+						{(field) => (
+							<FormField
+								field={field}
+								label="默认 API 资源"
+								help="用户的 access token 用于调用该 API，并包含用户在其中的角色。不选时不含角色。"
+							>
+								{({ id }) => (
+									<div className="flex items-center gap-3">
+										<Select
+											disabled={!editable}
+											value={field.state.value}
+											onValueChange={(v) => field.handleChange(`${v ?? ""}`)}
+										>
+											<SelectTrigger id={id} className="flex-1">
+												<SelectValue>
+													{(v: string) =>
+														registered.find((a) => a.identifier === v)?.name ??
+														"不选"
+													}
+												</SelectValue>
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="">不选</SelectItem>
+												{registered.map((a) => (
+													<SelectItem key={a.identifier} value={a.identifier}>
+														{a.name}
+														<span className="font-mono text-muted-foreground text-xs">
+															{a.identifier}
+														</span>
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										{app.defaultApi && (
+											<Link
+												to="/console/apis/$api"
+												params={{ api: app.defaultApi }}
+												className="text-sm underline"
 											>
-												<SelectTrigger id={id} className="flex-1">
-													<SelectValue>
-														{(v: string) =>
-															registered.find((a) => a.identifier === v)
-																?.name ?? "不选"
-														}
-													</SelectValue>
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value="">不选</SelectItem>
-													{registered.map((a) => (
-														<SelectItem key={a.identifier} value={a.identifier}>
-															{a.name}
-															<span className="font-mono text-muted-foreground text-xs">
-																{a.identifier}
-															</span>
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
-											{app.defaultApi && (
-												<Link
-													to="/console/apis/$api"
-													params={{ api: app.defaultApi }}
-													className="text-sm underline"
-												>
-													查看 API 资源
-												</Link>
-											)}
-										</div>
-									)}
-								</FormField>
-							)}
-						</apiForm.Field>
-					)}
-					{registered.length > 0 && (
-						<apiForm.Field name="requireRole">
-							{(field) => (
-								<FormField
-									field={field}
-									label="要求用户有角色"
-									help={
-										chosenApi
-											? "开启后，在默认 API 资源上没有角色的用户无法登录该应用，已登录的无法续期。"
-											: "需先选择默认 API 资源。"
-									}
-								>
-									{({ id }) => (
-										<Switch
-											id={id}
-											disabled={!editable || !chosenApi}
-											checked={!!chosenApi && field.state.value}
-											onCheckedChange={field.handleChange}
-										/>
-									)}
-								</FormField>
-							)}
-						</apiForm.Field>
-					)}
-				</Section>
-			)}
+												查看 API 资源
+											</Link>
+										)}
+									</div>
+								)}
+							</FormField>
+						)}
+					</form.Field>
+				)}
+				{picksApi && (
+					<form.Field name="requireRole">
+						{(field) => (
+							<FormField
+								field={field}
+								label="要求用户有角色"
+								help={
+									chosenApi
+										? "开启后，在默认 API 资源上没有角色的用户无法登录该应用，已登录的无法续期。"
+										: "需先选择默认 API 资源。"
+								}
+							>
+								{({ id }) => (
+									<Switch
+										id={id}
+										disabled={!editable || !chosenApi}
+										checked={!!chosenApi && field.state.value}
+										onCheckedChange={field.handleChange}
+									/>
+								)}
+							</FormField>
+						)}
+					</form.Field>
+				)}
+			</Section>
 			{editable && <DeleteApplication app={app} />}
 		</div>
 	);
@@ -699,179 +732,171 @@ function LoginTab({ app, editable }: TabProps) {
 			),
 	});
 	return (
-		<div className="space-y-10">
-			<Section
-				title="登录跳转"
-				editable={editable}
-				form={form}
-				footer={editable && <SaveBar save={save} />}
-			>
-				<form.Field name="redirectUris">
-					{(field) => (
-						<FormField
-							field={field}
-							label="回调地址"
-							en="redirect URI"
-							help="登录完成后跳转回应用的地址，仅允许此处登记的地址。"
-						>
-							{(control) => (
-								<Textarea
-									{...control}
-									className="font-mono"
-									placeholder="每行一个，如 https://shop.example.com/callback"
-								/>
-							)}
-						</FormField>
-					)}
-				</form.Field>
-				{/* keepMounted: a folded field's error still shows when unfolded. */}
-				<Collapsible>
-					<CollapsibleTrigger className="flex items-center gap-1 font-medium text-[13px] [&[data-panel-open]>svg]:rotate-90">
-						<ChevronRight className="size-4 transition-transform" />
-						高级
-					</CollapsibleTrigger>
-					<CollapsibleContent keepMounted className="mt-6 space-y-6">
-						<form.Field name="postLogoutRedirectUris">
-							{(field) => (
+		<Section
+			title="登录跳转"
+			editable={editable}
+			form={form}
+			footer={editable && <SaveBar save={save} />}
+		>
+			<form.Field name="redirectUris">
+				{(field) => (
+					<FormField
+						field={field}
+						label="回调地址"
+						en="redirect URI"
+						help="登录完成后跳转回应用的地址，仅允许此处登记的地址。"
+					>
+						{(control) => (
+							<Textarea
+								{...control}
+								className="font-mono"
+								placeholder="每行一个，如 https://shop.example.com/callback"
+							/>
+						)}
+					</FormField>
+				)}
+			</form.Field>
+			{/* keepMounted: a folded field's error still shows when unfolded. */}
+			<Collapsible>
+				<CollapsibleTrigger className="flex items-center gap-1 font-medium text-[13px] [&[data-panel-open]>svg]:rotate-90">
+					<ChevronRight className="size-4 transition-transform" />
+					高级
+				</CollapsibleTrigger>
+				<CollapsibleContent keepMounted className="mt-6 space-y-6">
+					<form.Field name="postLogoutRedirectUris">
+						{(field) => (
+							<FormField
+								field={field}
+								label="退出后跳转地址"
+								en="post-logout redirect URI"
+								help="用户退出登录后跳转的地址，仅允许此处登记的地址。"
+							>
+								{(control) => (
+									<Textarea
+										{...control}
+										className="font-mono"
+										placeholder="每行一个，如 https://shop.example.com"
+									/>
+								)}
+							</FormField>
+						)}
+					</form.Field>
+					<form.Field name="homeUrl">
+						{(field) => (
+							<FormField
+								field={field}
+								label="首页地址"
+								en="home URL"
+								help="账号中心通过 /account?client_id= 打开时，显示「返回」链接回到这里。留空则不显示。"
+							>
+								{(control) => (
+									<Input
+										{...control}
+										className="font-mono"
+										placeholder="https://shop.example.com"
+									/>
+								)}
+							</FormField>
+						)}
+					</form.Field>
+					<form.Field name="refreshTokens">
+						{(field) => (
+							<FormField
+								field={field}
+								label="允许 App 保持登录"
+								en="签发 refresh token，每次刷新都给会话续期"
+								help="开启后，App 可在后台续期会话；关闭后约 10 分钟需重新登录。"
+							>
+								{({ id }) => (
+									<Switch
+										id={id}
+										disabled={!editable}
+										checked={field.state.value}
+										onCheckedChange={field.handleChange}
+									/>
+								)}
+							</FormField>
+						)}
+					</form.Field>
+					<form.Field name="idleDays">
+						{(field) => {
+							const days = Number(field.state.value) || 0;
+							return (
 								<FormField
 									field={field}
-									label="退出后跳转地址"
-									en="post-logout redirect URI"
-									help="用户退出登录后跳转的地址，仅允许此处登记的地址。"
+									label="闲置多久需重新登录"
+									help="闲置超过该天数需重新登录。0 为默认值（无后端 90 天，有后端 30 天）。仅对之后新登录的会话生效。"
 								>
 									{(control) => (
-										<Textarea
-											{...control}
-											className="font-mono"
-											placeholder="每行一个，如 https://shop.example.com"
-										/>
+										<div className="flex max-w-md items-center gap-4">
+											<Slider
+												min={0}
+												max={365}
+												step={1}
+												value={[days]}
+												disabled={!editable}
+												aria-label="闲置天数"
+												onValueChange={(v) =>
+													field.handleChange(
+														String(Array.isArray(v) ? v[0] : v),
+													)
+												}
+											/>
+											<Input
+												{...control}
+												type="number"
+												min={0}
+												max={365}
+												className="w-20"
+											/>
+											<span className="shrink-0 text-sm">天</span>
+										</div>
 									)}
 								</FormField>
-							)}
-						</form.Field>
-						<form.Field name="homeUrl">
-							{(field) => (
+							);
+						}}
+					</form.Field>
+					<form.Field name="maxDays">
+						{(field) => {
+							const days = Number(field.state.value) || 0;
+							return (
 								<FormField
 									field={field}
-									label="首页地址"
-									en="home URL"
-									help="账号中心通过 /account?client_id= 打开时，显示「返回」链接回到这里。留空则不显示。"
+									label="最长多久需重新登录"
+									help="自上次登录或重新验证身份起算，到期需重新登录。0 为默认值（App 180 天，浏览器 90 天）。仅对之后新登录的会话生效。"
 								>
 									{(control) => (
-										<Input
-											{...control}
-											className="font-mono"
-											placeholder="https://shop.example.com"
-										/>
+										<div className="flex max-w-md items-center gap-4">
+											<Slider
+												min={0}
+												max={365}
+												step={1}
+												value={[days]}
+												disabled={!editable}
+												aria-label="最长天数"
+												onValueChange={(v) =>
+													field.handleChange(
+														String(Array.isArray(v) ? v[0] : v),
+													)
+												}
+											/>
+											<Input
+												{...control}
+												type="number"
+												min={0}
+												max={365}
+												className="w-20"
+											/>
+											<span className="shrink-0 text-sm">天</span>
+										</div>
 									)}
 								</FormField>
-							)}
-						</form.Field>
-						<form.Field name="refreshTokens">
-							{(field) => (
-								<FormField
-									field={field}
-									label="允许 App 保持登录"
-									en="签发 refresh token，每次刷新都给会话续期"
-									help="开启后，App 可在后台续期会话；关闭后约 10 分钟需重新登录。"
-								>
-									{({ id }) => (
-										<Switch
-											id={id}
-											disabled={!editable}
-											checked={field.state.value}
-											onCheckedChange={field.handleChange}
-										/>
-									)}
-								</FormField>
-							)}
-						</form.Field>
-						<form.Field name="idleDays">
-							{(field) => {
-								const days = Number(field.state.value) || 0;
-								return (
-									<FormField
-										field={field}
-										label="闲置多久需重新登录"
-										help="闲置超过该天数需重新登录。0 为默认值（无后端 90 天，有后端 30 天）。仅对之后新登录的会话生效。"
-									>
-										{(control) => (
-											<div className="flex max-w-md items-center gap-4">
-												<Slider
-													min={0}
-													max={365}
-													step={1}
-													value={[days]}
-													disabled={!editable}
-													aria-label="闲置天数"
-													onValueChange={(v) =>
-														field.handleChange(
-															String(Array.isArray(v) ? v[0] : v),
-														)
-													}
-												/>
-												<Input
-													{...control}
-													type="number"
-													min={0}
-													max={365}
-													className="w-20"
-												/>
-												<span className="shrink-0 text-sm">天</span>
-											</div>
-										)}
-									</FormField>
-								);
-							}}
-						</form.Field>
-						<form.Field name="maxDays">
-							{(field) => {
-								const days = Number(field.state.value) || 0;
-								return (
-									<FormField
-										field={field}
-										label="最长多久需重新登录"
-										help="自上次登录或重新验证身份起算，到期需重新登录。0 为默认值（App 180 天，浏览器 90 天）。仅对之后新登录的会话生效。"
-									>
-										{(control) => (
-											<div className="flex max-w-md items-center gap-4">
-												<Slider
-													min={0}
-													max={365}
-													step={1}
-													value={[days]}
-													disabled={!editable}
-													aria-label="最长天数"
-													onValueChange={(v) =>
-														field.handleChange(
-															String(Array.isArray(v) ? v[0] : v),
-														)
-													}
-												/>
-												<Input
-													{...control}
-													type="number"
-													min={0}
-													max={365}
-													className="w-20"
-												/>
-												<span className="shrink-0 text-sm">天</span>
-											</div>
-										)}
-									</FormField>
-								);
-							}}
-						</form.Field>
-					</CollapsibleContent>
-				</Collapsible>
-			</Section>
-			{!app.builtin && <LoginMethods app={app} editable={editable} />}
-			{!app.builtin && <AppBrand app={app} editable={editable} />}
-			{app.type === "public" && <NativeApps app={app} editable={editable} />}
-			{app.type === "confidential" && (
-				<BackchannelLogout app={app} editable={editable} />
-			)}
-		</div>
+							);
+						}}
+					</form.Field>
+				</CollapsibleContent>
+			</Collapsible>
+		</Section>
 	);
 }
 
@@ -1094,61 +1119,29 @@ function NativeApps({ app, editable }: TabProps) {
 	);
 }
 
-// BackchannelLogout is where a web Application's back end hears that a
-// login session it signed in through has ended (ADR 0022).
-function BackchannelLogout({ app, editable }: TabProps) {
-	const save = useSaveApplication(app);
-	const form = useForm({
-		defaultValues: { backchannelLogoutUri: app.backchannelLogoutUri ?? "" },
-		validationLogic: revalidateLogic(),
-		validators: { onDynamic: backchannelSchema },
-		onSubmit: ({ value }) =>
-			save.mutate(
-				{ backchannelLogoutUri: value.backchannelLogoutUri.trim() },
-				{ onSuccess: saved },
-			),
-	});
-	return (
-		<Section
-			title="退出通知"
-			intro="用户退出登录、被下线、禁用或删除时，向该地址发送 OIDC Back-Channel Logout 通知。留空则不发送。"
-			editable={editable}
-			form={form}
-			footer={editable && <SaveBar save={save} />}
-		>
-			<form.Field name="backchannelLogoutUri">
-				{(field) => (
-					<FormField
-						field={field}
-						label="通知地址"
-						en="backchannel_logout_uri"
-						help="需能从认证服务访问。"
-					>
-						{(control) => (
-							<Input
-								{...control}
-								type="url"
-								className="font-mono"
-								placeholder="https://shop.example.com/backchannel-logout"
-							/>
-						)}
-					</FormField>
-				)}
-			</form.Field>
-		</Section>
-	);
-}
-
-function WebhookTab({ app, editable }: TabProps) {
+// NotifyTab is where an Application's back end hears about Users: a web
+// Application's 退出通知 (ADR 0022) and every Application's 用户删除通知,
+// saved together.
+function NotifyTab({ app, editable }: TabProps) {
 	const save = useSaveApplication(app);
 	const secretSet = !!app.webhookSecretUpdatedAt;
+	const backchannel = app.type === "confidential";
 	const form = useForm({
-		defaultValues: { webhookUrl: app.webhookUrl ?? "", webhookSecret: "" },
+		defaultValues: {
+			backchannelLogoutUri: app.backchannelLogoutUri ?? "",
+			webhookUrl: app.webhookUrl ?? "",
+			webhookSecret: "",
+		},
 		validationLogic: revalidateLogic(),
-		validators: { onDynamic: webhookSchema(secretSet) },
+		validators: {
+			onDynamic: webhookSchema(secretSet).and(backchannelSchema),
+		},
 		onSubmit: ({ value }) =>
 			save.mutate(
 				{
+					...(backchannel && {
+						backchannelLogoutUri: value.backchannelLogoutUri.trim(),
+					}),
 					webhookUrl: value.webhookUrl.trim(),
 					webhookSecret: value.webhookSecret || undefined,
 				},
@@ -1163,15 +1156,40 @@ function WebhookTab({ app, editable }: TabProps) {
 	const url = useStore(form.store, (s) => s.values.webhookUrl.trim());
 	return (
 		<Section
-			title="用户删除通知"
+			title="通知"
 			editable={editable}
-			intro="用户被删除或注销账号时，向该地址发送通知。留空则不发送。"
+			intro="向应用后端发送用户相关的通知，地址留空则不发送。"
 			form={form}
 			footer={editable && <SaveBar save={save} />}
 		>
+			{backchannel && (
+				<form.Field name="backchannelLogoutUri">
+					{(field) => (
+						<FormField
+							field={field}
+							label="退出通知地址"
+							en="backchannel_logout_uri"
+							help="用户退出登录、被下线、禁用或删除时，发送 OIDC Back-Channel Logout 通知。需能从认证服务访问。"
+						>
+							{(control) => (
+								<Input
+									{...control}
+									type="url"
+									className="font-mono"
+									placeholder="https://shop.example.com/backchannel-logout"
+								/>
+							)}
+						</FormField>
+					)}
+				</form.Field>
+			)}
 			<form.Field name="webhookUrl">
 				{(field) => (
-					<FormField field={field} label="通知地址" help="需能从公网访问。">
+					<FormField
+						field={field}
+						label="用户删除通知地址"
+						help="用户被删除或注销账号时发送通知。需能从公网访问。"
+					>
 						{(control) => (
 							<Input
 								{...control}
@@ -1193,7 +1211,7 @@ function WebhookTab({ app, editable }: TabProps) {
 					<FormField
 						field={field}
 						label="Webhook 密钥"
-						help="用于验证通知来源。填写通知地址时必填。"
+						help="用于验证用户删除通知的来源。填写用户删除通知地址时必填。"
 					>
 						{(control) => (
 							<>
@@ -1368,15 +1386,14 @@ function Onboarding({
 			</div>
 		) : (
 			<p className="text-[13px] text-muted-foreground">
-				client secret
-				仅在创建时显示一次。如未保存，可在下方「客户端认证方式」中重新生成。
+				client secret 仅在创建时显示一次。如未保存，可在「凭据」标签中重新生成。
 			</p>
 		),
 		api: (
 			<p className="text-[13px] text-muted-foreground">
 				{app.type === "m2m"
 					? "access token 仅对该 API 有效，创建后不能更改。"
-					: "用户的 access token 可调用该 API 资源，并包含用户在其中的角色。可在下方「访问令牌」中选择，不调用自有 API 可跳过。"}
+					: "用户的 access token 可调用该 API 资源，并包含用户在其中的角色。可在「基本」标签中选择，不调用自有 API 可跳过。"}
 			</p>
 		),
 		code: (
@@ -1434,7 +1451,7 @@ function Onboarding({
 							search={{ tab: "webhook" }}
 							className="underline"
 						>
-							「用户删除通知」
+							「通知」
 						</Link>
 						。
 					</p>

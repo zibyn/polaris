@@ -11,6 +11,7 @@ import {
 	createFileRoute,
 	Link,
 	notFound,
+	stripSearchParams,
 	useNavigate,
 	useParams,
 } from "@tanstack/react-router";
@@ -49,6 +50,7 @@ import {
 	ItemTitle,
 } from "#/components/ui/item";
 import { Label } from "#/components/ui/label";
+import { TabsContent } from "#/components/ui/tabs";
 import { UserAvatar } from "#/components/user-avatar";
 import { nicknameSchema } from "#/lib/account";
 import {
@@ -78,8 +80,18 @@ import {
 	usePasswordLoginOff,
 } from "./-components/password-login";
 
+const defaults = { tab: "profile" } as const;
+const search = z.object({
+	tab: z
+		.enum(["profile", "security", "roles"])
+		.default(defaults.tab)
+		.catch(defaults.tab),
+});
+
 export const Route = createFileRoute("/console/users/$sub")({
 	staticData: { crumb: UserName, useHeader },
+	validateSearch: search,
+	search: { middlewares: [stripSearchParams(defaults)] },
 	loader: ({ context: { queryClient }, params: { sub } }) =>
 		Promise.all([
 			queryClient.ensureQueryData(userQuery(sub)),
@@ -193,6 +205,11 @@ function useHeader(): Header | null {
 		// 待激活 is what an admin needs told: the account signs in, but no
 		// token comes of it until the User sets a password of their own.
 		description: u.pending && "用户设置密码前，登录后无法获取令牌。",
+		tabs: [
+			["profile", "资料"],
+			["security", "登录与安全"],
+			["roles", "角色"],
+		],
 		actions: (
 			<>
 				{can("audit:read") && (
@@ -268,189 +285,207 @@ function UserPage() {
 	const [editingDetails, setEditingDetails] = useState(false);
 	const client = useQueryClient();
 	return (
-		<div className="max-w-3xl space-y-10 pt-4">
-			<Section title="个人资料">
-				<ItemList>
-					<PropRow
-						label="昵称"
-						actions={
-							writable && (
-								<Button
-									size="sm"
-									variant="ghost"
-									onClick={() => setRenaming(true)}
-								>
-									修改
-								</Button>
-							)
+		<>
+			<TabsContent value="profile" className="max-w-3xl space-y-10">
+				<Section title="个人资料">
+					<ItemList>
+						<PropRow
+							label="昵称"
+							actions={
+								writable && (
+									<Button
+										size="sm"
+										variant="ghost"
+										onClick={() => setRenaming(true)}
+									>
+										修改
+									</Button>
+								)
+							}
+						>
+							{u.nickname ?? (
+								<span className="text-muted-foreground">未设置</span>
+							)}
+						</PropRow>
+						<PropRow
+							label="头像"
+							actions={
+								writable &&
+								u.picture && (
+									<ConfirmDialog
+										trigger={
+											<Button
+												size="sm"
+												variant="ghost"
+												disabled={act.isPending}
+											>
+												移除
+											</Button>
+										}
+										title="移除头像？"
+										action="移除头像"
+										onConfirm={() =>
+											act.mutate({
+												method: "DELETE",
+												path: "/avatar",
+												what: "移除头像失败",
+											})
+										}
+									>
+										头像将从所有应用中移除，用户可重新上传。
+									</ConfirmDialog>
+								)
+							}
+						>
+							{u.picture ? (
+								<UserAvatar picture={u.picture} name={u.nickname ?? name} />
+							) : (
+								<span className="text-muted-foreground">未上传</span>
+							)}
+						</PropRow>
+						<PropRow
+							label="详细资料"
+							actions={
+								writable && (
+									<Button
+										size="sm"
+										variant="ghost"
+										onClick={() => setEditingDetails(true)}
+									>
+										修改
+									</Button>
+								)
+							}
+						>
+							<ProfileDetails p={u} />
+						</PropRow>
+					</ItemList>
+				</Section>
+				{editingDetails && (
+					<EditProfileDetails
+						p={u}
+						save={(body) =>
+							api(`/users/${encodeURIComponent(u.sub)}/profile`, {
+								method: "PATCH",
+								body,
+							})
 						}
-					>
-						{u.nickname ?? (
-							<span className="text-muted-foreground">未设置</span>
-						)}
-					</PropRow>
-					<PropRow
-						label="头像"
-						actions={
-							writable &&
-							u.picture && (
-								<ConfirmDialog
-									trigger={
-										<Button size="sm" variant="ghost" disabled={act.isPending}>
-											移除
-										</Button>
-									}
-									title="移除头像？"
-									action="移除头像"
-									onConfirm={() =>
-										act.mutate({
-											method: "DELETE",
-											path: "/avatar",
-											what: "移除头像失败",
-										})
-									}
-								>
-									头像将从所有应用中移除，用户可重新上传。
-								</ConfirmDialog>
-							)
-						}
-					>
-						{u.picture ? (
-							<UserAvatar picture={u.picture} name={u.nickname ?? name} />
-						) : (
-							<span className="text-muted-foreground">未上传</span>
-						)}
-					</PropRow>
-					<PropRow
-						label="详细资料"
-						actions={
-							writable && (
-								<Button
-									size="sm"
-									variant="ghost"
-									onClick={() => setEditingDetails(true)}
-								>
-									修改
-								</Button>
-							)
-						}
-					>
-						<ProfileDetails p={u} />
-					</PropRow>
-				</ItemList>
-			</Section>
-			{editingDetails && (
-				<EditProfileDetails
-					p={u}
-					save={(body) =>
-						api(`/users/${encodeURIComponent(u.sub)}/profile`, {
-							method: "PATCH",
-							body,
-						})
-					}
-					onSaved={async () => {
-						await invalidateUser(client, u.sub);
-						saved();
-					}}
-					onClose={() => setEditingDetails(false)}
-				/>
-			)}
-			{renaming && (
-				<EditNickname
-					sub={u.sub}
-					current={u.nickname ?? ""}
-					onClose={() => setRenaming(false)}
-				/>
-			)}
-			<Section title="登录标识与密码">
-				<ItemList>
-					{identifierKinds.map((kind) => {
-						const value = u.identifiers.find((i) => i.kind === kind)?.value;
-						return (
-							<PropRow
-								key={kind}
-								label={kindName[kind]}
-								actions={
-									writable && (
-										<Button
-											size="sm"
-											variant="ghost"
-											onClick={() => setChanging(kind)}
-										>
-											{value ? "更换" : "绑定"}
-										</Button>
-									)
-								}
-							>
-								{value ?? <span className="text-muted-foreground">未绑定</span>}
-							</PropRow>
-						);
-					})}
-					<PropRow label="密码">{u.hasPassword ? "已设置" : "未设置"}</PropRow>
-				</ItemList>
-			</Section>
-			{changing && (
-				<ChangeIdentifier
-					sub={u.sub}
-					kind={changing}
-					current={u.identifiers.find((i) => i.kind === changing)?.value}
-					onClose={() => setChanging(null)}
-				/>
-			)}
-			<Section title="注册邀请">
-				<Invite
-					sub={u.sub}
-					who={name}
-					invite={u.invite}
-					email={u.identifiers.find((i) => i.kind === "email")?.value}
-					writable={writable}
-				/>
-			</Section>
-			<Section title="已绑定的外部账号">
-				<ExternalIdentities sub={u.sub} who={name} writable={writable} />
-			</Section>
-			<Section title="两步验证">
-				<ItemList>
-					<PropRow
-						label="状态"
-						actions={
-							writable &&
-							u.twoFactor && (
-								<ConfirmDialog
-									trigger={
-										<Button size="sm" variant="ghost" disabled={act.isPending}>
-											重置两步验证
-										</Button>
-									}
-									title={`重置${name ? `用户 ${name} ` : "该用户"}的两步验证？`}
-									action="重置两步验证"
-									onConfirm={() =>
-										act.mutate({
-											method: "DELETE",
-											path: "/2fa",
-											what: "重置两步验证失败",
-										})
+						onSaved={async () => {
+							await invalidateUser(client, u.sub);
+							saved();
+						}}
+						onClose={() => setEditingDetails(false)}
+					/>
+				)}
+				{renaming && (
+					<EditNickname
+						sub={u.sub}
+						current={u.nickname ?? ""}
+						onClose={() => setRenaming(false)}
+					/>
+				)}
+				<Section title="登录标识与密码">
+					<ItemList>
+						{identifierKinds.map((kind) => {
+							const value = u.identifiers.find((i) => i.kind === kind)?.value;
+							return (
+								<PropRow
+									key={kind}
+									label={kindName[kind]}
+									actions={
+										writable && (
+											<Button
+												size="sm"
+												variant="ghost"
+												onClick={() => setChanging(kind)}
+											>
+												{value ? "更换" : "绑定"}
+											</Button>
+										)
 									}
 								>
-									将清除用户的验证器和全部恢复码，已登录的设备不会下线。请先线下核实用户身份。
-								</ConfirmDialog>
-							)
-						}
-					>
-						{u.twoFactor
-							? "已开启"
-							: u.twoFactorOrPasskey
-								? "由 Passkey 满足"
-								: "未开启"}
-					</PropRow>
-				</ItemList>
-			</Section>
-			<Section title="Passkey">
-				<Passkeys sub={u.sub} who={name} writable={writable} />
-			</Section>
-			<Sessions sub={u.sub} writable={writable} />
-			<RoleAssignment user={u} />
-		</div>
+									{value ?? (
+										<span className="text-muted-foreground">未绑定</span>
+									)}
+								</PropRow>
+							);
+						})}
+						<PropRow label="密码">
+							{u.hasPassword ? "已设置" : "未设置"}
+						</PropRow>
+					</ItemList>
+				</Section>
+				{changing && (
+					<ChangeIdentifier
+						sub={u.sub}
+						kind={changing}
+						current={u.identifiers.find((i) => i.kind === changing)?.value}
+						onClose={() => setChanging(null)}
+					/>
+				)}
+				<Section title="注册邀请">
+					<Invite
+						sub={u.sub}
+						who={name}
+						invite={u.invite}
+						email={u.identifiers.find((i) => i.kind === "email")?.value}
+						writable={writable}
+					/>
+				</Section>
+			</TabsContent>
+			<TabsContent value="security" className="max-w-3xl space-y-10">
+				<Section title="已绑定的外部账号">
+					<ExternalIdentities sub={u.sub} who={name} writable={writable} />
+				</Section>
+				<Section title="两步验证">
+					<ItemList>
+						<PropRow
+							label="状态"
+							actions={
+								writable &&
+								u.twoFactor && (
+									<ConfirmDialog
+										trigger={
+											<Button
+												size="sm"
+												variant="ghost"
+												disabled={act.isPending}
+											>
+												重置两步验证
+											</Button>
+										}
+										title={`重置${name ? `用户 ${name} ` : "该用户"}的两步验证？`}
+										action="重置两步验证"
+										onConfirm={() =>
+											act.mutate({
+												method: "DELETE",
+												path: "/2fa",
+												what: "重置两步验证失败",
+											})
+										}
+									>
+										将清除用户的验证器和全部恢复码，已登录的设备不会下线。请先线下核实用户身份。
+									</ConfirmDialog>
+								)
+							}
+						>
+							{u.twoFactor
+								? "已开启"
+								: u.twoFactorOrPasskey
+									? "由 Passkey 满足"
+									: "未开启"}
+						</PropRow>
+					</ItemList>
+				</Section>
+				<Section title="Passkey">
+					<Passkeys sub={u.sub} who={name} writable={writable} />
+				</Section>
+				<Sessions sub={u.sub} writable={writable} />
+			</TabsContent>
+			<TabsContent value="roles" className="max-w-3xl">
+				<RoleAssignment user={u} />
+			</TabsContent>
+		</>
 	);
 }
 
