@@ -9,6 +9,8 @@ package feishu
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,7 +21,6 @@ import (
 
 	"github.com/zibyn/polaris/internal/channel"
 	"github.com/zibyn/polaris/internal/provider"
-	"github.com/zibyn/polaris/internal/provider/oauth2"
 )
 
 // Endpoints are where one of the two brands signs in.
@@ -80,8 +81,20 @@ func (u *upstream) NoReauthPrompt() {}
 // the enterprise email and the phone number.
 const scope = "contact:user.employee:readonly contact:user.phone:readonly"
 
+// AuthURL is the authorization code + PKCE (S256) request, copied from the
+// generic OAuth2 type so a change there does not reach Feishu: a type of its
+// own. The endpoints carry no query, hence the plain "?".
 func (u *upstream) AuthURL(_ context.Context, redirectURI, state, _, verifier string) (string, error) {
-	return oauth2.AuthURL(u.endpoints.Authorize, u.clientID, scope, redirectURI, state, verifier), nil
+	sum := sha256.Sum256([]byte(verifier))
+	return u.endpoints.Authorize + "?" + url.Values{
+		"response_type":         {"code"},
+		"client_id":             {u.clientID},
+		"redirect_uri":          {redirectURI},
+		"state":                 {state},
+		"scope":                 {scope},
+		"code_challenge":        {base64.RawURLEncoding.EncodeToString(sum[:])},
+		"code_challenge_method": {"S256"},
+	}.Encode(), nil
 }
 
 // Callback exchanges the code and reads the union_id, and no other ID:
