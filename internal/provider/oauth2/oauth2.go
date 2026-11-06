@@ -99,8 +99,7 @@ func (u *upstream) AuthURL(_ context.Context, redirectURI, state, _, verifier st
 }
 
 // AuthURL is an authorization code request with PKCE (S256) at endpoint;
-// scope is left out when empty. Feishu, OAuth2 everywhere but its token
-// and userinfo shapes, builds its own with it.
+// scope is left out when empty.
 func AuthURL(endpoint, clientID, scope, redirectURI, state, verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	q := url.Values{
