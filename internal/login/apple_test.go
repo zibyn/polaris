@@ -72,7 +72,7 @@ func TestSignInWithAppleOnTheWeb(t *testing.T) {
 	f := e.addApple()
 
 	_, page := e.authorize("")
-	if !strings.Contains(page, `class="apple"`) || !strings.Contains(page, "通过 Apple 登录") {
+	if !strings.Contains(page, "background:#000") || !strings.Contains(page, "通过 Apple 登录") {
 		t.Fatalf("no HIG Apple button:\n%s", page)
 	}
 	resp, body, code := e.signInWithApple(f, page)
