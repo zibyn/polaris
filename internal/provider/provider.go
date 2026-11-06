@@ -6,6 +6,7 @@ package provider
 
 import (
 	"context"
+	"html/template"
 	"net/url"
 	"slices"
 	"time"
@@ -86,6 +87,17 @@ type Type struct {
 	// New builds a Provider from settings that passed the Fields checks,
 	// without network calls. Its errors are shown to the admin.
 	New func(config map[string]string) (Redirect, error) `json:"-"`
+	// Button is the type's own button on the login page; nil keeps the
+	// plain 「使用 {Name} 登录」.
+	Button *LoginButton `json:"-"`
+}
+
+// LoginButton is a named type's button, as its brand guidelines ask: the
+// wording in Chinese and English, the logo inline, and the class the login
+// page's stylesheet dresses it by.
+type LoginButton struct {
+	Label, LabelEN, Class string
+	Icon                  template.HTML
 }
 
 var types []Type

@@ -41,15 +41,20 @@ var (
 )
 
 func init() {
-	register("feishu", "飞书", &Feishu)
-	register("lark", "Lark", &Lark)
+	register("feishu", "飞书", "使用飞书登录", "Sign in with Feishu", &Feishu)
+	register("lark", "Lark", "使用 Lark 登录", "Sign in with Lark", &Lark)
 }
+
+// icon is Feishu's and Lark's bird.
+const icon = `<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#00d6b9" d="M10 8c0 1 7 3.5 14.745 16.744 0 0 4.184-4.363 6.255-5.744 1.5-1 2.712-1.332 2.712-1.332C33.712 15.156 29.5 8 28 8z"/><path fill="#163c9a" d="M43.5 18.5c-1-.667-3.65-1.771-6.5-1.5a15 15 0 0 0-3.288.668S32.5 18 31 19c-2.07 1.38-6.255 5.744-6.255 5.744-1.428 1.397-3.05 2.732-5.245 3.756 0 0 7 3 11.5 3 5.063 0 7-3.5 7-3.5 1.5-3.305 3.5-7 5.5-9.5"/><path fill="#3370ff" d="M4 17.5v17c0 1 6 5.5 15 5.5 10 0 17.05-7.705 19-12 0 0-1.937 3.5-7 3.5-4.5 0-11.5-3-11.5-3-5.117-2.239-10.03-6.577-12.906-9.117C4.974 17.953 4 17.093 4 17.5"/></svg>`
 
 // register adds a brand's type. Neither field is immutable: union_id is the
 // same across one developer's apps, so another app keeps the identities.
-func register(key, name string, e *Endpoints) {
+func register(key, name, label, labelEN string, e *Endpoints) {
 	provider.Register(provider.Type{
 		Key: key, Name: name,
+		// Lark keeps Feishu's bird and class.
+		Button: &provider.LoginButton{Label: label, LabelEN: labelEN, Class: "feishu", Icon: icon},
 		Fields: []provider.ConfigField{
 			{Field: channel.Field{Key: "client_id", Label: "App ID", Type: "text",
 				Help: "企业自建应用的 App ID。仅本租户且在应用可用范围内的成员可登录，否则报错 20010。应用需开通 contact:user.employee:readonly(企业邮箱)与 contact:user.phone:readonly(手机号)两个权限，否则报错 20027"}},

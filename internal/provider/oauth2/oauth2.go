@@ -49,6 +49,7 @@ func init() {
 type Options struct {
 	Key, Name string
 	Fields    []provider.ConfigField
+	Button    *provider.LoginButton
 	// Presets are settings written into the type rather than asked of the
 	// admin: a named provider's endpoints, scope and user ID field. Read
 	// per New, so a test can move the endpoint.
@@ -58,7 +59,7 @@ type Options struct {
 // Type builds the Provider type the Options describe.
 func Type(o Options) provider.Type {
 	return provider.Type{
-		Key: o.Key, Name: o.Name, Fields: o.Fields,
+		Key: o.Key, Name: o.Name, Fields: o.Fields, Button: o.Button,
 		New: func(c map[string]string) (provider.Redirect, error) {
 			if o.Presets != nil {
 				for k, v := range o.Presets() {

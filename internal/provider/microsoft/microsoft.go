@@ -28,6 +28,9 @@ func init() {
 	provider.Register(oidc.Type(oidc.Options{
 		Key:  "microsoft",
 		Name: "Microsoft",
+		// Microsoft's light theme: its four squares and its own wording.
+		Button: &provider.LoginButton{Label: "使用 Microsoft 登录", LabelEN: "Sign in with Microsoft", Class: "microsoft",
+			Icon: `<svg viewBox="0 0 19 19" aria-hidden="true"><rect width="9" height="9" fill="#f25022"/><rect x="10" width="9" height="9" fill="#7fba00"/><rect y="10" width="9" height="9" fill="#00a4ef"/><rect x="10" y="10" width="9" height="9" fill="#ffb900"/></svg>`},
 		Fields: []provider.ConfigField{
 			// Which tenants may sign in, and so which tenant their
 			// External Identities belong to: never changed after adding.

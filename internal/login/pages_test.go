@@ -10,6 +10,14 @@ import (
 
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/provider"
+
+	_ "github.com/zibyn/polaris/internal/provider/apple"
+	_ "github.com/zibyn/polaris/internal/provider/dingtalk"
+	_ "github.com/zibyn/polaris/internal/provider/feishu"
+	_ "github.com/zibyn/polaris/internal/provider/github"
+	_ "github.com/zibyn/polaris/internal/provider/google"
+	_ "github.com/zibyn/polaris/internal/provider/microsoft"
+	_ "github.com/zibyn/polaris/internal/provider/wecom"
 )
 
 // The Chinese pages are, byte for byte, what they were before the message

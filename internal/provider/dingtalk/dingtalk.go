@@ -38,6 +38,9 @@ func init() {
 	provider.Register(provider.Type{
 		Key:  "dingtalk",
 		Name: "钉钉",
+		// DingTalk's mark in its own colours.
+		Button: &provider.LoginButton{Label: "使用钉钉登录", LabelEN: "Sign in with DingTalk", Class: "dingtalk",
+			Icon: `<svg viewBox="6 6 36 36" aria-hidden="true"><rect x="6" y="6" width="36" height="36" rx="8" fill="#0285fc"/><path fill="#fff" d="m20.178 37.577 3.5-6h-3l2-3c-5.5-1-6.281-3.938-6-4.5.162-.325 2.5 1 6.281 1-8.281-.5-8.281-7-7.781-7.5.423-.424 2.44 1.666 6.564 3.53-9.126-4.314-6.453-11.956-5.064-11.03 3.344 3 9.5 8.5 15 13 .658.538 1 2 0 3.25s-2.5 2.75-3 3.25h2.5z"/></svg>`},
 		// Neither is immutable: the unionId is the same across one
 		// developer organization's apps.
 		Fields: []provider.ConfigField{

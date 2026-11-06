@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/zibyn/polaris/internal/provider"
 )
 
 // lang is the language a hosted page renders in (ADR 0028): Chinese, the
@@ -24,7 +26,7 @@ const (
 var pages = map[lang]*template.Template{langZH: parsePages(langZH), langEN: parsePages(langEN)}
 
 func parsePages(l lang) *template.Template {
-	return template.Must(template.New("").Funcs(template.FuncMap{"t": l.strict, "msg": l.text}).ParseFS(pagesFS, "pages.html"))
+	return template.Must(template.New("").Funcs(template.FuncMap{"t": l.strict, "msg": l.text, "button": button, "label": l.label}).ParseFS(pagesFS, "pages.html"))
 }
 
 // pickLang picks the page's language: the first one supported among the
@@ -92,4 +94,20 @@ func (l lang) strict(s string) (string, error) {
 		}
 	}
 	return l.text(s), nil
+}
+
+// button is the login button the Provider type key registered, or nil.
+func button(key string) *provider.LoginButton {
+	if t := provider.GetType(key); t != nil {
+		return t.Button
+	}
+	return nil
+}
+
+// label is b's wording in l.
+func (l lang) label(b *provider.LoginButton) string {
+	if l == langEN {
+		return b.LabelEN
+	}
+	return b.Label
 }

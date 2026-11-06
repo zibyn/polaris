@@ -46,6 +46,7 @@ func init() {
 type Options struct {
 	Key, Name string
 	Fields    []provider.ConfigField
+	Button    *provider.LoginButton
 	// Issuer is what the type is configured for, built from settings that
 	// passed the Fields checks: a constant for a named provider, the
 	// admin's own issuer for the generic one.
@@ -61,7 +62,7 @@ type Options struct {
 // Type builds the Provider type the Options describe.
 func Type(o Options) provider.Type {
 	return provider.Type{
-		Key: o.Key, Name: o.Name, Fields: o.Fields,
+		Key: o.Key, Name: o.Name, Fields: o.Fields, Button: o.Button,
 		New: func(c map[string]string) (provider.Redirect, error) {
 			issuer, err := o.Issuer(c)
 			if err != nil {

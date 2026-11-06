@@ -8,6 +8,7 @@ import (
 
 	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/oidcstore"
+	"github.com/zibyn/polaris/internal/provider"
 
 	_ "github.com/zibyn/polaris/internal/provider/dingtalk"
 	_ "github.com/zibyn/polaris/internal/provider/feishu"
@@ -54,6 +55,28 @@ func TestNamedProviderButtons(t *testing.T) {
 	for _, c := range []string{"#EA4335", "#4285F4", "#FBBC05", "#34A853"} {
 		if !strings.Contains(page, c) {
 			t.Errorf("Google logo missing %s:\n%s", c, page)
+		}
+	}
+}
+
+func init() {
+	provider.Register(provider.Type{Key: "beacon", Name: "Beacon",
+		Button: &provider.LoginButton{Label: "使用灯塔登录", LabelEN: "Sign in with Beacon", Class: "beacon", Icon: `<svg viewBox="0 0 1 1"><path d="M0 0h1"/></svg>`},
+		New:    func(map[string]string) (provider.Redirect, error) { return fakeRedirect{}, nil }})
+}
+
+// A type brings its own button: the login page knows no type by name, it
+// shows the class, icon and wording the type registered, in either language.
+func TestTypeBringsItsButton(t *testing.T) {
+	e := start(t)
+	if err := e.providers().Create(context.Background(), "b", "beacon", "Beacon", map[string]string{}, audit.User("")); err != nil {
+		t.Fatal(err)
+	}
+	const button = `<button name="provider" value="b" class="beacon"><svg viewBox="0 0 1 1"><path d="M0 0h1"/></svg>`
+	for lang, label := range map[string]string{"zh-CN": "使用灯塔登录</button>", "en": "Sign in with Beacon</button>"} {
+		e.lang = lang
+		if _, page := e.authorize(""); !strings.Contains(page, button+label) {
+			t.Errorf("%s: no %s%s in:\n%s", lang, button, label, page)
 		}
 	}
 }
