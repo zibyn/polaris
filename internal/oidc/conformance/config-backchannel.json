@@ -24,6 +24,7 @@
                 },
                 {
                     "task": "Consent",
+                    "optional": true,
                     "match": "https://auth.localhost*/authorize/*/consent",
                     "commands": [
                         ["click", "id", "submit_button"]
