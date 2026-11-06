@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/zibyn/polaris/internal/provider"
-	_ "github.com/zibyn/polaris/internal/provider/oidc"
+	"github.com/zibyn/polaris/internal/provider/oidc"
 	"github.com/zibyn/polaris/internal/provider/oidc/oidctest"
 )
 
@@ -75,5 +75,30 @@ func TestCallbackChecksTheIDToken(t *testing.T) {
 			id, err := newUpstream(t, up.URL).Callback(context.Background(), params, "https://auth.example/cb", "n", "verifier")
 			oidctest.CheckSignIn(t, id, err, tc.signIn)
 		})
+	}
+}
+
+// IssuerMatches sees every id_token claim as the token carries it: the
+// generic package names none of them for a type (ADR 0013).
+func TestIssuerMatchesSeesTheIDTokensClaims(t *testing.T) {
+	up := oidctest.Start(t)
+	up.Claims = map[string]any{"org": "acme"}
+	var seen map[string]any
+	p, err := oidc.Type(oidc.Options{
+		Issuer: func(map[string]string) (string, error) { return up.URL, nil },
+		IssuerMatches: func(configured, reported string, claims map[string]any) bool {
+			if claims != nil {
+				seen = claims
+			}
+			return configured == reported
+		},
+	}).New(map[string]string{"client_id": "cid", "client_secret": "shh"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := p.Callback(context.Background(), url.Values{"code": {"good"}}, "https://auth.example/cb", "n", "verifier")
+	oidctest.CheckSignIn(t, id, err, true)
+	if seen["org"] != "acme" || seen["nonce"] != "n" {
+		t.Errorf("claims: %v", seen)
 	}
 }

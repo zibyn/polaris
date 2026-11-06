@@ -181,15 +181,15 @@ func (u *upstream) verify(ctx context.Context, d *discovery, idToken, nonce stri
 		Nonce    string           `json:"nonce"`
 		AZP      string           `json:"azp"`
 		AuthTime *jwt.NumericDate `json:"auth_time"`
-		Tid      string           `json:"tid"`
 	}
-	if err := tok.Claims(key, &claims, &extra); err != nil {
+	var all map[string]any // every claim, for a type's IssuerMatches
+	if err := tok.Claims(key, &claims, &extra, &all); err != nil {
 		return id, fmt.Errorf("id_token: %w", err)
 	}
 	if err := claims.ValidateWithLeeway(jwt.Expected{AnyAudience: jwt.Audience{u.clientID}}, time.Minute); err != nil {
 		return id, fmt.Errorf("id_token: %w", err)
 	}
-	if !u.matches(u.issuer, claims.Issuer, map[string]any{"tid": extra.Tid}) {
+	if !u.matches(u.issuer, claims.Issuer, all) {
 		return id, fmt.Errorf("id_token: issuer %q is not ours", claims.Issuer)
 	}
 	if claims.Expiry == nil {
