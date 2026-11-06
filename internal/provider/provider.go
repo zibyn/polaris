@@ -93,11 +93,13 @@ type Type struct {
 }
 
 // LoginButton is a named type's button, as its brand guidelines ask: the
-// wording in Chinese and English, the logo inline, and the class the login
-// page's stylesheet dresses it by.
+// wording in Chinese and English (either left empty falls back to
+// 「使用 {Name} 登录」), the logo inline, and the brand's colours and borders
+// as an inline style, which also holds on hover.
 type LoginButton struct {
-	Label, LabelEN, Class string
-	Icon                  template.HTML
+	Label, LabelEN string
+	Icon           template.HTML
+	Style          template.CSS
 }
 
 var types []Type

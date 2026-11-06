@@ -88,19 +88,9 @@ button#passkey-login:hover { background: var(--canvas); }
 form.providers button { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
 form.providers button:hover { background: var(--canvas); }
  
-form.providers button.apple, form.providers button.google, form.providers button.microsoft, form.providers button.github, form.providers button.dingtalk, form.providers button.wecom, form.providers button.feishu { display: flex; align-items: center; justify-content: center; gap: 8px; }
-form.providers button.google svg, form.providers button.microsoft svg, form.providers button.github svg, form.providers button.dingtalk svg, form.providers button.wecom svg, form.providers button.feishu svg { width: 18px; height: 18px; flex: none; }
- 
-form.providers button.apple, form.providers button.apple:hover { gap: 6px; background: #000; color: #fff; border-color: #000; }
-form.providers button.apple svg { width: 15px; height: 15px; fill: currentColor; margin-top: -2px; }
- 
-form.providers button.google { border-color: #747775; color: #1f1f1f; gap: 10px; }
- 
-form.providers button.microsoft { border-color: #8c8c8c; color: #5e5e5e; }
-form.providers button.google:hover, form.providers button.microsoft:hover, form.providers button.github:hover, form.providers button.dingtalk:hover, form.providers button.wecom:hover, form.providers button.feishu:hover { background: var(--panel); }
- 
-form.providers button.github svg { fill: #181717; }
- 
+form.providers button.mark { display: flex; align-items: center; justify-content: center; gap: 8px; }
+form.providers button.mark:hover { background: var(--panel); }
+form.providers button.mark svg { width: 18px; height: 18px; flex: none; }
  
 button.pending { display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: progress; }
 button.pending::after { content: ""; flex: none; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; }

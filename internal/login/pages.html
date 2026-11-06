@@ -100,24 +100,12 @@ button#passkey-login { display: block; width: 100%; background: var(--panel); co
 button#passkey-login:hover { background: var(--canvas); }
 form.providers button { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
 form.providers button:hover { background: var(--canvas); }
-/* The named Providers' own buttons, each as its brand guidelines ask: the
-   logo inline, so the page fetches nothing, and the wording, hairline and
-   text colour the brand lays down. Google's 10px is its own logo-to-text
-   spacing; the rest is this form's. Hover keeps the brand's fill, the
-   guidelines fixing what the button looks like. */
-form.providers button.apple, form.providers button.google, form.providers button.microsoft, form.providers button.github, form.providers button.dingtalk, form.providers button.wecom, form.providers button.feishu { display: flex; align-items: center; justify-content: center; gap: 8px; }
-form.providers button.google svg, form.providers button.microsoft svg, form.providers button.github svg, form.providers button.dingtalk svg, form.providers button.wecom svg, form.providers button.feishu svg { width: 18px; height: 18px; flex: none; }
-/* Apple's HIG: black, its logo, its own title. */
-form.providers button.apple, form.providers button.apple:hover { gap: 6px; background: #000; color: #fff; border-color: #000; }
-form.providers button.apple svg { width: 15px; height: 15px; fill: currentColor; margin-top: -2px; }
-/* Google's light theme: white, #747775 hairline, #1F1F1F text. */
-form.providers button.google { border-color: #747775; color: #1f1f1f; gap: 10px; }
-/* Microsoft's light theme: white, #8C8C8C hairline, #5E5E5E text. */
-form.providers button.microsoft { border-color: #8c8c8c; color: #5e5e5e; }
-form.providers button.google:hover, form.providers button.microsoft:hover, form.providers button.github:hover, form.providers button.dingtalk:hover, form.providers button.wecom:hover, form.providers button.feishu:hover { background: var(--panel); }
-/* GitHub allows its mark in black on a light button; the wording is ours. */
-form.providers button.github svg { fill: #181717; }
-/* DingTalk's, WeCom's and Feishu's marks (Lark shares Feishu's bird) keep their own colours. */
+/* A type's own button: its logo inline, so the page fetches nothing, and
+   its brand's look in its inline style. Hover keeps the fill, the brand
+   fixing what the button looks like. */
+form.providers button.mark { display: flex; align-items: center; justify-content: center; gap: 8px; }
+form.providers button.mark:hover { background: var(--panel); }
+form.providers button.mark svg { width: 18px; height: 18px; flex: none; }
 /* Submitting swaps in a spinner, so a slow network or PoW solve never looks
    like the click was missed. altcha-widget reports its own progress and the
    script skips forms that carry one. */
@@ -404,7 +392,7 @@ addEventListener("DOMContentLoaded", () => {
 {{end}}
 {{if $providers}}<form method="post" action="{{.Action}}" class="providers">
   <input type="hidden" name="op" value="provider">
-  {{range $p := .Providers}}{{with button $p.Type}}<button name="provider" value="{{$p.ID}}" class="{{.Class}}">{{.Icon}}{{label .}}</button>{{else}}<button name="provider" value="{{$p.ID}}">{{printf (t "使用 %s 登录") $p.Name}}</button>{{end}}
+  {{range $p := .Providers}}{{with providerButton $p.Type}}<button name="provider" value="{{$p.ID}}" class="mark"{{with .Style}} style="{{.}}"{{end}}>{{.Icon}}{{providerLabel . $p.Name}}</button>{{else}}<button name="provider" value="{{$p.ID}}">{{printf (t "使用 %s 登录") $p.Name}}</button>{{end}}
   {{end}}</form>{{end}}
 {{end}}
 {{end}}

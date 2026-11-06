@@ -42,8 +42,9 @@ var (
 )
 
 func init() {
-	register("feishu", "飞书", "使用飞书登录", "Sign in with Feishu", &Feishu)
-	register("lark", "Lark", "使用 Lark 登录", "Sign in with Lark", &Lark)
+	// Lark keeps Feishu's bird.
+	register("feishu", "飞书", &provider.LoginButton{Label: "使用飞书登录", LabelEN: "Sign in with Feishu", Icon: icon}, &Feishu)
+	register("lark", "Lark", &provider.LoginButton{Label: "使用 Lark 登录", LabelEN: "Sign in with Lark", Icon: icon}, &Lark)
 }
 
 // icon is Feishu's and Lark's bird.
@@ -51,11 +52,9 @@ const icon = `<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#00d6b9" d
 
 // register adds a brand's type. Neither field is immutable: union_id is the
 // same across one developer's apps, so another app keeps the identities.
-func register(key, name, label, labelEN string, e *Endpoints) {
+func register(key, name string, button *provider.LoginButton, e *Endpoints) {
 	provider.Register(provider.Type{
-		Key: key, Name: name,
-		// Lark keeps Feishu's bird and class.
-		Button: &provider.LoginButton{Label: label, LabelEN: labelEN, Class: "feishu", Icon: icon},
+		Key: key, Name: name, Button: button,
 		Fields: []provider.ConfigField{
 			{Field: channel.Field{Key: "client_id", Label: "App ID", Type: "text",
 				Help: "企业自建应用的 App ID。仅本租户且在应用可用范围内的成员可登录，否则报错 20010。应用需开通 contact:user.employee:readonly(企业邮箱)与 contact:user.phone:readonly(手机号)两个权限，否则报错 20027"}},

@@ -40,12 +40,12 @@ func TestNamedProviderButtons(t *testing.T) {
 
 	_, page := e.authorize("")
 	for _, want := range []string{
-		`class="google"`, "使用 Google 账号登录",
-		`class="microsoft"`, "使用 Microsoft 登录",
-		`class="github"`, "使用 GitHub 登录",
-		`class="feishu"`, "使用飞书登录", "使用 Lark 登录", "#00d6b9",
-		`class="dingtalk"`, "使用钉钉登录", "#0285fc",
-		`class="wecom"`, "使用企业微信登录", "#2dbc00",
+		"border-color:#747775", "使用 Google 账号登录",
+		"border-color:#8c8c8c", "使用 Microsoft 登录",
+		"fill:#181717", "使用 GitHub 登录",
+		"使用飞书登录", "使用 Lark 登录", "#00d6b9",
+		"使用钉钉登录", "#0285fc",
+		"使用企业微信登录", "#2dbc00",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("no %s in:\n%s", want, page)
@@ -61,22 +61,35 @@ func TestNamedProviderButtons(t *testing.T) {
 
 func init() {
 	provider.Register(provider.Type{Key: "beacon", Name: "Beacon",
-		Button: &provider.LoginButton{Label: "使用灯塔登录", LabelEN: "Sign in with Beacon", Class: "beacon", Icon: `<svg viewBox="0 0 1 1"><path d="M0 0h1"/></svg>`},
+		Button: &provider.LoginButton{Label: "使用灯塔登录", LabelEN: "Sign in with Beacon", Style: "color:#123456", Icon: `<svg viewBox="0 0 1 1"><path d="M0 0h1"/></svg>`},
+		New:    func(map[string]string) (provider.Redirect, error) { return fakeRedirect{}, nil }})
+	provider.Register(provider.Type{Key: "lantern", Name: "Lantern",
+		Button: &provider.LoginButton{Label: "使用灯笼登录"},
 		New:    func(map[string]string) (provider.Redirect, error) { return fakeRedirect{}, nil }})
 }
 
 // A type brings its own button: the login page knows no type by name, it
-// shows the class, icon and wording the type registered, in either language.
+// shows the style, icon and wording the type registered, in either language;
+// with no wording for a language, the generic one.
 func TestTypeBringsItsButton(t *testing.T) {
 	e := start(t)
 	if err := e.providers().Create(context.Background(), "b", "beacon", "Beacon", map[string]string{}, audit.User("")); err != nil {
 		t.Fatal(err)
 	}
-	const button = `<button name="provider" value="b" class="beacon"><svg viewBox="0 0 1 1"><path d="M0 0h1"/></svg>`
-	for lang, label := range map[string]string{"zh-CN": "使用灯塔登录</button>", "en": "Sign in with Beacon</button>"} {
+	if err := e.providers().Create(context.Background(), "l", "lantern", "Lantern", map[string]string{}, audit.User("")); err != nil {
+		t.Fatal(err)
+	}
+	const button = `<button name="provider" value="b" class="mark" style="color:#123456"><svg viewBox="0 0 1 1"><path d="M0 0h1"/></svg>`
+	for lang, want := range map[string][]string{
+		"zh-CN": {button + "使用灯塔登录</button>", `<button name="provider" value="l" class="mark">使用灯笼登录</button>`},
+		"en":    {button + "Sign in with Beacon</button>", `<button name="provider" value="l" class="mark">Sign in with Lantern</button>`},
+	} {
 		e.lang = lang
-		if _, page := e.authorize(""); !strings.Contains(page, button+label) {
-			t.Errorf("%s: no %s%s in:\n%s", lang, button, label, page)
+		_, page := e.authorize("")
+		for _, w := range want {
+			if !strings.Contains(page, w) {
+				t.Errorf("%s: no %s in:\n%s", lang, w, page)
+			}
 		}
 	}
 }

@@ -26,7 +26,7 @@ const (
 var pages = map[lang]*template.Template{langZH: parsePages(langZH), langEN: parsePages(langEN)}
 
 func parsePages(l lang) *template.Template {
-	return template.Must(template.New("").Funcs(template.FuncMap{"t": l.strict, "msg": l.text, "button": button, "label": l.label}).ParseFS(pagesFS, "pages.html"))
+	return template.Must(template.New("").Funcs(template.FuncMap{"t": l.strict, "msg": l.text, "providerButton": button, "providerLabel": l.label}).ParseFS(pagesFS, "pages.html"))
 }
 
 // pickLang picks the page's language: the first one supported among the
@@ -104,10 +104,15 @@ func button(key string) *provider.LoginButton {
 	return nil
 }
 
-// label is b's wording in l.
-func (l lang) label(b *provider.LoginButton) string {
+// label is b's wording in l, or the generic 「使用 {name} 登录」 when b has
+// none in l.
+func (l lang) label(b *provider.LoginButton, name string) string {
+	s := b.Label
 	if l == langEN {
-		return b.LabelEN
+		s = b.LabelEN
 	}
-	return b.Label
+	if s == "" {
+		return fmt.Sprintf(l.text("使用 %s 登录"), name)
+	}
+	return s
 }
