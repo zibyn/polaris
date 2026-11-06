@@ -1,0 +1,46 @@
+{
+  "name": "@zibyn/polaris",
+  "version": "0.1.0",
+  "description": "Polaris SDK for Node: Web Application login and access token verification",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "check": "biome check",
+    "test": "node --test 'src/**/*.test.ts'"
+  },
+  "dependencies": {
+    "jose": "^6.2.15",
+    "openid-client": "^6.8.9"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.5",
+    "@types/node": "^24.19.2",
+    "hono": "^4.13.16",
+    "next": "^16.4.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "next": ">=15"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
+  }
+}

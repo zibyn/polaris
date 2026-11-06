@@ -1,0 +1,17 @@
+{
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "next dev -p 3000"
+	},
+	"dependencies": {
+		"@zibyn/polaris": "file:../..",
+		"next": "^16.4.5",
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1"
+	},
+	"devDependencies": {
+		"@types/react": "^19",
+		"typescript": "^6.0.2"
+	}
+}

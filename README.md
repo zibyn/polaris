@@ -113,6 +113,9 @@ their own databases.
 - **KMP SDK** for iOS and Android: OTP, password, Apple, Passkey, refresh,
   logout and account deletion; protocol only, no UI. See [sdk/kmp](sdk/kmp) and
   [docs/sdk-behavior.md](docs/sdk-behavior.md).
+- **Node SDK** (`@zibyn/polaris`): Web Application login with a session
+  cookie, and access token verification for API backends. See
+  [sdk/node](sdk/node).
 - **OpenAPI documents** are served by the instance: `/v1/auth/openapi.json`
   (direct auth), `/v1/management/openapi.json` (Management API) and
   `/v1/account/openapi.json` (account center).

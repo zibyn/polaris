@@ -1,0 +1,11 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.5/schema.json",
+	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+	"files": {
+		"includes": ["src/**", "examples/**", "!examples/**/routeTree.gen.ts"]
+	},
+	"formatter": { "enabled": true, "indentStyle": "tab" },
+	"assist": { "actions": { "source": { "organizeImports": "on" } } },
+	"linter": { "enabled": true, "rules": { "recommended": true } },
+	"javascript": { "formatter": { "quoteStyle": "double" } }
+}
