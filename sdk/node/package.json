@@ -1,6 +1,6 @@
 {
   "name": "@zibyn/polaris",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "Polaris SDK for Node: Web Application login and access token verification",
   "license": "Apache-2.0",
   "type": "module",

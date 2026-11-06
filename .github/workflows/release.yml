@@ -67,3 +67,30 @@ jobs:
       - run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag
         env:
           GH_TOKEN: ${{ github.token }}
+
+  # Trusted Publishing (OIDC): configure once on npmjs.com under the package's
+  # settings → Trusted Publisher → GitHub Actions, repo zibyn/polaris, workflow release.yml.
+  npm:
+    needs: binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: sdk/node
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.4.2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+          cache-dependency-path: sdk/node/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile && pnpm test && pnpm build
+      - run: npm pkg set version="${GITHUB_REF_NAME#v}"
+      # npm CLI, not pnpm: npm >= 11.5.1 does the OIDC exchange and attaches provenance.
+      - run: npm install -g npm@latest && npm publish --access public
