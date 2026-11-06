@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/zibyn/polaris/internal/channel"
@@ -82,10 +83,14 @@ const scope = "contact:user.employee:readonly contact:user.phone:readonly"
 
 // AuthURL is the authorization code + PKCE (S256) request, copied from the
 // generic OAuth2 type so a change there does not reach Feishu: a type of its
-// own. The endpoints carry no query, hence the plain "?".
+// own.
 func (u *upstream) AuthURL(_ context.Context, redirectURI, state, _, verifier string) (string, error) {
 	sum := sha256.Sum256([]byte(verifier))
-	return u.endpoints.Authorize + "?" + url.Values{
+	sep := "?"
+	if strings.Contains(u.endpoints.Authorize, "?") {
+		sep = "&"
+	}
+	return u.endpoints.Authorize + sep + url.Values{
 		"response_type":         {"code"},
 		"client_id":             {u.clientID},
 		"redirect_uri":          {redirectURI},

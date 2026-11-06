@@ -130,3 +130,21 @@ func TestFeishuRefusesWhatItCannotTrust(t *testing.T) {
 		})
 	}
 }
+
+func TestFeishuAuthURLKeepsTheEndpointsQuery(t *testing.T) {
+	old := feishu.Feishu
+	t.Cleanup(func() { feishu.Feishu = old })
+	feishu.Feishu.Authorize = "https://up.example/authorize?tenant=t1"
+	p, err := provider.GetType("feishu").New(map[string]string{"client_id": "cli_1", "client_secret": "shh"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authURL, err := p.AuthURL(context.Background(), cb, "st", "n", "verifier")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, _ := url.Parse(authURL)
+	if q := u.Query(); q.Get("tenant") != "t1" || q.Get("client_id") != "cli_1" {
+		t.Errorf("authorization URL %s", authURL)
+	}
+}

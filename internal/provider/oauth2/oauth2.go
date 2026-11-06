@@ -94,31 +94,25 @@ func (u *upstream) NoReauthPrompt() {}
 
 // AuthURL sends the browser to the authorization endpoint with PKCE. No
 // nonce: there is no id_token to carry one, and state and PKCE guard the
-// code without it.
+// code without it. Scope is left out when empty.
 func (u *upstream) AuthURL(_ context.Context, redirectURI, state, _, verifier string) (string, error) {
-	return AuthURL(u.authorizationEndpoint, u.clientID, u.scope, redirectURI, state, verifier), nil
-}
-
-// AuthURL is an authorization code request with PKCE (S256) at endpoint;
-// scope is left out when empty.
-func AuthURL(endpoint, clientID, scope, redirectURI, state, verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	q := url.Values{
 		"response_type":         {"code"},
-		"client_id":             {clientID},
+		"client_id":             {u.clientID},
 		"redirect_uri":          {redirectURI},
 		"state":                 {state},
 		"code_challenge":        {base64.RawURLEncoding.EncodeToString(sum[:])},
 		"code_challenge_method": {"S256"},
 	}
-	if scope != "" {
-		q.Set("scope", scope)
+	if u.scope != "" {
+		q.Set("scope", u.scope)
 	}
 	sep := "?"
-	if strings.Contains(endpoint, "?") {
+	if strings.Contains(u.authorizationEndpoint, "?") {
 		sep = "&"
 	}
-	return endpoint + sep + q.Encode()
+	return u.authorizationEndpoint + sep + q.Encode(), nil
 }
 
 // Callback exchanges the code and asks the upstream who it was, which is
