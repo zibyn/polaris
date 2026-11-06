@@ -59,7 +59,7 @@ docker run --rm --network polaris-conformance_default \
       "oidcc-basic-certification-test-plan[server_metadata=discovery][client_registration=static_client]" config.json \
       "oidcc-config-certification-test-plan" config.json \
       "oidcc-rp-initiated-logout-certification-test-plan[response_type=code][client_registration=static_client]" config.json \
-      "oidcc-backchannel-rp-initiated-logout-certification-test-plan[client_registration=static_client]" config-backchannel.json \
+      "oidcc-backchannel-rp-initiated-logout-certification-test-plan[response_type=code][client_registration=static_client]" config-backchannel.json \
       --expected-failures-file failures.json \
       --expected-skips-file skips.json \
       --export-dir /out'

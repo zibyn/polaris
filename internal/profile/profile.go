@@ -76,7 +76,7 @@ func checkText(label, s string, max int, multiline bool) (string, error) {
 	if utf8.RuneCountInString(s) > max {
 		return "", Invalid(fmt.Sprintf("%s最多 %d 个字符", label, max))
 	}
-	if strings.IndexFunc(s, func(r rune) bool { return unicode.IsControl(r) && !(multiline && r == '\n') }) >= 0 {
+	if strings.IndexFunc(s, func(r rune) bool { return unicode.IsControl(r) && (!multiline || r != '\n') }) >= 0 {
 		return "", Invalid(label + "不能含控制字符")
 	}
 	return s, nil

@@ -33,7 +33,7 @@ func start(t *testing.T) *fake {
 			return
 		}
 		f.gettokens++
-		fmt.Fprintf(w, `{"errcode":0,"errmsg":"ok","access_token":"at%d","expires_in":7200}`, f.gettokens)
+		_, _ = fmt.Fprintf(w, `{"errcode":0,"errmsg":"ok","access_token":"at%d","expires_in":7200}`, f.gettokens)
 	})
 	mux.HandleFunc("GET /cgi-bin/auth/getuserinfo", func(w http.ResponseWriter, r *http.Request) {
 		if f.expire || r.URL.Query().Get("access_token") != fmt.Sprintf("at%d", f.gettokens) {

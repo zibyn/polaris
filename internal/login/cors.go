@@ -82,7 +82,7 @@ func webOrigin(uri string) string {
 	if strings.Contains(host, ":") {
 		host = "[" + host + "]"
 	}
-	if port := u.Port(); port != "" && !(u.Scheme == "https" && port == "443") && !(u.Scheme == "http" && port == "80") {
+	if port := u.Port(); port != "" && (u.Scheme != "https" || port != "443") && (u.Scheme != "http" || port != "80") {
 		host += ":" + port
 	}
 	return u.Scheme + "://" + host
