@@ -14,7 +14,7 @@ go get github.com/zibyn/polaris/sdk/go
 import polaris "github.com/zibyn/polaris/sdk/go"
 
 // audience 是 API 的标识符,签给别的 API 的 token 一律拒绝
-v, err := polaris.NewVerifier(ctx, "https://auth.example.com", "https://api.example.com")
+v, err := polaris.NewVerifier(ctx, "https://auth.example.com", "api://orders")
 
 mux.Handle("/orders", v.Require(ordersHandler, "orders:read"))
 

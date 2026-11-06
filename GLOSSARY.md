@@ -81,7 +81,7 @@ _Avoid_: 证书, 凭证, 客户端密钥
 _Avoid_: Resource Server, 资源, 后端服务
 
 **API 标识符**:
-区分 API 的字符串(如 `https://api.example.com`),即 access token 的 `aud` 值,创建后不可改。
+区分 API 的字符串(如 `api://orders`),即 access token 的 `aud` 值,也是 SDK 的 `audience` 参数,创建后不可改。
 _Avoid_: 标识, Identifier, audience
 
 **默认 API**:

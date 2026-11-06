@@ -167,7 +167,7 @@ function CreateForm() {
 						{(control) => (
 							<Input
 								{...control}
-								placeholder="https://api.example.com"
+								placeholder="api://orders"
 								className="font-mono"
 							/>
 						)}

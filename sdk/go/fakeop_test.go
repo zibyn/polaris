@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	api      = "https://api.example.com"
+	api      = "api://orders"
 	clientID = "web-app"
 )
 

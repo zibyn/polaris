@@ -8,7 +8,7 @@ import {
 	rolesWith,
 } from "./apis.ts";
 
-const orders = "https://api.example.com/orders";
+const orders = "api://orders";
 const shop = { clientId: "shop", defaultApi: orders };
 const blog = { clientId: "blog", defaultApi: "" };
 

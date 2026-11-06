@@ -101,7 +101,7 @@ import { accessTokenVerifier, PolarisAuthError, requireEntitlements } from "@zib
 
 const verifyAccessToken = accessTokenVerifier({
   issuer: "https://auth.example.com",
-  audience: "https://api.example.com", // API 标识符
+  audience: "api://orders", // API 标识符
 });
 
 try {

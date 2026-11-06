@@ -7,7 +7,7 @@ import { exportJWK, generateKeyPair, SignJWT } from "jose";
 
 export const clientId = "web-app";
 export const clientSecret = "s3cret";
-export const api = "https://api.example.com";
+export const api = "api://orders";
 
 type Grant = { sub: string; nonce: string; scope: string };
 
