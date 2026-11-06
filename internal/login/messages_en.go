@@ -121,6 +121,7 @@ var messagesEN = map[string]string{
 	string(identity.ErrIdentifier):         "Enter a +86 phone number or an email",
 	string(identity.ErrPhone):              "Enter a +86 phone number",
 	string(identity.ErrIdentifierTaken):    "This phone number or email is used by another user",
+	string(provider.ErrIdentifierTaken):    "This phone number or email already has an account. Sign in the way you used to, then bind this method in your account.",
 	string(identity.ErrNotPending):         "This account is already active. Sign in again.",
 	string(identity.ErrLastOwner):          "You are the last owner and cannot delete your account",
 	string(identity.ErrInviteSpent):        "This invitation link is no longer valid. Ask your admin for a new one.",

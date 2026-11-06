@@ -49,6 +49,7 @@
 - **身份锚点**:External Identity 是 (Provider, 上游的用户 ID)——通用 OIDC 是 id_token 的 `sub`,通用 OAuth2 是配置里指定的 userinfo 字段。锚定它的字段创建后不可改:Provider ID、通用 OIDC 的 issuer、通用 OAuth2 的用户 ID 字段、Microsoft 的租户、企业微信的企业 ID;client_id 和密钥可以改。
 - **停用与删除**:停用后托管页不再显示,已绑定的 User 也不能用它登录。还有 External Identity 绑定时只能停用,不能删除。
 - **请求的信息**:OIDC 只请求 `openid`;Apple 不请求 `name email`,首次登录返回的姓名直接丢弃;通用 OAuth2 的 scope 由管理员按服务商要求填写(GitHub 预设已写死)。
+- **带来的 Identifier 与用户资料**:飞书 / Lark、钉钉、企业微信在**新建 User 时**带上邮箱、手机号、姓名和头像(各类型能拿到多少给多少,见各节)。邮箱和手机号直接作为已验证的 Identifier,不设信任开关;+86 以外的手机号 Polaris 存不了,略过。已被别的 User 占用时拒绝登录,提示用原方式登录后到账号中心绑定(不合并,ADR 0003)。之后的登录和账号中心绑定都不再写入,上游改了也不跟。头像下载失败不影响登录。通用 OIDC、OAuth2、Apple 暂不带。
 
 ### 通用 OIDC Provider 类型
 
@@ -72,15 +73,17 @@
 ### 飞书 / Lark Provider 类型
 
 - 面向**企业自建应用**:本租户、在应用可用范围内的成员能登录。`feishu` 与 `lark` 两个类型,只差主机;配置只有 App ID 与 App Secret,都可改。
-- **不做 OIDC**(飞书没有 discovery,也没有 id_token):authorization code + PKCE,不带 scope;换 token 发 JSON 请求体(飞书用 v3 端点,Lark 只有 v2),再调 `authen/v1/user_info`,响应的 `code` 非 0 即失败。
+- **不做 OIDC**(飞书没有 discovery,也没有 id_token):authorization code + PKCE,scope 为 `contact:user.employee:readonly contact:user.phone:readonly`(应用未开通会报 20027);换 token 发 JSON 请求体(飞书用 v3 端点,Lark 只有 v2),再调 `authen/v1/user_info`,响应的 `code` 非 0 即失败。
 - **锚点是 `data.union_id`**:同一开发商(自建场景即同一企业)下各应用一致,所以换应用身份仍连续;为空即失败,不退回 open_id / user_id。
+- **带来的信息**:同一次 `user_info` 里的 `name`、`avatar_big`、`enterprise_email`(租户托管的企业邮箱)、`mobile`;不取 `email`(管理员随手填的工作邮箱)。
 - 只做重定向型(在飞书客户端里打开托管页时同一流程免确认)。没有 `prompt=login` / `max_age`,重新验证只能证明外部账号还登录着;没有撤销接口,不保存飞书 token。
 
 ### 钉钉 Provider 类型
 
-- 面向**企业内部应用**:本组织成员能登录。配置只有 Client ID(AppKey)与 Client Secret(AppSecret),都可改;应用要开通 `Contact.User.Read`。
+- 面向**企业内部应用**:本组织成员能登录。配置只有 Client ID(AppKey)与 Client Secret(AppSecret),都可改;应用要开通 `Contact.User.Read`、成员信息读权限和企业员工手机号信息权限。
 - 新版「登录第三方网站」流程:授权带必填的 `prompt=consent`,没有 PKCE;换 token 是 camelCase 的 JSON,不带 redirect_uri,code 只靠 state 与「一次性」防重放;userinfo(`contact/users/me`)用 `x-acs-dingtalk-access-token` 请求头。只做重定向型,没有 OIDC。
 - **锚点是 `unionId`**,不退回 openId。已知例外:普通账号**迁移为专属账号后 unionId 会变**,迁移后的成员在 Polaris 是另一个外部账号,要管理员在用户详情里重新处理绑定。
+- **带来的信息**:新建 User 时用应用 token 查组织通讯录(`topapi/user/getbyunionid` → `topapi/v2/user/get`),取 `name`、`avatar`、`org_email`(组织托管的企业邮箱)、`mobile`(`state_code` 为 86 时);不取 `users/me` 的个人昵称和个人邮箱。查不到即登录失败。
 - 没有强制重新登录的参数,也没有撤销接口,不保存钉钉 token。
 
 ### 企业微信 Provider 类型
@@ -90,6 +93,7 @@
 - **应用 access_token 缓存在内存**,惰性获取、加锁,按 `expires_in` 留余量;失效(42001、40014)时重取一次。频繁 `gettoken` 会被限频,Secret 填错时反复失败可能把整个企业锁一小时。
 - **锚点是转小写的 `userid`**(企业微信不区分大小写)。风险:系统生成的 userid 管理员可以改一次,改了以后这位成员在 Polaris 就是另一个外部账号;旧 userid 若分配给别人,别人会登进原来的 User。所以**不要修改已登录过 Polaris 的成员账号**。企业微信没有更稳的字段(open_userid 只给服务商应用),与 ADR 0013 的取舍同类。
 - 管理员须:在应用里开启「企业微信授权登录」并把 Polaris 域名配成可信域名(须 ICP 备案,端口一致);2022-06-20 后新建的应用把服务器出口 IP 加进「企业可信 IP」。企业微信客户端内置浏览器要走另一条网页授权,暂不支持。
+- **带来的信息**:新建 User 时调 `user/get` 只取 `name`。2022-06 之后新建的应用拿不到邮箱、手机号和头像,它们要成员在网页授权里同意,Web 登录没有这一步。
 
 ## 配置与密钥
 

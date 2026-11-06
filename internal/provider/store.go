@@ -26,6 +26,7 @@ import (
 	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/profile"
 )
 
 var (
@@ -323,7 +324,7 @@ func (s *Store) Finish(ctx context.Context, issuer, id string, params url.Values
 		return f, s.finishAccount(ctx, id, login, ident)
 	}
 	f.AuthnSession = login.AuthnSession
-	f.Sub, err = s.signIn(ctx, id, ident)
+	f.Sub, err = s.signIn(ctx, id, p, ident)
 	return f, err
 }
 
@@ -343,10 +344,17 @@ func (s *Store) SignInWithClientToken(ctx context.Context, id, value string) (st
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrLogin, err)
 	}
-	return s.signIn(ctx, id, ident)
+	return s.signIn(ctx, id, p, ident)
 }
 
-func (s *Store) signIn(ctx context.Context, id string, ident Identity) (string, error) {
+// ErrIdentifierTaken: the email or phone a Provider brought for a new User
+// is another User's. Never merged (ADR 0003): that User binds the Provider
+// in the account center.
+const ErrIdentifierTaken identity.Invalid = "该手机号或邮箱已有账号，请用原来的方式登录后，在账号中心绑定"
+
+// signIn finds the User bound to ident at Provider id (built as p), or signs
+// one up with the email, phone and 用户资料 ident brought.
+func (s *Store) signIn(ctx context.Context, id string, p any, ident Identity) (string, error) {
 	token, err := s.sealToken(id, ident)
 	if err != nil {
 		return "", err
@@ -365,16 +373,43 @@ func (s *Store) signIn(ctx context.Context, id string, ident Identity) (string, 
 	if open, err := s.q.RegistrationOpen(ctx); err != nil || !open {
 		return "", cmp.Or(err, error(identity.ErrRegistrationClosed))
 	}
+	if pr, ok := p.(Profiler); ok {
+		if ident, err = pr.Profile(ctx, ident); err != nil {
+			return "", fmt.Errorf("%w: %w", ErrLogin, err)
+		}
+	}
+	var avatar []byte
+	if ident.Picture != "" {
+		if avatar, err = profile.FetchAvatar(ctx, ident.Picture); err != nil {
+			slog.Info("provider avatar", "provider", id, "err", err) // the sign-up goes on without it
+		}
+	}
 	sub := rand.Text()
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if err := q.CreateUser(ctx, sub); err != nil {
 			return err
 		}
-		return q.AddExternalIdentity(ctx, sqlc.AddExternalIdentityParams{Provider: id, Subject: ident.Subject, UserID: sub, Token: token})
+		// Before the Identifiers: a concurrent sign-up of the same Identity
+		// must fail here, to be retried, not on the email it brought too.
+		if err := q.AddExternalIdentity(ctx, sqlc.AddExternalIdentityParams{Provider: id, Subject: ident.Subject, UserID: sub, Token: token}); err != nil {
+			return err
+		}
+		for _, v := range []string{ident.Email, ident.Phone} {
+			kind, value, err := identity.ParseIdentifier(v)
+			if err != nil {
+				continue // none, or one Polaris cannot hold (a phone outside +86)
+			}
+			if err := q.AddIdentifier(ctx, sqlc.AddIdentifierParams{UserID: sub, Kind: kind, Value: value}); isCode(err, "23505") {
+				return ErrIdentifierTaken
+			} else if err != nil {
+				return err
+			}
+		}
+		return profile.Seed(ctx, q, sub, ident.Name, avatar)
 	})
 	if isCode(err, "23505") { // signed up a moment ago by a concurrent request
-		return s.signIn(ctx, id, ident)
+		return s.signIn(ctx, id, p, ident)
 	}
 	return sub, err
 }

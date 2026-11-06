@@ -19,11 +19,14 @@ type fake struct {
 	tokenReq map[string]string
 	me       string // users/me's JSON
 	status   int    // users/me's status
+	user     string // topapi/v2/user/get's JSON
 }
 
 func start(t *testing.T) *fake {
 	t.Helper()
-	f := &fake{me: `{"unionId":"u1","openId":"o1","nick":"张三"}`, status: http.StatusOK}
+	f := &fake{me: `{"unionId":"u1","openId":"o1","nick":"张三"}`, status: http.StatusOK,
+		user: `{"errcode":0,"result":{"name":"张三丰","avatar":"https://cdn.example/a.png","email":"typed@example.com",` +
+			`"org_email":"zsf@corp.example","mobile":"13800138000","state_code":"86"}}`}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1.0/oauth2/userAccessToken", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&f.tokenReq)
@@ -44,11 +47,39 @@ func start(t *testing.T) *fake {
 		w.WriteHeader(f.status)
 		_, _ = w.Write([]byte(f.me))
 	})
+	mux.HandleFunc("POST /v1.0/oauth2/accessToken", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req["appKey"] != "ding1" || req["appSecret"] != "shh" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":"invalidClientIdOrSecret","message":"无效的clientId或者clientSecret"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"accessToken":"app","expireIn":7200}`))
+	})
+	mux.HandleFunc("POST /topapi/user/getbyunionid", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if r.URL.Query().Get("access_token") != "app" || req["unionid"] != "u1" {
+			_, _ = w.Write([]byte(`{"errcode":60121,"errmsg":"找不到该用户"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"errcode":0,"result":{"contact_type":0,"userid":"emp1"}}`))
+	})
+	mux.HandleFunc("POST /topapi/v2/user/get", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if r.URL.Query().Get("access_token") != "app" || req["userid"] != "emp1" {
+			_, _ = w.Write([]byte(`{"errcode":60121,"errmsg":"找不到该用户"}`))
+			return
+		}
+		_, _ = w.Write([]byte(f.user))
+	})
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
-	login, api := dingtalk.Login, dingtalk.API
-	dingtalk.Login, dingtalk.API = ts.URL, ts.URL
-	t.Cleanup(func() { dingtalk.Login, dingtalk.API = login, api })
+	login, api, oapi := dingtalk.Login, dingtalk.API, dingtalk.OAPI
+	dingtalk.Login, dingtalk.API, dingtalk.OAPI = ts.URL, ts.URL, ts.URL
+	t.Cleanup(func() { dingtalk.Login, dingtalk.API, dingtalk.OAPI = login, api, oapi })
 	return f
 }
 
@@ -114,5 +145,32 @@ func TestDingTalkRefusesWhatItCannotTrust(t *testing.T) {
 				t.Errorf("err %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// A new User brings what the organization's directory says, not the
+// account's nickname: the org_email, never the typed-in email.
+func TestDingTalkProfileIsTheDirectoryEntry(t *testing.T) {
+	f := start(t)
+	pr := newDingTalk(t).(provider.Profiler)
+	id, err := pr.Profile(context.Background(), provider.Identity{Subject: "u1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := provider.Identity{Subject: "u1", Email: "zsf@corp.example", Phone: "13800138000", Name: "张三丰", Picture: "https://cdn.example/a.png"}
+	if id != want {
+		t.Errorf("got %+v, want %+v", id, want)
+	}
+
+	// A phone outside China comes without its country code: left out.
+	f.user = `{"errcode":0,"result":{"name":"Li","mobile":"5551234","state_code":"1"}}`
+	if id, err := pr.Profile(context.Background(), provider.Identity{Subject: "u1"}); err != nil || id.Phone != "" {
+		t.Errorf("foreign phone: %+v, %v", id, err)
+	}
+
+	// No directory access (the permission not granted) fails the sign-up.
+	f.user = `{"errcode":60011,"errmsg":"没有调用该接口的权限"}`
+	if _, err := pr.Profile(context.Background(), provider.Identity{Subject: "u1"}); err == nil || !strings.Contains(err.Error(), "60011") {
+		t.Errorf("no permission: %v", err)
 	}
 }

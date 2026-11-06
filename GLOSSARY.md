@@ -141,7 +141,7 @@ _Avoid_: 备用码, 救援码, 备份码
 _Avoid_: 网关, 短信服务商, 发送器
 
 **Provider**:
-管理员添加的一个外部认证服务(如"Google"、"Apple"、"公司 Keycloak"),替 Polaris 证明"这是谁",认证结果是一个已验证的 Identifier 或一个 External Identity;各 Provider 的 External Identity 互不相通。
+管理员添加的一个外部认证服务(如"Google"、"Apple"、"公司 Keycloak"),替 Polaris 证明"这是谁",认证结果是一个 External Identity;各 Provider 的 External Identity 互不相通。它还可以带来邮箱、手机号和用户资料;带来的邮箱和手机号直接成为 User 的已验证 Identifier,除非 Provider 自己说它未验证。
 _Avoid_: Provider 实例, 社交登录, IdP, 第三方登录, 认证服务商
 
 **Provider 类型**:

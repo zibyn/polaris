@@ -15,8 +15,8 @@ import (
 
 // Redirect is a Provider the browser signs in at: the hosted login page sends
 // it to AuthURL, and the Provider sends it back to the callback URL. Asks for
-// the scope its type needs (openid, or the admin's for OAuth2); whatever else
-// the Provider says (email, name) is dropped.
+// the scope its type needs (openid, or the admin's for OAuth2), plus what
+// its type reads into Identity's email, phone and 用户资料.
 type Redirect interface {
 	// AuthURL is where to send the browser, with state, nonce and the PKCE
 	// challenge of verifier.
@@ -42,6 +42,13 @@ type Unlinker interface {
 	Unlink(ctx context.Context, token string) error
 }
 
+// Profiler is a Provider whose email, phone and 用户资料 take calls of their
+// own; the store asks only when its Identity signs a User up.
+type Profiler interface {
+	// Profile fills in id's Email, Phone, Name and Picture.
+	Profile(ctx context.Context, id Identity) (Identity, error)
+}
+
 // NoReauthPrompt is a Provider a reauthentication cannot ask to sign the
 // User in afresh: a standard OAuth2 upstream has no prompt=login and no
 // max_age, so the store puts neither on the redirect, and the
@@ -60,6 +67,10 @@ type Identity struct {
 	// Token, when set, is kept sealed on the External Identity for the
 	// Provider type's own use (Apple revokes its refresh token on unbinding).
 	Token string
+	// Email and Phone, if set, are trusted as verified: a type leaves out
+	// any the Provider says it has not verified. With Name and Picture (an
+	// image URL) they are used only when this Identity signs a User up.
+	Email, Phone, Name, Picture string
 }
 
 // ConfigField is one setting a Provider type needs, shaped like a Channel's.

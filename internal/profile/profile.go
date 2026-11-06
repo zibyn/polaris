@@ -442,3 +442,47 @@ func (s *Store) Register(mux *http.ServeMux) {
 		_, _ = w.Write(b)
 	})
 }
+
+var fetchClient = &http.Client{Timeout: 10 * time.Second}
+
+// FetchAvatar downloads the image at rawURL, an avatar a Provider named, and
+// re-encodes it as Avatar does; only https.
+func FetchAvatar(ctx context.Context, rawURL string) ([]byte, error) {
+	if u, err := url.Parse(rawURL); err != nil || u.Scheme != "https" {
+		return nil, ErrNotImage
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := fetchClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("avatar: %s", resp.Status)
+	}
+	return Avatar(resp.Body)
+}
+
+// Seed gives a User just signed up, within q's transaction, the name and the
+// avatar (from FetchAvatar, nil for none) a Provider brought. A name that
+// fails the checks is left out rather than failing the sign-up.
+func Seed(ctx context.Context, q *sqlc.Queries, sub, name string, avatar []byte) error {
+	if n, err := checkText("姓名", name, 64, false); err == nil && n != "" {
+		set, _ := json.Marshal(map[string]string{"name": n})
+		if _, err := q.SetProfile(ctx, sqlc.SetProfileParams{UserID: sub, Set: set, Clear: []string{}}); err != nil {
+			return err
+		}
+	}
+	if avatar == nil {
+		return nil
+	}
+	key := keyPrefix + rand.Text()
+	if err := blob.NewPG(q).Put(ctx, key, avatar, "image/jpeg"); err != nil {
+		return err
+	}
+	_, err := q.SetAvatar(ctx, sqlc.SetAvatarParams{UserID: sub, Avatar: key, Old: ""})
+	return err
+}

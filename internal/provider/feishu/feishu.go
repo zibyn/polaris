@@ -52,7 +52,7 @@ func register(key, name string, e *Endpoints) {
 		Key: key, Name: name,
 		Fields: []provider.ConfigField{
 			{Field: channel.Field{Key: "client_id", Label: "App ID", Type: "text",
-				Help: "企业自建应用的 App ID。仅本租户且在应用可用范围内的成员可登录，否则报错 20010"}},
+				Help: "企业自建应用的 App ID。仅本租户且在应用可用范围内的成员可登录，否则报错 20010。应用需开通 contact:user.employee:readonly(企业邮箱)与 contact:user.phone:readonly(手机号)两个权限，否则报错 20027"}},
 			{Field: channel.Field{Key: "client_secret", Label: "App Secret", Type: "text", Secret: true}},
 		},
 		New: func(c map[string]string) (provider.Redirect, error) {
@@ -71,13 +71,18 @@ type upstream struct {
 // authorization page again but does not sign the User in afresh.
 func (u *upstream) NoReauthPrompt() {}
 
-// AuthURL asks for no scope: the union_id needs none.
+// scope is what a new User brings besides the union_id, which needs none:
+// the enterprise email and the phone number.
+const scope = "contact:user.employee:readonly contact:user.phone:readonly"
+
 func (u *upstream) AuthURL(_ context.Context, redirectURI, state, _, verifier string) (string, error) {
-	return oauth2.AuthURL(u.endpoints.Authorize, u.clientID, "", redirectURI, state, verifier), nil
+	return oauth2.AuthURL(u.endpoints.Authorize, u.clientID, scope, redirectURI, state, verifier), nil
 }
 
 // Callback exchanges the code and reads the union_id, and no other ID:
-// open_id is per app, user_id per tenant.
+// open_id is per app, user_id per tenant. Of the emails only
+// enterprise_email, a mailbox the tenant hosts: email is whatever an admin
+// typed in.
 func (u *upstream) Callback(ctx context.Context, params url.Values, redirectURI, _, verifier string) (provider.Identity, error) {
 	if e := params.Get("error"); e != "" {
 		return provider.Identity{}, fmt.Errorf("%s: %s", u.name, e)
@@ -120,7 +125,11 @@ func (u *upstream) Callback(ctx context.Context, params url.Values, redirectURI,
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
-			UnionID string `json:"union_id"`
+			UnionID         string `json:"union_id"`
+			Name            string `json:"name"`
+			AvatarBig       string `json:"avatar_big"`
+			EnterpriseEmail string `json:"enterprise_email"`
+			Mobile          string `json:"mobile"`
 		} `json:"data"`
 	}
 	if _, err := fetch(req, &info); err != nil {
@@ -138,7 +147,8 @@ func (u *upstream) Callback(ctx context.Context, params url.Values, redirectURI,
 	if info.Data.UnionID == "" {
 		return provider.Identity{}, errors.New(u.name + " 用户信息: 没有 union_id")
 	}
-	return provider.Identity{Subject: info.Data.UnionID}, nil
+	d := info.Data
+	return provider.Identity{Subject: d.UnionID, Email: d.EnterpriseEmail, Phone: d.Mobile, Name: d.Name, Picture: d.AvatarBig}, nil
 }
 
 var client = &http.Client{Timeout: 10 * time.Second}

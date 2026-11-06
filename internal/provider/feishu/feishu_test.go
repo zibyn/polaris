@@ -28,7 +28,9 @@ type fake struct {
 
 func start(t *testing.T, e *feishu.Endpoints) *fake {
 	t.Helper()
-	f := &fake{userinfo: map[string]any{"code": 0, "data": map[string]any{"union_id": "on_1", "open_id": "ou_1"}}}
+	f := &fake{userinfo: map[string]any{"code": 0, "data": map[string]any{"union_id": "on_1", "open_id": "ou_1",
+		"name": "张三", "avatar_big": "https://cdn.example/a.png", "email": "typed@example.com",
+		"enterprise_email": "zhangsan@corp.example", "mobile": "+8613800138000"}}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /token", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Content-Type") != "application/json; charset=utf-8" {
@@ -90,12 +92,14 @@ func TestFeishuSignsInAsTheUnionID(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if id.Subject != "on_1" {
+			want := provider.Identity{Subject: "on_1", Email: "zhangsan@corp.example", Phone: "+8613800138000",
+				Name: "张三", Picture: "https://cdn.example/a.png"}
+			if id != want {
 				t.Errorf("signed in as %+v", id)
 			}
 			q := f.auth
 			if q.Get("response_type") != "code" || q.Get("client_id") != "cli_1" || q.Get("code_challenge_method") != "S256" ||
-				q.Get("state") != "st" || q.Has("scope") {
+				q.Get("state") != "st" || q.Get("scope") != "contact:user.employee:readonly contact:user.phone:readonly" {
 				t.Errorf("authorization request: %v", q)
 			}
 			if f.tokenReq["grant_type"] != "authorization_code" || f.tokenReq["client_id"] != "cli_1" {

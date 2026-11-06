@@ -43,6 +43,13 @@ func start(t *testing.T) *fake {
 		}
 		_, _ = w.Write([]byte(f.userinfo))
 	})
+	mux.HandleFunc("GET /cgi-bin/user/get", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("access_token") != fmt.Sprintf("at%d", f.gettokens) || r.URL.Query().Get("userid") != "zhangsan" {
+			_, _ = w.Write([]byte(`{"errcode":60111,"errmsg":"userid not found"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"errcode":0,"errmsg":"ok","userid":"zhangsan","name":"张三"}`))
+	})
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 	login, api := wecom.Login, wecom.API
@@ -138,5 +145,25 @@ func TestWeComRefusesWhatItCannotTrust(t *testing.T) {
 				t.Errorf("err %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// A new User brings the member's name, and nothing user/get no longer gives.
+func TestWeComProfileIsTheName(t *testing.T) {
+	start(t)
+	p := newWeCom(t, "shh")
+	id, err := callback(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err = p.(provider.Profiler).Profile(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (provider.Identity{Subject: "zhangsan", Name: "张三"}); id != want {
+		t.Errorf("got %+v, want %+v", id, want)
+	}
+	if _, err := p.(provider.Profiler).Profile(context.Background(), provider.Identity{Subject: "nobody"}); err == nil {
+		t.Error("an unknown member got a profile")
 	}
 }

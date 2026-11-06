@@ -122,6 +122,31 @@ func (u *upstream) Callback(ctx context.Context, params url.Values, _, _, _ stri
 	return provider.Identity{Subject: strings.ToLower(info.UserID)}, nil
 }
 
+// Profile reads the member's name with the app's token. Since 2022-06 an app
+// gets no email, phone or avatar from user/get, only through a consent the
+// web login has no way to ask for.
+func (u *upstream) Profile(ctx context.Context, id provider.Identity) (provider.Identity, error) {
+	token, err := u.accessToken(ctx)
+	if err != nil {
+		return id, err
+	}
+	var user struct {
+		errorReply
+		Name string `json:"name"`
+	}
+	// shortcut: asks with the userid lowercased, as Subject keeps it; WeCom
+	// checks userids unique ignoring case, but whether user/get looks them up
+	// so is untested. If not, carry the original userid in Identity.
+	if err := get(ctx, "/cgi-bin/user/get", url.Values{"access_token": {token}, "userid": {id.Subject}}, &user); err != nil {
+		return id, fmt.Errorf("企业微信成员: %w", err)
+	}
+	if user.ErrCode != 0 {
+		return id, user.err("企业微信成员")
+	}
+	id.Name = user.Name
+	return id, nil
+}
+
 // accessToken is the app's cached access token, fetched when there is none
 // or it is about to expire. The lock is held across the fetch so that
 // logins arriving together fetch it once.

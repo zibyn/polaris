@@ -297,3 +297,63 @@ func TestProviderSignUpGetsDefaultRoles(t *testing.T) {
 		t.Errorf("a Provider sign-up's default Roles: %d", n)
 	}
 }
+
+// brought is what the Provider type "fake" says signed in.
+var brought provider.Identity
+
+func init() {
+	provider.Register(provider.Type{Key: "fake", Name: "Fake", New: func(map[string]string) (provider.Redirect, error) { return fakeRedirect{}, nil }})
+}
+
+// fakeRedirect sends the browser straight back, signed in as brought.
+type fakeRedirect struct{}
+
+func (fakeRedirect) AuthURL(_ context.Context, redirectURI, state, _, _ string) (string, error) {
+	return redirectURI + "?" + url.Values{"state": {state}}.Encode(), nil
+}
+
+func (fakeRedirect) Callback(context.Context, url.Values, string, string, string) (provider.Identity, error) {
+	return brought, nil
+}
+
+// A Provider's email, phone and name come with the User it signs up, and
+// only then; one another User holds turns the sign-up away.
+func TestProviderSignUpBringsIdentifiersAndProfile(t *testing.T) {
+	e := start(t)
+	ctx := context.Background()
+	if err := e.providers().Create(ctx, "corp", "fake", "Corp", map[string]string{}, audit.User("")); err != nil {
+		t.Fatal(err)
+	}
+	brought = provider.Identity{Subject: "s1", Email: "ZS@Corp.Example", Phone: "+86 138-0013-8000", Name: "张三"}
+	t.Cleanup(func() { brought = provider.Identity{} })
+	const scope = "scope=openid+email+phone+profile"
+
+	_, page := e.authorize(scope)
+	resp, _ := e.signInWith(page, "corp")
+	claims := e.idToken(e.code(resp))
+	if claims["email"] != "zs@corp.example" || claims["email_verified"] != true ||
+		claims["phone_number"] != "+8613800138000" || claims["phone_number_verified"] != true || claims["name"] != "张三" {
+		t.Errorf("sign-up: %v", claims)
+	}
+
+	// Signing in again changes nothing, whatever the Provider says now.
+	brought.Name, brought.Email = "张三丰", "zsf@corp.example"
+	e.newBrowser()
+	_, page = e.authorize(scope)
+	resp, _ = e.signInWith(page, "corp")
+	if again := e.idToken(e.code(resp)); again["sub"] != claims["sub"] || again["name"] != "张三" || again["email"] != "zs@corp.example" {
+		t.Errorf("second login: %v", again)
+	}
+
+	// Another Identity bringing that phone is turned away, and no User made.
+	brought = provider.Identity{Subject: "s2", Phone: "+8613800138000"}
+	e.newBrowser()
+	_, page = e.authorize(scope)
+	if resp, body := e.signInWith(page, "corp"); resp.StatusCode != http.StatusForbidden || !strings.Contains(body, "在账号中心绑定") {
+		t.Errorf("taken phone: %d\n%s", resp.StatusCode, body)
+	}
+	var n int
+	if err := e.pool.QueryRow(ctx, "SELECT count(*) FROM users").Scan(&n); err != nil || n != 1 {
+		t.Errorf("users: %d, %v", n, err)
+	}
+}
