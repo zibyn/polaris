@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="zh-CN" data-v="a" data-s="overview">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polaris 重构原型</title>
+<!-- 一次性原型：三套视觉方案（A 信任蓝 / B 石墨 / C 深空）共用一套新信息架构。不合入 main。 -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<style>
+/* ---------- tokens per variant ---------- */
+:root, [data-v=a] {
+  --font: 'Plus Jakarta Sans', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --bg: #F6F8FB; --panel: #FFFFFF; --raise: #FFFFFF; --sunken: #F1F5F9;
+  --fg: #0F172A; --muted: #64748B; --faint: #94A3B8;
+  --border: #E2E8F0; --border-strong: #CBD5E1;
+  --pri: #2563EB; --pri-hover: #1D4ED8; --pri-fg: #FFFFFF; --pri-soft: #EFF6FF; --pri-ink: #1D4ED8;
+  --side: #FFFFFF; --side-fg: #475569; --side-active: #EFF6FF; --side-active-fg: #1D4ED8; --side-label: #94A3B8; --side-border: #E2E8F0;
+  --ok: #15803D; --ok-soft: #F0FDF4; --warn: #B45309; --warn-soft: #FFFBEB; --bad: #DC2626; --bad-soft: #FEF2F2;
+  --r: 10px; --r-sm: 8px; --shadow: 0 1px 2px rgb(15 23 42 / .05), 0 1px 3px rgb(15 23 42 / .06);
+  --login-bg: #F6F8FB; --login-side: linear-gradient(160deg, #1E3A8A, #2563EB);
+}
+[data-v=b] {
+  --font: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --bg: #FAFAFA; --panel: #FFFFFF; --raise: #FFFFFF; --sunken: #F4F4F5;
+  --fg: #18181B; --muted: #71717A; --faint: #A1A1AA;
+  --border: #E4E4E7; --border-strong: #D4D4D8;
+  --pri: #18181B; --pri-hover: #3F3F46; --pri-fg: #FFFFFF; --pri-soft: #ECFDF5; --pri-ink: #047857;
+  --side: #18181B; --side-fg: #A1A1AA; --side-active: #27272A; --side-active-fg: #FAFAFA; --side-label: #71717A; --side-border: #27272A;
+  --r: 6px; --r-sm: 6px; --shadow: 0 1px 2px rgb(0 0 0 / .04);
+  --login-bg: #FFFFFF; --login-side: #18181B;
+}
+[data-v=c] {
+  --font: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --bg: #0A0C12; --panel: #10131C; --raise: #161A26; --sunken: #0D1017;
+  --fg: #E7E9F0; --muted: #8C93A8; --faint: #5E6579;
+  --border: #222839; --border-strong: #2F3650;
+  --pri: #4F46E5; --pri-hover: #6366F1; --pri-fg: #FFFFFF; --pri-soft: #1C1F3A; --pri-ink: #A5B4FC;
+  --side: #0A0C12; --side-fg: #8C93A8; --side-active: #161A26; --side-active-fg: #E7E9F0; --side-label: #5E6579; --side-border: #1A1F2C;
+  --ok: #4ADE80; --ok-soft: #0F2418; --warn: #FBBF24; --warn-soft: #2A2110; --bad: #F87171; --bad-soft: #2A1215;
+  --r: 10px; --r-sm: 8px; --shadow: 0 0 0 1px rgb(255 255 255 / .02);
+  --login-bg: #0A0C12; --login-side: radial-gradient(120% 80% at 20% 10%, #312E81 0%, #0A0C12 60%);
+  color-scheme: dark;
+}
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font: 14px/1.5 var(--font); color: var(--fg); background: var(--bg); -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--pri-ink); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+.muted { color: var(--muted); } .faint { color: var(--faint); }
+[data-lucide], svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
+:focus-visible { outline: 2px solid var(--pri); outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- prototype chrome (not part of the design) ---------- */
+.proto { position: fixed; z-index: 50; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 12px; align-items: center;
+  padding: 6px; background: #111; color: #eee; border-radius: 999px; box-shadow: 0 8px 30px rgb(0 0 0 / .3); font: 12px/1 system-ui; flex-wrap: wrap; max-width: calc(100vw - 32px); }
+.proto .seg { display: flex; gap: 2px; background: #222; border-radius: 999px; padding: 2px; }
+.proto button { border: 0; background: transparent; color: #bbb; padding: 7px 11px; border-radius: 999px; cursor: pointer; }
+.proto button[aria-pressed=true] { background: #fff; color: #111; }
+
+/* ---------- console shell ---------- */
+.screen { display: none; }
+html[data-s=overview] #overview, html[data-s=users] #users, html[data-s=app] #app, html[data-s=signin] #signin,
+html[data-s=account] #account, html[data-s=login] #login { display: block; }
+.shell { display: none; min-height: 100vh; }
+html:is([data-s=overview],[data-s=users],[data-s=app],[data-s=signin]) .shell { display: grid; grid-template-columns: 240px 1fr; }
+
+.side { background: var(--side); color: var(--side-fg); border-right: 1px solid var(--side-border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px; color: var(--fg); }
+[data-v=b] .brand, [data-v=c] .brand { color: #fff; }
+.logo { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--pri); color: #fff; }
+[data-v=b] .logo { background: #fff; color: #18181B; }
+.brand b { font-weight: 650; font-size: 15px; }
+.env { margin-left: auto; font-size: 11px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--side-border); color: var(--side-fg); }
+.nav { padding: 4px 8px; overflow: auto; flex: 1; }
+.nav .label { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--side-label); padding: 14px 10px 6px; }
+.nav a { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: var(--r-sm); color: var(--side-fg); font-weight: 500; transition: background .12s, color .12s; }
+.nav a:hover { text-decoration: none; background: var(--side-active); color: var(--side-active-fg); }
+.nav a[aria-current=page] { background: var(--side-active); color: var(--side-active-fg); }
+[data-v=a] .nav a[aria-current=page] svg { color: var(--pri); }
+.nav .count { margin-left: auto; font-size: 11px; color: var(--side-label); }
+.me { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--side-border); }
+.me .who { line-height: 1.25; min-width: 0; } .me .who b { display: block; font-size: 13px; color: var(--side-active-fg); font-weight: 550; }
+[data-v=a] .me .who b { color: var(--fg); }
+.me .who span { font-size: 12px; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600; background: var(--pri-soft); color: var(--pri-ink); flex: none; }
+[data-v=b] .avatar { background: #E4E4E7; color: #18181B; }
+
+.main { min-width: 0; }
+.top { position: sticky; top: 0; z-index: 5; height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 24px; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+.crumbs { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.crumbs b { color: var(--fg); font-weight: 550; }
+.search { margin-left: auto; display: flex; align-items: center; gap: 8px; width: 300px; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--panel); color: var(--faint); cursor: text; }
+kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); background: var(--sunken); }
+.search kbd { margin-left: auto; }
+.iconbtn { width: 34px; height: 34px; display: grid; place-items: center; border-radius: var(--r-sm); border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; }
+.iconbtn:hover { background: var(--sunken); color: var(--fg); }
+.page { padding: 28px 32px 96px; max-width: 1320px; }
+
+/* ---------- primitives ---------- */
+.ph { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+.ph h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
+.ph p { margin: 4px 0 0; color: var(--muted); }
+.ph .actions { margin-left: auto; display: flex; gap: 8px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: var(--r-sm); border: 1px solid var(--border-strong); background: var(--raise); font-weight: 550; cursor: pointer; transition: background .12s, border-color .12s; white-space: nowrap; }
+.btn:hover { background: var(--sunken); }
+.btn.pri { background: var(--pri); border-color: var(--pri); color: var(--pri-fg); }
+.btn.pri:hover { background: var(--pri-hover); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--border)); }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 13px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); }
+.card > header { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.card > header h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.card > header .more { margin-left: auto; font-size: 13px; }
+.card .body { padding: 18px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 550; background: var(--sunken); color: var(--muted); white-space: nowrap; }
+.chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.chip.plain::before { display: none; }
+.chip.ok { background: var(--ok-soft); color: var(--ok); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.chip.pri { background: var(--pri-soft); color: var(--pri-ink); }
+.grid { display: grid; gap: 16px; }
+.input { height: 36px; width: 100%; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--raise); transition: border-color .15s, box-shadow .15s; }
+.input:focus { outline: none; border-color: var(--pri); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pri) 18%, transparent); }
+.field { display: grid; gap: 6px; margin-bottom: 18px; max-width: 560px; }
+.field label { font-weight: 550; font-size: 13px; }
+.field .help { font-size: 12.5px; color: var(--muted); }
+.switch { width: 36px; height: 20px; border-radius: 999px; background: var(--border-strong); position: relative; flex: none; cursor: pointer; border: 0; transition: background .15s; }
+.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgb(0 0 0 / .2); }
+.switch[aria-checked=true] { background: var(--pri); }
+[data-v=b] .switch[aria-checked=true] { background: #10B981; }
+.switch[aria-checked=true]::after { transform: translateX(16px); }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 24px; overflow-x: auto; scrollbar-width: none; }
+.tabs button { border: 0; background: none; padding: 10px 12px; color: var(--muted); font-weight: 550; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; white-space: nowrap; }
+.tabs button[aria-selected=true] { color: var(--fg); border-color: var(--pri); }
+[data-v=b] .tabs button[aria-selected=true] { border-color: var(--fg); }
+.copy { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--sunken); font: 12.5px var(--mono); color: var(--fg); cursor: pointer; }
+.copy svg { width: 13px; height: 13px; color: var(--muted); }
+.copy .k { font-family: var(--font); color: var(--muted); }
+.alert { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--r-sm); background: var(--warn-soft); color: var(--warn); font-size: 13px; }
+.alert b { color: var(--fg); font-weight: 600; }
+
+/* ---------- overview ---------- */
+.kpis { grid-template-columns: repeat(4, 1fr); }
+.kpi { padding: 16px 18px; }
+.kpi .l { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.kpi .n { font-size: 28px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin-top: 6px; }
+.kpi .d { font-size: 12px; color: var(--ok); } .kpi .d.muted { color: var(--muted); }
+.spark { height: 32px; width: 100%; margin-top: 8px; color: var(--pri); }
+[data-v=b] .spark { color: #10B981; }
+.guide { display: grid; grid-template-columns: 260px 1fr; overflow: hidden; }
+.guide .intro { padding: 20px; background: var(--pri-soft); }
+[data-v=b] .guide .intro { background: #18181B; color: #fff; }
+[data-v=b] .guide .intro .muted { color: #A1A1AA; }
+.guide .intro h2 { margin: 0 0 6px; font-size: 16px; }
+.bar { height: 6px; background: color-mix(in srgb, var(--pri) 15%, transparent); border-radius: 99px; margin-top: 16px; overflow: hidden; }
+[data-v=b] .bar { background: #3F3F46; }
+.bar i { display: block; height: 100%; width: 33%; background: var(--pri); border-radius: inherit; }
+[data-v=b] .bar i { background: #10B981; }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); }
+.step { padding: 20px; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.step .ic { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: var(--sunken); color: var(--muted); margin-bottom: 4px; }
+.step.done .ic { background: var(--ok-soft); color: var(--ok); }
+.step b { font-weight: 600; }
+.step p { margin: 0 0 8px; color: var(--muted); font-size: 13px; flex: 1; }
+.two { grid-template-columns: 1fr 340px; align-items: start; }
+.feed { list-style: none; margin: 0; padding: 0; }
+.feed li { display: flex; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--border); align-items: center; }
+.feed li:first-child { border-top: 0; }
+.feed .ev { flex: 1; min-width: 0; }
+.feed time { font-size: 12px; color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dot { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; flex: none; background: var(--sunken); color: var(--muted); }
+.dot.bad { background: var(--bad-soft); color: var(--bad); }
+.dot.ok { background: var(--ok-soft); color: var(--ok); }
+.quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; }
+.quick a { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: var(--r-sm); border: 1px solid var(--border); color: var(--fg); font-weight: 550; font-size: 13px; }
+.quick a:hover { text-decoration: none; border-color: var(--pri); }
+.quick a svg { color: var(--pri-ink); }
+.health { list-style: none; margin: 0; padding: 4px 0; }
+.health li { display: flex; align-items: center; gap: 10px; padding: 10px 18px; font-size: 13px; }
+.health li .chip { margin-left: auto; }
+
+/* ---------- table ---------- */
+.toolbar { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.toolbar .input { width: 320px; padding-left: 32px; }
+.toolbar .si { position: relative; } .toolbar .si svg { position: absolute; left: 10px; top: 10px; color: var(--faint); }
+.segm { display: inline-flex; background: var(--sunken); border-radius: var(--r-sm); padding: 3px; gap: 2px; }
+.segm button { border: 0; background: none; height: 30px; padding: 0 10px; border-radius: 6px; color: var(--muted); font-weight: 550; cursor: pointer; font-size: 13px; }
+.segm button[aria-pressed=true] { background: var(--raise); color: var(--fg); box-shadow: var(--shadow); }
+.filter { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: 1px dashed var(--border-strong); border-radius: var(--r-sm); color: var(--muted); background: none; cursor: pointer; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-weight: 550; font-size: 12px; color: var(--muted); padding: 10px 14px; background: var(--sunken); border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tbody tr { transition: background .1s; cursor: pointer; }
+tbody tr:hover { background: color-mix(in srgb, var(--pri) 4%, transparent); }
+.user { display: flex; align-items: center; gap: 10px; }
+.user b { display: block; font-weight: 550; } .user span { font-size: 12px; color: var(--muted); }
+.methods { display: flex; gap: 6px; color: var(--muted); }
+.foot { display: flex; align-items: center; padding: 10px 14px; font-size: 13px; color: var(--muted); }
+.foot .pg { margin-left: auto; display: flex; gap: 4px; }
+td input[type=checkbox], th input[type=checkbox] { accent-color: var(--pri); }
+
+/* ---------- app detail ---------- */
+.apphead { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; }
+.appicon { width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center; background: var(--pri-soft); color: var(--pri-ink); }
+.appicon svg { width: 24px; height: 24px; }
+.apphead h1 { margin: 0; font-size: 22px; font-weight: 650; display: flex; align-items: center; gap: 10px; }
+.ids { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.split { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; gap: 24px; }
+.form-card .body { padding: 22px 22px 6px; }
+.form-card footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); background: var(--sunken); border-radius: 0 0 var(--r) var(--r); }
+.row { display: flex; gap: 16px; align-items: center; padding: 14px 0; border-top: 1px solid var(--border); max-width: 560px; }
+.row .t { flex: 1; } .row .t b { font-weight: 550; display: block; } .row .t span { font-size: 12.5px; color: var(--muted); }
+.code { background: #0B1020; color: #D6DEEB; border-radius: var(--r-sm); padding: 14px; font: 12px/1.65 var(--mono); overflow-x: auto; white-space: pre; margin: 0; }
+[data-v=c] .code { background: #07090E; border: 1px solid var(--border); }
+.code .k { color: #C792EA; } .code .s { color: #ADDB67; } .code .c { color: #637777; }
+.kv { display: grid; grid-template-columns: 96px 1fr; gap: 10px 12px; font-size: 13px; align-items: center; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.danger { border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--border)); border-radius: var(--r); padding: 16px 18px; display: flex; gap: 16px; align-items: center; margin-top: 24px; }
+.danger b { display: block; } .danger span { color: var(--muted); font-size: 13px; }
+.danger .btn { margin-left: auto; }
+
+/* ---------- sign-in experience ---------- */
+.sx { grid-template-columns: minmax(0, 1fr) 440px; gap: 24px; align-items: start; }
+.group-t { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .03em; padding: 16px 18px 4px; }
+.setting { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-top: 1px solid var(--border); }
+.group-t + .setting { border-top: 0; }
+.setting .t { flex: 1; } .setting .t b { font-weight: 550; display: flex; align-items: center; gap: 8px; } .setting .t span { font-size: 12.5px; color: var(--muted); }
+.setting .alert { margin-top: 8px; }
+.preview { position: sticky; top: 76px; }
+.preview .stage { padding: 20px; background: var(--sunken); border-radius: 0 0 var(--r) var(--r); display: grid; place-items: center; min-height: 520px; }
+.mini { width: 300px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 28px 24px; box-shadow: 0 8px 30px rgb(0 0 0 / .08); }
+
+/* ---------- hosted login form (shared by preview and full page) ---------- */
+.lf h2 { margin: 12px 0 2px; font-size: 20px; font-weight: 650; }
+.lf .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+.lf .input { height: 40px; margin-bottom: 10px; }
+.lf .btn { width: 100%; height: 40px; justify-content: center; }
+.lf .or { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 12px; margin: 16px 0; }
+.lf .or::before, .lf .or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.lf .socials { display: grid; gap: 8px; }
+.lf .socials .btn { font-weight: 500; }
+.lf .agree { display: flex; gap: 8px; font-size: 12px; color: var(--muted); margin: 2px 0 14px; align-items: flex-start; }
+.lf .agree input { accent-color: var(--pri); margin-top: 2px; }
+.lf .alt { text-align: center; font-size: 13px; margin-top: 14px; }
+.lf .powered { text-align: center; font-size: 12px; color: var(--faint); margin-top: 24px; display: flex; gap: 6px; justify-content: center; align-items: center; }
+.applogo { width: 40px; height: 40px; border-radius: 10px; background: var(--pri); color: #fff; display: grid; place-items: center; font-weight: 700; }
+
+#login { min-height: 100vh; background: var(--login-bg); }
+.login-wrap { min-height: 100vh; display: grid; }
+[data-v=a] .login-wrap { place-items: center; padding: 24px; }
+[data-v=a] .login-card { width: 400px; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 36px 36px 28px; box-shadow: 0 12px 40px rgb(15 23 42 / .08); }
+[data-v=a] .login-aside { display: none; }
+[data-v=b] .login-wrap, [data-v=c] .login-wrap { grid-template-columns: 1fr 1fr; }
+.login-aside { background: var(--login-side); color: #fff; padding: 40px; display: flex; flex-direction: column; }
+.login-aside .q { margin-top: auto; font-size: 26px; line-height: 1.35; font-weight: 600; letter-spacing: -.01em; max-width: 440px; }
+.login-aside .q small { display: block; margin-top: 16px; font-size: 13px; font-weight: 400; color: rgb(255 255 255 / .6); }
+[data-v=b] .login-card, [data-v=c] .login-card { width: 360px; margin: auto; }
+[data-v=a] .login-top { position: fixed; top: 20px; left: 24px; }
+
+/* ---------- account center ---------- */
+#account { min-height: 100vh; background: var(--bg); }
+.acc-top { height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 32px; border-bottom: 1px solid var(--border); background: var(--panel); }
+.acc-top .brand { padding: 0; }
+[data-v=b] .acc-top .brand, [data-v=c] .acc-top .brand { color: var(--fg); }
+[data-v=b] .acc-top .logo { background: #18181B; color: #fff; }
+.acc-top .sep { width: 1px; height: 20px; background: var(--border); }
+.acc-top .back { margin-left: auto; color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.acc { max-width: 1040px; margin: 0 auto; padding: 32px; display: grid; grid-template-columns: 220px 1fr; gap: 32px; align-items: start; }
+.acc nav a { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: var(--r-sm); color: var(--muted); font-weight: 550; }
+.acc nav a:hover { text-decoration: none; color: var(--fg); background: var(--sunken); }
+.acc nav a[aria-current=page] { background: var(--panel); color: var(--fg); box-shadow: var(--shadow); border: 1px solid var(--border); }
+.profile { display: flex; gap: 16px; align-items: center; padding: 22px; }
+.profile .avatar { width: 56px; height: 56px; font-size: 20px; }
+.profile h2 { margin: 0; font-size: 18px; }
+.score { display: flex; align-items: center; gap: 14px; padding: 16px 22px; border-top: 1px solid var(--border); }
+.ring { width: 44px; height: 44px; border-radius: 50%; background: conic-gradient(var(--ok) 0 66%, var(--sunken) 0); display: grid; place-items: center; }
+.ring::after { content: '2/3'; width: 34px; height: 34px; border-radius: 50%; background: var(--panel); display: grid; place-items: center; font-size: 11px; font-weight: 600; }
+.method { display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-top: 1px solid var(--border); }
+.method .mi { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--sunken); color: var(--muted); }
+.method .t { flex: 1; min-width: 0; } .method .t b { font-weight: 550; display: block; } .method .t span { color: var(--muted); font-size: 13px; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1100px) {
+  .split, .sx, .two { grid-template-columns: 1fr; }
+  .preview { position: static; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .guide { grid-template-columns: 1fr; } .steps { grid-template-columns: 1fr; } .step { border-left: 0; border-top: 1px solid var(--border); }
+}
+@media (max-width: 760px) {
+  html:is([data-s=overview],[data-s=users],[data-s=app],[data-s=signin]) .shell { grid-template-columns: 1fr; }
+  .side { display: none; }
+  .top { padding: 0 16px; } .search { width: auto; flex: 1; } .search span, .search kbd { display: none; }
+  .page { padding: 20px 16px 120px; }
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .toolbar .input { width: 100%; } .toolbar .si { flex: 1 1 100%; }
+  .hide-sm { display: none; }
+  [data-v=b] .login-wrap, [data-v=c] .login-wrap { grid-template-columns: 1fr; } .login-aside { display: none; }
+  [data-v=a] .login-card, .login-card { width: 100%; max-width: 400px; padding: 28px 20px; }
+  .acc { grid-template-columns: 1fr; padding: 16px; } .acc nav { display: flex; overflow-x: auto; }
+  .acc-top { padding: 0 16px; } .acc-top .back span { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ================= CONSOLE SHELL ================= -->
+<div class="shell">
+  <aside class="side" aria-label="主导航">
+    <div class="brand"><span class="logo"><i data-lucide="sparkle"></i></span><b>Polaris</b><span class="env">生产</span></div>
+    <nav class="nav">
+      <a href="#" data-go="overview"><i data-lucide="layout-dashboard"></i>概览</a>
+      <div class="label">身份认证</div>
+      <a href="#" data-go="app"><i data-lucide="app-window"></i>应用<span class="count">7</span></a>
+      <a href="#"><i data-lucide="server"></i>API 资源<span class="count">3</span></a>
+      <a href="#"><i data-lucide="key-round"></i>认证源<span class="count">4</span></a>
+      <a href="#"><i data-lucide="message-square-text"></i>验证码通道</a>
+      <div class="label">用户管理</div>
+      <a href="#" data-go="users"><i data-lucide="users"></i>用户<span class="count">1,284</span></a>
+      <a href="#"><i data-lucide="shield-check"></i>角色与权限</a>
+      <div class="label">登录体验</div>
+      <a href="#" data-go="signin"><i data-lucide="log-in"></i>登录方式与品牌</a>
+      <div class="label">系统</div>
+      <a href="#"><i data-lucide="scroll-text"></i>审计日志</a>
+      <a href="#"><i data-lucide="lock-keyhole"></i>安全</a>
+    </nav>
+    <div class="me"><span class="avatar">林</span><span class="who"><b>linmei@acme.cn</b><span>所有者</span></span><button class="iconbtn" aria-label="账号菜单" style="margin-left:auto"><i data-lucide="chevrons-up-down"></i></button></div>
+  </aside>
+
+  <div class="main">
+    <div class="top">
+      <button class="iconbtn" aria-label="收起导航"><i data-lucide="panel-left"></i></button>
+      <div class="crumbs" id="crumbs"></div>
+      <div class="search" role="button" tabindex="0"><i data-lucide="search"></i><span>搜索用户、应用、API 资源…</span><kbd>⌘K</kbd></div>
+      <a class="iconbtn" href="#" aria-label="文档"><i data-lucide="book-open"></i></a>
+      <button class="iconbtn" aria-label="切换深浅色"><i data-lucide="moon"></i></button>
+    </div>
+
+    <!-- ===== 概览 ===== -->
+    <section class="screen page" id="overview">
+      <div class="ph"><div><h1>概览</h1><p>实例 auth.acme.cn 的运行情况</p></div>
+        <div class="actions"><button class="btn"><i data-lucide="calendar"></i>近 7 天</button></div></div>
+
+      <div class="card guide" style="margin-bottom:16px">
+        <div class="intro"><h2>完成接入</h2><div class="muted" style="font-size:13px">三步让第一个应用用上统一登录。</div>
+          <div class="bar"><i></i></div><div class="muted" style="font-size:12px;margin-top:6px">已完成 1 / 3</div></div>
+        <div class="steps">
+          <div class="step done"><span class="ic"><i data-lucide="check"></i></span><b>配置验证码通道</b><p>短信已启用，用户可以用手机号验证码登录。</p><a href="#">查看通道</a></div>
+          <div class="step"><span class="ic"><i data-lucide="app-window"></i></span><b>创建应用</b><p>选择平台，拿到 client_id，按接入指南写代码。</p><span><button class="btn pri sm" data-go="app">创建应用</button></span></div>
+          <div class="step"><span class="ic"><i data-lucide="server"></i></span><b>添加 API 资源</b><p>登记自己的 API，为用户分配角色与权限。</p><span><button class="btn sm">添加 API 资源</button></span></div>
+        </div>
+      </div>
+
+      <div class="grid kpis" style="margin-bottom:16px">
+        <div class="card kpi"><div class="l"><i data-lucide="users"></i>用户</div><div class="n">1,284</div><div class="d">本周 +38</div><svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.5" points="0,26 14,24 28,25 42,19 56,20 70,14 84,12 100,6"/></svg></div>
+        <div class="card kpi"><div class="l"><i data-lucide="log-in"></i>今日新登录</div><div class="n">86</div><div class="d">较昨日 +12%</div><svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.5" points="0,20 14,22 28,14 42,18 56,10 70,16 84,9 100,11"/></svg></div>
+        <div class="card kpi"><div class="l"><i data-lucide="monitor-smartphone"></i>活跃会话</div><div class="n">412</div><div class="d muted">跨 3 个应用</div><svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.5" points="0,16 14,15 28,17 42,14 56,15 70,13 84,14 100,12"/></svg></div>
+        <div class="card kpi"><div class="l"><i data-lucide="app-window"></i>应用</div><div class="n">7</div><div class="d muted">不含内置应用</div></div>
+      </div>
+
+      <div class="grid two">
+        <div class="card">
+          <header><h2>最近事件</h2><a class="more" href="#">查看审计日志</a></header>
+          <ul class="feed">
+            <li><span class="dot ok"><i data-lucide="log-in"></i></span><div class="ev"><a href="#">a@acme.cn</a> 用验证码登录了 <a href="#">订单 App</a></div><time>2 分钟前</time></li>
+            <li><span class="dot bad"><i data-lucide="shield-alert"></i></span><div class="ev">用户 <a href="#">138****0001</a> 密码输错次数过多，暂时锁定到 14:30</div><time>9 分钟前</time></li>
+            <li><span class="dot"><i data-lucide="user-cog"></i></span><div class="ev">linmei@acme.cn 把用户 <a href="#">wang@acme.cn</a> 在 订单 API 上的角色设为 编辑、只读</div><time>1 小时前</time></li>
+            <li><span class="dot"><i data-lucide="app-window"></i></span><div class="ev">linmei@acme.cn 创建了应用 <a href="#">数据看板</a></div><time>昨天 18:02</time></li>
+            <li><span class="dot"><i data-lucide="key-round"></i></span><div class="ev">linmei@acme.cn 添加了认证源 飞书</div><time>昨天 11:40</time></li>
+          </ul>
+        </div>
+        <div class="grid">
+          <div class="card"><header><h2>快捷操作</h2></header>
+            <div class="quick">
+              <a href="#"><i data-lucide="user-plus"></i>创建用户</a><a href="#" data-go="app"><i data-lucide="plus-square"></i>创建应用</a>
+              <a href="#"><i data-lucide="key-round"></i>添加认证源</a><a href="#"><i data-lucide="book-open"></i>接入文档</a>
+            </div></div>
+          <div class="card"><header><h2>配置状态</h2></header>
+            <ul class="health">
+              <li><i data-lucide="smartphone"></i>短信通道<span class="chip ok">已启用</span></li>
+              <li><i data-lucide="mail"></i>邮件通道<span class="chip warn">未启用</span></li>
+              <li><i data-lucide="fingerprint"></i>Passkey<span class="chip ok">已开启</span></li>
+              <li><i data-lucide="key"></i>令牌签名密钥<span class="chip plain">32 天前轮换</span></li>
+            </ul></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 用户 ===== -->
+    <section class="screen page" id="users">
+      <div class="ph"><div><h1>用户</h1><p>1,284 个用户，其中 23 个待激活</p></div>
+        <div class="actions"><button class="btn"><i data-lucide="upload"></i>导入</button><button class="btn pri"><i data-lucide="plus"></i>创建用户</button></div></div>
+      <div class="card">
+        <div class="toolbar">
+          <div class="si"><i data-lucide="search"></i><input class="input" placeholder="手机号、邮箱、用户名或用户 ID"></div>
+          <div class="segm" role="group" aria-label="状态"><button aria-pressed="true">全部</button><button>已激活</button><button>待激活</button><button>已禁用</button></div>
+          <button class="filter"><i data-lucide="plus-circle"></i>角色</button>
+          <button class="filter"><i data-lucide="plus-circle"></i>认证源</button>
+        </div>
+        <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th style="width:36px"><input type="checkbox" aria-label="全选"></th><th>用户</th><th>状态</th><th class="hide-sm">角色</th><th class="hide-sm">登录方式</th><th>最后登录</th><th style="width:40px"></th></tr></thead>
+          <tbody>
+            <tr><td><input type="checkbox" aria-label="选择"></td><td><div class="user"><span class="avatar">王</span><div><b>wang@acme.cn</b><span>王小明 · 138****2210</span></div></div></td><td><span class="chip ok">已激活</span></td><td class="hide-sm"><span class="chip plain pri">订单 API · 编辑</span></td><td class="hide-sm"><span class="methods"><i data-lucide="mail" aria-label="邮箱"></i><i data-lucide="fingerprint" aria-label="Passkey"></i></span></td><td class="muted">3 分钟前</td><td><button class="iconbtn" aria-label="更多"><i data-lucide="ellipsis"></i></button></td></tr>
+            <tr><td><input type="checkbox" aria-label="选择"></td><td><div class="user"><span class="avatar">李</span><div><b>138****0001</b><span>李华</span></div></div></td><td><span class="chip bad">已禁用</span></td><td class="hide-sm faint">—</td><td class="hide-sm"><span class="methods"><i data-lucide="smartphone" aria-label="手机号"></i></span></td><td class="muted">5 天前</td><td><button class="iconbtn" aria-label="更多"><i data-lucide="ellipsis"></i></button></td></tr>
+            <tr><td><input type="checkbox" aria-label="选择"></td><td><div class="user"><span class="avatar">赵</span><div><b>zhao@acme.cn</b><span>赵敏</span></div></div></td><td><span class="chip warn">待激活</span></td><td class="hide-sm"><span class="chip plain pri">管理 API · 只读</span></td><td class="hide-sm faint">—</td><td class="muted">从未登录</td><td><button class="iconbtn" aria-label="更多"><i data-lucide="ellipsis"></i></button></td></tr>
+            <tr><td><input type="checkbox" aria-label="选择"></td><td><div class="user"><span class="avatar">陈</span><div><b>chenjie</b><span>陈杰 · 飞书</span></div></div></td><td><span class="chip ok">已激活</span></td><td class="hide-sm"><span class="chip plain pri">订单 API · 只读</span> <span class="chip plain">+1</span></td><td class="hide-sm"><span class="methods"><i data-lucide="key-round" aria-label="飞书"></i><i data-lucide="lock" aria-label="密码"></i></span></td><td class="muted">昨天</td><td><button class="iconbtn" aria-label="更多"><i data-lucide="ellipsis"></i></button></td></tr>
+            <tr><td><input type="checkbox" aria-label="选择"></td><td><div class="user"><span class="avatar">周</span><div><b>zhou@acme.cn</b><span>周婷 · 139****7788</span></div></div></td><td><span class="chip ok">已激活</span></td><td class="hide-sm faint">—</td><td class="hide-sm"><span class="methods"><i data-lucide="mail" aria-label="邮箱"></i><i data-lucide="smartphone" aria-label="手机号"></i></span></td><td class="muted">11 月 2 日</td><td><button class="iconbtn" aria-label="更多"><i data-lucide="ellipsis"></i></button></td></tr>
+          </tbody>
+        </table></div>
+        <div class="foot">第 1–5 条，共 1,284 条<div class="pg"><button class="btn sm" disabled>上一页</button><button class="btn sm">下一页</button></div></div>
+      </div>
+    </section>
+
+    <!-- ===== 应用详情 ===== -->
+    <section class="screen page" id="app">
+      <div class="apphead">
+        <span class="appicon"><i data-lucide="globe"></i></span>
+        <div><h1>订单 App <span class="chip plain">有后端的网站</span></h1>
+          <div class="ids"><button class="copy"><span class="k">client_id</span>app_8f2k1q9x<i data-lucide="copy"></i></button><button class="copy"><span class="k">Issuer</span>https://auth.acme.cn<i data-lucide="copy"></i></button></div></div>
+        <div style="margin-left:auto;display:flex;gap:8px"><button class="btn"><i data-lucide="external-link"></i>试一次登录</button></div>
+      </div>
+      <div class="tabs" role="tablist"><button aria-selected="true">基本</button><button>凭据</button><button>登录</button><button>登录方式</button><button>品牌</button><button>通知</button></div>
+      <div class="grid split">
+        <div>
+          <div class="card form-card">
+            <div class="body">
+              <div class="field"><label>名称</label><input class="input" value="订单 App"></div>
+              <div class="field"><label>默认 API 资源</label><select class="input"><option>订单 API（api://orders）</option></select><span class="help">登录拿到的 access token 只对这个 API 有效。</span></div>
+              <div class="row"><div class="t"><b>要求用户有角色</b><span>开启后，在默认 API 资源上没有角色的用户无法登录。</span></div><button class="switch" role="switch" aria-checked="false" aria-label="要求用户有角色"></button></div>
+            </div>
+            <footer><button class="btn ghost">撤销修改</button><button class="btn pri">保存</button></footer>
+          </div>
+          <div class="danger"><div><b>删除应用</b><span>已登录的用户会全部下线，client_id 立刻失效，不能恢复。</span></div><button class="btn bad"><i data-lucide="trash-2"></i>删除应用</button></div>
+        </div>
+        <aside class="card">
+          <header><i data-lucide="rocket"></i><h2>接入指南</h2><a class="more" href="#">完整文档</a></header>
+          <div class="body" style="display:grid;gap:16px">
+            <dl class="kv"><dt>Issuer</dt><dd class="mono">https://auth.acme.cn</dd><dt>client_id</dt><dd class="mono">app_8f2k1q9x</dd><dt>回调地址</dt><dd class="mono">https://orders.acme.cn/cb</dd></dl>
+            <div class="segm" role="group" aria-label="语言"><button aria-pressed="true">Node</button><button>Go</button><button>Java</button></div>
+<pre class="code"><span class="k">import</span> { Polaris } <span class="k">from</span> <span class="s">"@polaris/node"</span>
+
+<span class="k">const</span> polaris = <span class="k">new</span> Polaris({
+  issuer: <span class="s">"https://auth.acme.cn"</span>,
+  clientId: <span class="s">"app_8f2k1q9x"</span>,
+  clientSecret: process.env.POLARIS_SECRET,
+})
+<span class="c">// 跳去登录</span>
+res.redirect(<span class="k">await</span> polaris.authorizeUrl())</pre>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ===== 登录体验 ===== -->
+    <section class="screen page" id="signin">
+      <div class="ph"><div><h1>登录方式与品牌</h1><p>所有应用的托管登录页默认使用这里的配置，改动右侧即时预览。</p></div></div>
+      <div class="tabs" role="tablist"><button aria-selected="true">登录方式</button><button>品牌</button><button>用户协议</button></div>
+      <div class="grid sx">
+        <div class="card">
+          <div class="group-t">注册与登录</div>
+          <div class="setting"><div class="t"><b><i data-lucide="user-plus"></i>开放注册</b><span>开启后，新用户可以在登录页自行注册。</span></div><button class="switch" role="switch" aria-checked="true" aria-label="开放注册"></button></div>
+          <div class="setting"><div class="t"><b><i data-lucide="smartphone"></i>手机号验证码</b><span>短信通道已启用</span></div><button class="switch" role="switch" aria-checked="true" aria-label="手机号验证码"></button></div>
+          <div class="setting"><div class="t"><b><i data-lucide="mail"></i>邮箱验证码</b><span>邮件通道未启用</span>
+            <div class="alert"><i data-lucide="triangle-alert"></i><div><b>用户暂时无法用邮箱验证码登录。</b> <a href="#">去启用邮件通道</a></div></div></div><button class="switch" role="switch" aria-checked="true" aria-label="邮箱验证码"></button></div>
+          <div class="setting"><div class="t"><b><i data-lucide="lock"></i>密码登录</b><span>开启后，用户可以用手机号、邮箱或用户名加密码登录。</span></div><button class="switch" role="switch" aria-checked="true" aria-label="密码登录"></button></div>
+          <div class="setting"><div class="t"><b><i data-lucide="fingerprint"></i>Passkey</b><span>开启后，用户可以用指纹、面容或安全密钥登录。</span></div><button class="switch" role="switch" aria-checked="true" aria-label="Passkey"></button></div>
+          <div class="setting"><div class="t"><b><i data-lucide="phone"></i>必须绑定手机号</b><span>开启后，没有手机号的用户登录时要先绑定。</span></div><button class="switch" role="switch" aria-checked="false" aria-label="必须绑定手机号"></button></div>
+          <div class="group-t" style="border-top:1px solid var(--border);margin-top:4px">外部登录</div>
+          <div class="setting"><div class="t"><b><i data-lucide="key-round"></i>飞书、企业微信、Google</b><span>3 个认证源已启用，显示在登录页下方。</span></div><a class="btn sm" href="#">管理认证源</a></div>
+          <div class="group-t" style="border-top:1px solid var(--border);margin-top:4px">管理员</div>
+          <div class="setting"><div class="t"><b><i data-lucide="shield-check"></i>管理员必须启用两步验证或 Passkey</b><span>开启后，未满足的管理员进入管理端时会被拦下。</span></div><button class="switch" role="switch" aria-checked="false" aria-label="管理员必须启用两步验证"></button></div>
+        </div>
+        <div class="card preview">
+          <header><i data-lucide="eye"></i><h2>预览</h2><div class="segm" style="margin-left:auto" role="group" aria-label="设备"><button aria-pressed="true"><i data-lucide="monitor"></i></button><button><i data-lucide="smartphone"></i></button></div></header>
+          <div class="stage"><div class="mini lf">
+            <span class="applogo">订</span><h2>登录</h2><p class="sub">继续前往 订单 App</p>
+            <input class="input" placeholder="手机号、邮箱或用户名">
+            <label class="agree"><input type="checkbox">我已阅读并同意《用户协议》和《隐私政策》</label>
+            <button class="btn pri">继续</button>
+            <div class="or">或</div>
+            <div class="socials"><button class="btn"><i data-lucide="fingerprint"></i>使用 Passkey</button><button class="btn">飞书</button></div>
+            <div class="powered"><i data-lucide="sparkle"></i>由 Polaris 提供安全登录</div>
+          </div></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ================= ACCOUNT CENTER ================= -->
+<section class="screen" id="account">
+  <div class="acc-top"><span class="brand"><span class="logo"><i data-lucide="sparkle"></i></span><b>Acme 账号</b></span>
+    <a class="back" href="#"><i data-lucide="arrow-left"></i><span>返回 订单 App</span></a><span class="avatar">王</span></div>
+  <div class="acc">
+    <nav aria-label="账号中心"><a href="#" aria-current="page"><i data-lucide="user"></i>个人资料</a><a href="#"><i data-lucide="shield"></i>登录与安全</a><a href="#"><i data-lucide="monitor-smartphone"></i>设备</a><a href="#"><i data-lucide="link"></i>外部账号</a></nav>
+    <div class="grid">
+      <div class="card">
+        <div class="profile"><span class="avatar">王</span><div><h2>王小明</h2><div class="muted">wang@acme.cn · 2024 年 3 月加入</div></div><button class="btn" style="margin-left:auto">编辑资料</button></div>
+        <div class="score"><span class="ring" aria-label="账号安全 2/3"></span><div><b>账号安全：良好</b><div class="muted" style="font-size:13px">再开启两步验证，你的账号就更难被盗用。</div></div><button class="btn pri sm" style="margin-left:auto">开启两步验证</button></div>
+      </div>
+      <div class="card">
+        <header><h2>登录方式</h2></header>
+        <div class="method" style="border-top:0"><span class="mi"><i data-lucide="mail"></i></span><div class="t"><b>邮箱</b><span>wang@acme.cn</span></div><span class="chip ok">已验证</span><button class="btn sm">更换</button></div>
+        <div class="method"><span class="mi"><i data-lucide="smartphone"></i></span><div class="t"><b>手机号</b><span>138****2210</span></div><span class="chip ok">已验证</span><button class="btn sm">更换</button></div>
+        <div class="method"><span class="mi"><i data-lucide="lock"></i></span><div class="t"><b>密码</b><span>上次修改于 2 个月前</span></div><button class="btn sm">修改密码</button></div>
+        <div class="method"><span class="mi"><i data-lucide="fingerprint"></i></span><div class="t"><b>Passkey</b><span>MacBook Pro · iPhone</span></div><button class="btn sm">管理</button></div>
+        <div class="method"><span class="mi"><i data-lucide="shield-check"></i></span><div class="t"><b>两步验证</b><span>登录时再用验证器 App 确认一次</span></div><span class="chip warn">未开启</span><button class="btn pri sm">开启</button></div>
+      </div>
+      <div class="card">
+        <header><h2>正在登录的设备</h2><button class="btn sm" style="margin-left:auto">下线其他设备</button></header>
+        <div class="method" style="border-top:0"><span class="mi"><i data-lucide="laptop"></i></span><div class="t"><b>Chrome · macOS <span class="chip pri plain">当前设备</span></b><span>上海 · 刚刚活跃</span></div></div>
+        <div class="method"><span class="mi"><i data-lucide="smartphone"></i></span><div class="t"><b>订单 App · iOS</b><span>杭州 · 2 小时前</span></div><button class="btn sm ghost">下线</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HOSTED LOGIN ================= -->
+<section class="screen" id="login">
+  <div class="login-wrap">
+    <div class="login-aside">
+      <span class="brand" style="padding:0;color:#fff"><span class="logo"><i data-lucide="sparkle"></i></span><b>Acme</b></span>
+      <div class="q">一个账号，登录 Acme 的所有应用。<small>由 Polaris 提供安全登录</small></div>
+    </div>
+    <div class="login-card lf">
+      <span class="applogo">订</span><h2>登录</h2><p class="sub">继续前往 订单 App</p>
+      <input class="input" placeholder="手机号、邮箱或用户名" aria-label="登录标识">
+      <label class="agree"><input type="checkbox">我已阅读并同意《用户协议》和《隐私政策》</label>
+      <button class="btn pri">继续</button>
+      <div class="alt"><a href="#">使用密码登录</a></div>
+      <div class="or">或</div>
+      <div class="socials"><button class="btn"><i data-lucide="fingerprint"></i>使用 Passkey</button><button class="btn">飞书</button><button class="btn">企业微信</button></div>
+      <div class="powered"><i data-lucide="sparkle"></i>由 Polaris 提供安全登录</div>
+    </div>
+  </div>
+</section>
+
+<!-- prototype switcher -->
+<div class="proto" role="toolbar" aria-label="原型切换">
+  <div class="seg" data-key="v"><button data-val="a">A 信任蓝</button><button data-val="b">B 石墨</button><button data-val="c">C 深空</button></div>
+  <div class="seg" data-key="s"><button data-val="overview">概览</button><button data-val="users">用户</button><button data-val="app">应用详情</button><button data-val="signin">登录体验</button><button data-val="account">账号中心</button><button data-val="login">登录页</button></div>
+</div>
+
+<script>
+const crumbs = { overview: '<b>概览</b>', users: '用户管理 / <b>用户</b>', app: '身份认证 / 应用 / <b>订单 App</b>', signin: '登录体验 / <b>登录方式与品牌</b>' };
+const navOf = { overview: 'overview', users: 'users', app: 'app', signin: 'signin' };
+function set(key, val) {
+  const h = document.documentElement;
+  h.dataset[key] = val;
+  document.querySelectorAll(`.proto [data-key=${key}] button`).forEach(b => b.setAttribute('aria-pressed', b.dataset.val === val));
+  if (key === 's') {
+    document.getElementById('crumbs').innerHTML = crumbs[val] || '';
+    document.querySelectorAll('.nav a').forEach(a => a.dataset.go && a.dataset.go === navOf[val] ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+    window.scrollTo(0, 0);
+  }
+  history.replaceState(null, '', `#${h.dataset.v}/${h.dataset.s}`);
+}
+document.querySelectorAll('.proto .seg').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) set(seg.dataset.key, b.dataset.val); }));
+document.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) { e.preventDefault(); set('s', g.dataset.go); } });
+document.querySelectorAll('.switch').forEach(s => s.addEventListener('click', () => s.setAttribute('aria-checked', s.getAttribute('aria-checked') !== 'true')));
+document.querySelectorAll('.segm').forEach(g => g.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); }));
+document.querySelectorAll('.tabs').forEach(g => g.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; g.querySelectorAll('button').forEach(x => x.setAttribute('aria-selected', x === b)); }));
+const [v, s] = location.hash.slice(1).split('/');
+set('v', ['a','b','c'].includes(v) ? v : 'a');
+set('s', s in crumbs || s === 'account' || s === 'login' ? s : 'overview');
+lucide.createIcons();
+</script>
+</body>
+</html>
