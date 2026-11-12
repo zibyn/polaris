@@ -71,7 +71,40 @@ type Stat = {
 	icon: LucideIcon;
 	value?: number;
 	hint?: string;
+	trend?: { day: string; n: number }[];
 };
+
+// Sparkline is a stat's last 7 days: the shape only, no axes; each day
+// says its figure on hover.
+function Sparkline({ days }: { days: { day: string; n: number }[] }) {
+	const max = Math.max(1, ...days.map((d) => d.n));
+	const x = (i: number) => (i * 100) / (days.length - 1);
+	const y = (n: number) => 30 - (n * 26) / max;
+	return (
+		<svg
+			viewBox="0 0 100 32"
+			preserveAspectRatio="none"
+			className="h-8 w-full overflow-visible text-primary"
+			role="img"
+			aria-label={`近 7 天：${days.map((d) => d.n).join("、")}`}
+		>
+			<polyline
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="1.5"
+				vectorEffect="non-scaling-stroke"
+				points={days.map((d, i) => `${x(i)},${y(d.n)}`).join(" ")}
+			/>
+			{days.map((d, i) => (
+				<circle key={d.day} cx={x(i)} cy={y(d.n)} r="4" fill="transparent">
+					<title>
+						{d.day.slice(5).replace("-", "/")}：{d.n}
+					</title>
+				</circle>
+			))}
+		</svg>
+	);
+}
 
 function Home() {
 	const can = useCan();
@@ -83,12 +116,19 @@ function Home() {
 	// 应用 counts only your own, so it needs the list; without
 	// applications:read the figure isn't shown.
 	const stats: Stat[] = [
-		{ label: "用户", icon: Users, value: o.users },
+		{
+			label: "用户",
+			icon: Users,
+			value: o.users,
+			hint: "近 7 天每日新增",
+			trend: o.trend.map((d) => ({ day: d.day, n: d.users })),
+		},
 		{
 			label: "今日新登录",
 			icon: LogIn,
 			value: o.loginsToday,
-			hint: "今天新建的会话数",
+			hint: "今天新建的会话数，下为近 7 天",
+			trend: o.trend.map((d) => ({ day: d.day, n: d.logins })),
 		},
 		{ label: "活跃会话", icon: MonitorSmartphone, value: o.liveSessions },
 	];
@@ -112,7 +152,7 @@ function Home() {
 			)}
 			<Checklist />
 			<section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-				{stats.map(({ label, icon: Icon, value, hint }) => (
+				{stats.map(({ label, icon: Icon, value, hint, trend }) => (
 					<Card key={label} className="@container/card">
 						<CardHeader>
 							<CardDescription>{label}</CardDescription>
@@ -123,8 +163,9 @@ function Home() {
 								<Icon className="size-4 text-muted-foreground" aria-hidden />
 							</CardAction>
 						</CardHeader>
-						{hint && (
-							<CardFooter className="border-t-0 bg-transparent pt-0 text-muted-foreground text-sm">
+						{(hint || trend) && (
+							<CardFooter className="flex-col items-start gap-2 border-t-0 bg-transparent pt-0 text-muted-foreground text-sm">
+								{trend && <Sparkline days={trend} />}
 								{hint}
 							</CardFooter>
 						)}

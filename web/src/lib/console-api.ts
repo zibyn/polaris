@@ -24,6 +24,7 @@ export type User = {
 	pending: boolean; // 待激活: created by an admin, no password of their own yet
 	identifiers: Identifier[];
 	roles: Role[];
+	lastLoginAt?: string; // lists only: latest sign-in still in the audit log
 };
 // Invite is what a User's 注册邀请 has come to: none 没发出过（撤销了、过期了
 // 也算）, sent 有一条还没被接受的链接（expiresAt 是它的期限）, accepted 上一
@@ -73,6 +74,7 @@ export type Overview = {
 	applications: number;
 	sendsLastDay: number;
 	dailySendLimit: number;
+	trend: { day: string; users: number; logins: number }[]; // 7 days, today last
 };
 
 export type ChannelField = {

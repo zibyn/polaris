@@ -539,6 +539,31 @@
         ],
         "type": "object"
       },
+      "Day": {
+        "additionalProperties": false,
+        "properties": {
+          "day": {
+            "format": "date",
+            "type": "string"
+          },
+          "logins": {
+            "description": "Sessions signed in to that day, as loginsToday counts them",
+            "format": "int64",
+            "type": "integer"
+          },
+          "users": {
+            "description": "Users created that day",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "users",
+          "logins"
+        ],
+        "type": "object"
+      },
       "ErrorDetail": {
         "additionalProperties": false,
         "properties": {
@@ -1032,6 +1057,13 @@
             "format": "int64",
             "type": "integer"
           },
+          "trend": {
+            "description": "The last 7 days, today last",
+            "items": {
+              "$ref": "#/components/schemas/Day"
+            },
+            "type": "array"
+          },
           "users": {
             "format": "int64",
             "type": "integer"
@@ -1043,7 +1075,8 @@
           "liveSessions",
           "applications",
           "sendsLastDay",
-          "dailySendLimit"
+          "dailySendLimit",
+          "trend"
         ],
         "type": "object"
       },
@@ -1770,6 +1803,11 @@
               "null"
             ]
           },
+          "lastLoginAt": {
+            "description": "The User's latest successful sign-in still in the audit log; absent if none within its retention. Set in lists only",
+            "format": "date-time",
+            "type": "string"
+          },
           "pending": {
             "description": "待激活: an admin created the User and they have not set a password of their own yet; they can sign in but get no token until they do",
             "type": "boolean"
@@ -1840,6 +1878,11 @@
           "invite": {
             "$ref": "#/components/schemas/Invite",
             "description": "The User's 注册邀请: what the console offers 发出 / 重发 / 撤销 on"
+          },
+          "lastLoginAt": {
+            "description": "The User's latest successful sign-in still in the audit log; absent if none within its retention. Set in lists only",
+            "format": "date-time",
+            "type": "string"
           },
           "locale": {
             "description": "BCP 47 language tag, such as zh-CN",
@@ -4823,6 +4866,16 @@
             "name": "api",
             "schema": {
               "description": "API of the Role filter; defaults to the Management API",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only Users with an External Identity from this Provider",
+            "explode": false,
+            "in": "query",
+            "name": "provider",
+            "schema": {
+              "description": "Only Users with an External Identity from this Provider",
               "type": "string"
             }
           },

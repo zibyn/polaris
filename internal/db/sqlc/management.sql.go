@@ -696,28 +696,33 @@ SELECT u.id, u.created_at, u.disabled_at, u.pending,
                  FROM identifiers i WHERE i.user_id = u.id), '[]')::jsonb AS identifiers,
        COALESCE((SELECT json_agg(json_build_object('api', r.api, 'key', r.key, 'name', r.name) ORDER BY r.api, r.key)
                  FROM user_roles ur JOIN roles r ON r.api = ur.api AND r.key = ur.role
-                 WHERE ur.user_id = u.id), '[]')::jsonb AS roles
+                 WHERE ur.user_id = u.id), '[]')::jsonb AS roles,
+       (SELECT max(a.at) FROM audit_log a
+        WHERE a.sub = u.id AND a.event = 'login.succeeded')::timestamptz AS last_login_at
 FROM users u
 WHERE ($1::text = ''
        OR strpos(u.id, upper($1)) > 0
        OR EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = u.id AND strpos(i.value, lower($1)) > 0))
   AND ($2::text = ''
        OR EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id AND ur.api = $3 AND ur.role = $2))
+  AND ($4::text = ''
+       OR EXISTS (SELECT 1 FROM external_identities e WHERE e.user_id = u.id AND e.provider = $4))
   -- 待激活 by users.pending, the one definition; 剩下的一律算
   -- active, 被禁用的 User 也在那一侧 —— 他根本登录不了.
-  AND ($4::text = 'any'
-       OR ($4::text = 'pending') = u.pending)
+  AND ($5::text = 'any'
+       OR ($5::text = 'pending') = u.pending)
 ORDER BY u.created_at DESC, u.id
-LIMIT $6 OFFSET $5
+LIMIT $7 OFFSET $6
 `
 
 type ListUsersParams struct {
-	Search string
-	Role   string
-	Api    string
-	Status string
-	Off    int32
-	Lim    int32
+	Search   string
+	Role     string
+	Api      string
+	Provider string
+	Status   string
+	Off      int32
+	Lim      int32
 }
 
 type ListUsersRow struct {
@@ -727,16 +732,20 @@ type ListUsersRow struct {
 	Pending     bool
 	Identifiers []byte
 	Roles       []byte
+	LastLoginAt pgtype.Timestamptz
 }
 
 // Search matches part of the sub or of any Identifier. An empty role skips
-// the Role filter, and 'any' the status one.
+// the Role filter, an empty provider the Provider one, and 'any' the status
+// one. last_login_at is the latest login.succeeded still in the audit log:
+// one older than its retention reads as none.
 // ponytail: strpos scans every row; add a pg_trgm index when the pool is big.
 func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUsersRow, error) {
 	rows, err := q.db.Query(ctx, listUsers,
 		arg.Search,
 		arg.Role,
 		arg.Api,
+		arg.Provider,
 		arg.Status,
 		arg.Off,
 		arg.Lim,
@@ -755,6 +764,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 			&i.Pending,
 			&i.Identifiers,
 			&i.Roles,
+			&i.LastLoginAt,
 		); err != nil {
 			return nil, err
 		}
@@ -827,6 +837,42 @@ func (q *Queries) Overview(ctx context.Context, daySecs int32) (OverviewRow, err
 		&i.DailySendLimit,
 	)
 	return i, err
+}
+
+const overviewTrend = `-- name: OverviewTrend :many
+SELECT d::date AS day,
+       (SELECT count(*) FROM users WHERE created_at >= d AND created_at < d + interval '1 day') AS users,
+       (SELECT count(*) FROM sessions WHERE auth_time >= d AND auth_time < d + interval '1 day') AS logins
+FROM generate_series(date_trunc('day', now()) - interval '6 days', date_trunc('day', now()), interval '1 day') AS d
+ORDER BY d
+`
+
+type OverviewTrendRow struct {
+	Day    pgtype.Date
+	Users  int64
+	Logins int64
+}
+
+// The overview's last 7 days, today last: Users created and Sessions signed
+// in to each day, by the same midnight as logins_today.
+func (q *Queries) OverviewTrend(ctx context.Context) ([]OverviewTrendRow, error) {
+	rows, err := q.db.Query(ctx, overviewTrend)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OverviewTrendRow
+	for rows.Next() {
+		var i OverviewTrendRow
+		if err := rows.Scan(&i.Day, &i.Users, &i.Logins); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const putAPI = `-- name: PutAPI :execrows

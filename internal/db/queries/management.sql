@@ -27,20 +27,26 @@ WHERE ar.client_id = @client_id AND ar.api = @api;
 
 -- name: ListUsers :many
 -- Search matches part of the sub or of any Identifier. An empty role skips
--- the Role filter, and 'any' the status one.
+-- the Role filter, an empty provider the Provider one, and 'any' the status
+-- one. last_login_at is the latest login.succeeded still in the audit log:
+-- one older than its retention reads as none.
 -- ponytail: strpos scans every row; add a pg_trgm index when the pool is big.
 SELECT u.id, u.created_at, u.disabled_at, u.pending,
        COALESCE((SELECT json_agg(json_build_object('kind', i.kind, 'value', i.value) ORDER BY i.kind)
                  FROM identifiers i WHERE i.user_id = u.id), '[]')::jsonb AS identifiers,
        COALESCE((SELECT json_agg(json_build_object('api', r.api, 'key', r.key, 'name', r.name) ORDER BY r.api, r.key)
                  FROM user_roles ur JOIN roles r ON r.api = ur.api AND r.key = ur.role
-                 WHERE ur.user_id = u.id), '[]')::jsonb AS roles
+                 WHERE ur.user_id = u.id), '[]')::jsonb AS roles,
+       (SELECT max(a.at) FROM audit_log a
+        WHERE a.sub = u.id AND a.event = 'login.succeeded')::timestamptz AS last_login_at
 FROM users u
 WHERE (@search::text = ''
        OR strpos(u.id, upper(@search)) > 0
        OR EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = u.id AND strpos(i.value, lower(@search)) > 0))
   AND (@role::text = ''
        OR EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id AND ur.api = @api AND ur.role = @role))
+  AND (@provider::text = ''
+       OR EXISTS (SELECT 1 FROM external_identities e WHERE e.user_id = u.id AND e.provider = @provider))
   -- 待激活 by users.pending, the one definition; 剩下的一律算
   -- active, 被禁用的 User 也在那一侧 —— 他根本登录不了.
   AND (@status::text = 'any'
@@ -412,6 +418,15 @@ SELECT (SELECT count(*) FROM users) AS users,
        (SELECT count(*) FROM applications) AS applications,
        (SELECT count(*) FROM sends WHERE sent_at >= now() - make_interval(secs => @day_secs::int)) AS sends_last_day,
        (SELECT daily_send_limit FROM settings) AS daily_send_limit;
+
+-- name: OverviewTrend :many
+-- The overview's last 7 days, today last: Users created and Sessions signed
+-- in to each day, by the same midnight as logins_today.
+SELECT d::date AS day,
+       (SELECT count(*) FROM users WHERE created_at >= d AND created_at < d + interval '1 day') AS users,
+       (SELECT count(*) FROM sessions WHERE auth_time >= d AND auth_time < d + interval '1 day') AS logins
+FROM generate_series(date_trunc('day', now()) - interval '6 days', date_trunc('day', now()), interval '1 day') AS d
+ORDER BY d;
 
 -- name: SetInstanceLogo :exec
 -- Replaces the instance's Logo; audited with who did it.

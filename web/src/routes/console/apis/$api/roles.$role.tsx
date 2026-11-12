@@ -214,6 +214,7 @@ function RoleUsers({ def, role }: RoleProps) {
 			q: "",
 			api: def.identifier,
 			role: role.key,
+			provider: "",
 			status: "any",
 		}),
 		enabled: can("users:read"),
@@ -345,7 +346,7 @@ function AddUsers({
 	const [q, setQ] = useState("");
 	const [picked, setPicked] = useState(new Map<string, User>());
 	const found = useInfiniteQuery(
-		usersQuery({ q, api: "", role: "", status: "any" }),
+		usersQuery({ q, api: "", role: "", provider: "", status: "any" }),
 	);
 	const assign = useAssign(def, role);
 	const rows = found.data?.pages.flatMap((p) => p.users) ?? [];

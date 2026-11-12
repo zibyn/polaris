@@ -350,10 +350,68 @@ func TestOverview(t *testing.T) {
 	}
 	var o struct {
 		Users, LoginsToday, LiveSessions, Applications, SendsLastDay, DailySendLimit int
+		Trend                                                                        []struct {
+			Day           string
+			Users, Logins int
+		}
 	}
 	if code := e.get(e.token(e.owner, nil), "/overview", &o); code != 200 ||
 		o.Users != 2 || o.LoginsToday != 1 || o.LiveSessions != 1 || o.Applications != 2 || o.DailySendLimit != 1000 {
 		t.Errorf("overview: %d %+v", code, o)
+	}
+	// Seven days, today last: both Users made today, one sign-in today and
+	// one three days ago.
+	if len(o.Trend) != 7 {
+		t.Fatalf("trend: %+v", o.Trend)
+	}
+	today, back3 := o.Trend[6], o.Trend[3]
+	if today.Day != time.Now().Format(time.DateOnly) || today.Users != 2 || today.Logins != 1 || back3.Logins != 1 || back3.Users != 0 {
+		t.Errorf("trend: %+v", o.Trend)
+	}
+}
+
+// The list carries each User's latest sign-in still in the audit log, and
+// filters by the Provider they are bound to.
+func TestUserListLastLoginAndProvider(t *testing.T) {
+	e := start(t)
+	owner := e.token(e.owner, nil)
+	e.user("ALICE", nil, "email:alice@example.com")
+	e.user("BOB", nil, "email:bob@example.com")
+	if code := e.call("POST", owner, "/providers", google(nil), nil); code != 204 {
+		t.Fatalf("add a Provider: %d", code)
+	}
+	if _, err := e.pool.Exec(context.Background(), `
+		INSERT INTO external_identities (provider, subject, user_id) VALUES ('google', 'a', 'ALICE');
+		INSERT INTO audit_log (event, sub, at) VALUES
+			('login.succeeded', 'ALICE', now() - interval '2 days'),
+			('login.succeeded', 'ALICE', now() - interval '1 hour'),
+			('login.failed', 'ALICE', now()),
+			('login.succeeded', 'BOB', now() - interval '3 days')`); err != nil {
+		t.Fatal(err)
+	}
+	var list struct {
+		Users []struct {
+			Sub         string
+			LastLoginAt *time.Time
+		}
+	}
+	if code := e.get(owner, "/users?q=example.com", &list); code != 200 || len(list.Users) != 2 {
+		t.Fatalf("list: %d %+v", code, list)
+	}
+	for _, u := range list.Users {
+		want := map[string]time.Duration{"ALICE": time.Hour, "BOB": 72 * time.Hour}[u.Sub]
+		if u.LastLoginAt == nil || time.Since(*u.LastLoginAt).Round(time.Hour) != want {
+			t.Errorf("%s last login: %v, want %v ago", u.Sub, u.LastLoginAt, want)
+		}
+	}
+	var none struct{ Users []map[string]any }
+	e.get(owner, "/users?q="+e.owner, &none)
+	if len(none.Users) != 1 || none.Users[0]["lastLoginAt"] != nil {
+		t.Errorf("a User never signed in has no lastLoginAt: %+v", none.Users)
+	}
+
+	if code := e.get(owner, "/users?provider=google", &list); code != 200 || len(list.Users) != 1 || list.Users[0].Sub != "ALICE" {
+		t.Errorf("provider filter: %d %+v", code, list.Users)
 	}
 }
 

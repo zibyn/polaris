@@ -1,6 +1,7 @@
 import { revalidateLogic, useForm } from "@tanstack/react-form";
 import {
 	infiniteQueryOptions,
+	useQuery,
 	useSuspenseInfiniteQuery,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
@@ -10,6 +11,8 @@ import {
 	stripSearchParams,
 	useNavigate,
 } from "@tanstack/react-router";
+import { formatDistanceToNow } from "date-fns";
+import { zhCN } from "date-fns/locale";
 import { Upload } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
@@ -44,6 +47,7 @@ import { Tabs, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import { UserAvatar } from "#/components/user-avatar";
 import { api, type Role, type RoleInfo, type User } from "#/lib/console-api";
 import { onlyAdmins, primaryIdentifier, searchSchema } from "#/lib/users";
+import { providersQuery } from "#/routes/console/providers/index";
 import { useCan } from "#/routes/console/route";
 import { CreateUserSheet } from "./-components/create-user-form";
 import { ImportUsersSheet } from "./-components/import-users";
@@ -61,9 +65,16 @@ const statusName: Record<(typeof statuses)[number], string> = {
 	pending: "待激活",
 };
 
-const defaults = { q: "", api: "", role: "", status: "any" } as const;
+const defaults = {
+	q: "",
+	api: "",
+	role: "",
+	provider: "",
+	status: "any",
+} as const;
 const search = z.object({
 	q: z.string().default("").catch(""),
+	provider: z.string().default("").catch(""),
 	api: z.string().default("").catch(""),
 	role: z.string().default("").catch(""),
 	status: z.enum(statuses).default("any").catch("any"),
@@ -93,14 +104,15 @@ export const usersQuery = ({
 	q,
 	api: roleAPI,
 	role,
+	provider,
 	status,
 }: z.infer<typeof search>) =>
 	infiniteQueryOptions({
-		queryKey: ["users", q, roleAPI, role, status],
+		queryKey: ["users", q, roleAPI, role, provider, status],
 		initialPageParam: 0,
 		queryFn: ({ pageParam }) =>
 			api<{ users: User[]; hasMore: boolean }>(
-				`/users?${new URLSearchParams({ q, api: roleAPI, role, status, limit: `${pageSize}`, offset: `${pageParam}` })}`,
+				`/users?${new URLSearchParams({ q, api: roleAPI, role, provider, status, limit: `${pageSize}`, offset: `${pageParam}` })}`,
 			),
 		getNextPageParam: (last, pages) =>
 			last.hasMore ? pages.length * pageSize : undefined,
@@ -110,6 +122,8 @@ export const usersQuery = ({
 const roleKey = (r: Pick<Role, "api" | "key">) => `${r.api}\n${r.key}`;
 
 export const date = (s: string) => new Date(s).toLocaleString("zh-CN");
+const ago = (s: string) =>
+	formatDistanceToNow(new Date(s), { addSuffix: true, locale: zhCN });
 
 // userName shows a User by their primary Identifier; one with none falls
 // back to the first 8 characters of their ID.
@@ -120,13 +134,17 @@ export const userName = (u: User) =>
 
 function Users() {
 	const filters = Route.useSearch();
-	const { q, api: roleAPI, role, status } = filters;
+	const { q, api: roleAPI, role, provider, status } = filters;
 	const navigate = useNavigate({ from: Route.fullPath });
 	const { roles } = useSuspenseQuery(rolesQuery).data;
 	const users = useSuspenseInfiniteQuery(usersQuery(filters));
 	const rows = users.data.pages.flatMap((p) => p.users);
 	const filter = role ? roleKey({ api: roleAPI, key: role }) : "";
 	const can = useCan();
+	const providers = useQuery({
+		...providersQuery,
+		enabled: can("config:read"),
+	}).data?.providers;
 	const off = usePasswordLoginOff();
 	const [creating, setCreating] = useState(false);
 	const [importing, setImporting] = useState(false);
@@ -143,7 +161,7 @@ function Users() {
 	const empty = onlyAdmins(
 		rows,
 		users.hasNextPage,
-		!!(q || role || status !== "any"),
+		!!(q || role || provider || status !== "any"),
 	);
 
 	return (
@@ -188,6 +206,32 @@ function Users() {
 						))}
 					</SelectContent>
 				</Select>
+				{providers && providers.length > 0 && (
+					<Select
+						value={provider}
+						onValueChange={(v) =>
+							navigate({
+								search: (s) => ({ ...s, provider: `${v ?? ""}` || undefined }),
+							})
+						}
+					>
+						<SelectTrigger className="w-40" aria-label="按认证源筛选">
+							<SelectValue>
+								{(v: string) =>
+									providers.find((p) => p.id === v)?.name ?? "全部认证源"
+								}
+							</SelectValue>
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="">全部认证源</SelectItem>
+							{providers.map((p) => (
+								<SelectItem key={p.id} value={p.id}>
+									{p.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				)}
 				<Tabs
 					value={status}
 					onValueChange={(v) => {
@@ -246,6 +290,7 @@ function Users() {
 								<TableHead>用户</TableHead>
 								<TableHead>状态</TableHead>
 								<TableHead>角色</TableHead>
+								<TableHead>最后登录</TableHead>
 								<TableHead>注册时间</TableHead>
 							</TableRow>
 						</TableHeader>
@@ -298,6 +343,14 @@ function Users() {
 												</Badge>
 											))}
 										</span>
+									</TableCell>
+									<TableCell
+										className="text-muted-foreground"
+										title={
+											u.lastLoginAt ? undefined : "审计保留期内没有登录记录"
+										}
+									>
+										{u.lastLoginAt ? ago(u.lastLoginAt) : "—"}
 									</TableCell>
 									<TableCell className="text-muted-foreground">
 										{date(u.createdAt)}

@@ -259,6 +259,7 @@ type User struct {
 	Pending     bool         `json:"pending" doc:"待激活: an admin created the User and they have not set a password of their own yet; they can sign in but get no token until they do"`
 	Identifiers []Identifier `json:"identifiers"`
 	Roles       []Role       `json:"roles"`
+	LastLoginAt *time.Time   `json:"lastLoginAt,omitempty" doc:"The User's latest successful sign-in still in the audit log; absent if none within its retention. Set in lists only"`
 }
 
 // Invite is what a User's 注册邀请 has come to, as their page shows it.
@@ -309,12 +310,13 @@ func (s *Service) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 }
 
 type listUsersInput struct {
-	Q      string `query:"q" doc:"Part of a sub, phone number, email or username"`
-	Role   string `query:"role" doc:"Only Users holding this Role"`
-	API    string `query:"api" doc:"API of the Role filter; defaults to the Management API"`
-	Status string `query:"status" default:"any" enum:"any,active,pending" doc:"pending: 待激活 and not disabled; active: everything else, a disabled User included"`
-	Limit  int32  `query:"limit" default:"50" minimum:"1" maximum:"200"`
-	Offset int32  `query:"offset" minimum:"0"`
+	Q        string `query:"q" doc:"Part of a sub, phone number, email or username"`
+	Role     string `query:"role" doc:"Only Users holding this Role"`
+	API      string `query:"api" doc:"API of the Role filter; defaults to the Management API"`
+	Provider string `query:"provider" doc:"Only Users with an External Identity from this Provider"`
+	Status   string `query:"status" default:"any" enum:"any,active,pending" doc:"pending: 待激活 and not disabled; active: everything else, a disabled User included"`
+	Limit    int32  `query:"limit" default:"50" minimum:"1" maximum:"200"`
+	Offset   int32  `query:"offset" minimum:"0"`
 }
 
 type listUsersOutput struct {
@@ -330,7 +332,7 @@ func (s *Service) listUsers(ctx context.Context, in *listUsersInput) (*listUsers
 		api = identity.ManagementAPI
 	}
 	rows, err := s.q.ListUsers(ctx, sqlc.ListUsersParams{
-		Search: strings.TrimSpace(in.Q), Role: in.Role, Api: api, Status: in.Status, Lim: in.Limit + 1, Off: in.Offset,
+		Search: strings.TrimSpace(in.Q), Role: in.Role, Api: api, Provider: in.Provider, Status: in.Status, Lim: in.Limit + 1, Off: in.Offset,
 	})
 	if err != nil {
 		return nil, err
@@ -345,6 +347,9 @@ func (s *Service) listUsers(ctx context.Context, in *listUsersInput) (*listUsers
 		u, err := user(r.ID, r.CreatedAt.Time, r.DisabledAt, r.Pending, r.Identifiers, r.Roles)
 		if err != nil {
 			return nil, err
+		}
+		if r.LastLoginAt.Valid {
+			u.LastLoginAt = &r.LastLoginAt.Time
 		}
 		out.Body.Users = append(out.Body.Users, u)
 	}

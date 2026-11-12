@@ -66,7 +66,15 @@ type overviewOutput struct {
 		Applications   int64 `json:"applications"`
 		SendsLastDay   int64 `json:"sendsLastDay" doc:"Codes sent in the last 24 hours, which the daily limit caps"`
 		DailySendLimit int32 `json:"dailySendLimit"`
+		Trend          []Day `json:"trend" nullable:"false" doc:"The last 7 days, today last"`
 	}
+}
+
+// Day is one day of the overview's trend.
+type Day struct {
+	Day    string `json:"day" format:"date"`
+	Users  int64  `json:"users" doc:"Users created that day"`
+	Logins int64  `json:"logins" doc:"Sessions signed in to that day, as loginsToday counts them"`
 }
 
 func (s *Service) overview(ctx context.Context, _ *struct{}) (*overviewOutput, error) {
@@ -78,5 +86,13 @@ func (s *Service) overview(ctx context.Context, _ *struct{}) (*overviewOutput, e
 	b := &out.Body
 	b.Users, b.LoginsToday, b.LiveSessions, b.Applications, b.SendsLastDay, b.DailySendLimit =
 		r.Users, r.LoginsToday, r.LiveSessions, r.Applications, r.SendsLastDay, r.DailySendLimit
+	days, err := s.q.OverviewTrend(ctx)
+	if err != nil {
+		return nil, err
+	}
+	b.Trend = make([]Day, len(days))
+	for i, d := range days {
+		b.Trend[i] = Day{Day: d.Day.Time.Format(time.DateOnly), Users: d.Users, Logins: d.Logins}
+	}
 	return out, nil
 }
