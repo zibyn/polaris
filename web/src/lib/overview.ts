@@ -19,6 +19,7 @@ export const checklist = (
 	const steps = [
 		{
 			label: "配置通道",
+			desc: "短信或邮件通道用于发送登录验证码。",
 			hint: "下一步：配置验证码通道，用于发送登录验证码。",
 			to: "/console/channels",
 			permission: "config:read",
@@ -26,6 +27,7 @@ export const checklist = (
 		},
 		{
 			label: "创建应用",
+			desc: "选择平台，拿到 client_id，按接入指南写代码。",
 			hint: "下一步：创建应用，接入登录。",
 			to: "/console/apps",
 			permission: "applications:read",
@@ -33,6 +35,7 @@ export const checklist = (
 		},
 		{
 			label: "添加 API 资源",
+			desc: "登记后端 API，为用户分配角色与权限。",
 			hint: "下一步：添加 API 资源，用于签发访问后端的令牌。",
 			to: "/console/apis",
 			permission: "applications:read",

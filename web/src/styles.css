@@ -8,52 +8,54 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* 靛蓝 palette, docs/spec/consoles.md「视觉规范」. Pages take colors
-     only from these tokens. */
-  --canvas: #fbfbfc;
-  --faint: #80848b;
-  --primary-hover: #4e5ac0;
-  --primary-soft: #eef0fb;
-  --primary-ink: #4752b8;
-  --border-strong: #d5d6db;
-
-  --background: #fbfbfc;
-  --foreground: #1b1b1f;
-  --card: #ffffff;
-  --card-foreground: #1b1b1f;
-  --popover: #ffffff;
-  --popover-foreground: #1b1b1f;
-  --primary: #5e6ad2;
-  --primary-foreground: #ffffff;
-  --secondary: #f4f4f6;
-  --secondary-foreground: #1b1b1f;
-  --muted: #f4f4f6;
-  --muted-foreground: #6b6f76;
-  --accent: #f4f4f6;
-  --accent-foreground: #1b1b1f;
+  /* shadcn/ui's default neutral theme, docs/spec/consoles.md「视觉规范」.
+     Pages take colors only from these tokens. */
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+
+  /* Status colors shadcn leaves to the app. */
   --warning: oklch(0.769 0.188 70.08);
   --warning-foreground: oklch(0.414 0.112 45.904);
   --success: oklch(0.627 0.194 149.214);
-  --border: #e6e6ea;
-  --input: #d5d6db;
-  --ring: #5e6ad2;
-  --chart-1: #5e6ad2;
-  --chart-2: oklch(0.627 0.194 149.214);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: #6b6f76;
-  --chart-5: #d5d6db;
-  --radius: 8px;
-  /* Sidebar is a grey rail; the active item is a darker grey tile. */
-  --sidebar: #f4f4f6;
-  --sidebar-foreground: #5f636b;
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e8e8ec;
-  --sidebar-accent-foreground: #1b1b1f;
-  --sidebar-border: #e6e6ea;
-  --sidebar-ring: var(--ring);
+
+  /* Older names pages still use, mapped onto the theme. */
+  --canvas: var(--muted);
+  --faint: var(--muted-foreground);
+  --primary-hover: color-mix(in oklch, var(--primary) 90%, transparent);
+  --primary-soft: var(--accent);
+  --primary-ink: var(--foreground);
+  --border-strong: var(--input);
 }
 
 .dark {
@@ -157,9 +159,7 @@
     color: var(--foreground);
     @apply bg-background text-foreground;
   }
-  /* Paint the canvas on html too so pulling past the page edge doesn't
-     flash white. */
   html {
-    @apply font-sans bg-canvas;
+    @apply font-sans;
   }
 }

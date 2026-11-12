@@ -5,6 +5,15 @@ import type { ReactNode } from "react";
 import { copyText } from "#/components/copy-button";
 import { FormError } from "#/components/form";
 import { Button } from "#/components/ui/button";
+import {
+	Card,
+	CardAction,
+	CardContent,
+	CardDescription,
+	CardFooter,
+	CardHeader,
+	CardTitle,
+} from "#/components/ui/card";
 import { FieldSet } from "#/components/ui/field";
 import {
 	Tooltip,
@@ -12,8 +21,9 @@ import {
 	TooltipTrigger,
 } from "#/components/ui/tooltip";
 
-// Section is a card: the title row, then the content, and with a form a
-// grey save bar at the foot. With a TanStack form the content is that
+// Section is a shadcn Card: the header with the title and any
+// section-wide actions, the content, and with a form the save bar in the
+// card footer. With a TanStack form the content is that
 // form: children are what an editor may change, extra stays usable for
 // readers (copying client_id). Without one the rows act on their own. Put
 // sections in a space-y-4 parent for the 16px between.
@@ -39,37 +49,39 @@ export function Section({
 	children: ReactNode;
 }) {
 	return (
-		<section
-			id={id}
-			className="scroll-mt-20 rounded-lg border bg-card shadow-xs"
-		>
-			<div className="border-b px-5 py-3.5">
-				<SectionHeading title={title} intro={intro} actions={actions} />
-			</div>
+		<Card id={id} className="scroll-mt-20">
+			<CardHeader className="border-b">
+				<CardTitle>{title}</CardTitle>
+				{intro && <CardDescription>{intro}</CardDescription>}
+				{actions && (
+					<CardAction className="flex items-center gap-2">{actions}</CardAction>
+				)}
+			</CardHeader>
 			{form ? (
 				<form
 					noValidate
+					className="flex flex-col gap-(--card-spacing)"
 					onSubmit={(e) => {
 						e.preventDefault();
 						form.handleSubmit();
 					}}
 				>
-					<div className="space-y-6 p-5">
+					<CardContent className="space-y-6">
 						<FieldSet disabled={!editable} className="gap-6">
 							{children}
 						</FieldSet>
 						{extra}
-					</div>
+					</CardContent>
 					{footer && (
-						<div className="flex flex-wrap items-center justify-end gap-3 rounded-b-lg border-t bg-muted px-5 py-3">
+						<CardFooter className="flex-wrap justify-end gap-3">
 							{footer}
-						</div>
+						</CardFooter>
 					)}
 				</form>
 			) : (
-				<div className="p-5">{children}</div>
+				<CardContent>{children}</CardContent>
 			)}
-		</section>
+		</Card>
 	);
 }
 
@@ -87,7 +99,7 @@ export function SectionHeading({
 	return (
 		<div className="flex flex-wrap items-start gap-x-4 gap-y-2">
 			<div className="min-w-0 flex-1">
-				<h2 className="font-semibold text-sm">{title}</h2>
+				<h2 className="font-medium text-base leading-snug">{title}</h2>
 				{intro && (
 					<p className="mt-1 text-[13px] text-muted-foreground">{intro}</p>
 				)}
@@ -126,10 +138,12 @@ export function DangerZone({
 	children: ReactNode;
 }) {
 	return (
-		<section className="space-y-3 rounded-lg border border-destructive/40 bg-card p-5">
-			<h2 className="font-semibold text-destructive text-sm">{title}</h2>
-			{children}
-		</section>
+		<Card className="ring-destructive/40">
+			<CardHeader>
+				<CardTitle className="text-destructive">{title}</CardTitle>
+			</CardHeader>
+			<CardContent className="space-y-3">{children}</CardContent>
+		</Card>
 	);
 }
 
@@ -141,18 +155,23 @@ export function IdLine({ label, value }: { label: string; value: string }) {
 		<Tooltip>
 			<TooltipTrigger
 				render={
-					<button
-						type="button"
+					<Button
+						variant="outline"
+						size="sm"
 						onClick={() => copyText(value)}
-						className="inline-flex h-7 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md border bg-muted px-2 text-[12.5px] transition-colors hover:border-border-strong"
+						className="min-w-0 max-w-full font-normal"
 					/>
 				}
 			>
 				<span className="shrink-0 whitespace-nowrap text-muted-foreground">
 					{label}
 				</span>
-				<span className="truncate font-mono">{value}</span>
-				<Copy className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+				<span className="truncate font-mono text-xs">{value}</span>
+				<Copy
+					data-icon="inline-end"
+					className="text-muted-foreground"
+					aria-hidden
+				/>
 				<span className="sr-only">复制</span>
 			</TooltipTrigger>
 			<TooltipContent className="max-w-md break-all">

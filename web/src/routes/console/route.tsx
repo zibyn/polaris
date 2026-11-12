@@ -17,6 +17,7 @@ import {
 import {
 	AppWindow,
 	BookOpen,
+	ChevronsUpDown,
 	KeyRound,
 	LayoutDashboard,
 	LockKeyhole,
@@ -57,6 +58,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "#/components/ui/dropdown-menu";
+import { Separator } from "#/components/ui/separator";
 import {
 	Sidebar,
 	SidebarContent,
@@ -69,6 +71,7 @@ import {
 	SidebarMenuButton,
 	SidebarMenuItem,
 	SidebarProvider,
+	SidebarRail,
 	SidebarTrigger,
 	useSidebar,
 } from "#/components/ui/sidebar";
@@ -219,7 +222,7 @@ function Crumbs() {
 	];
 	return (
 		<Breadcrumb className="min-w-0">
-			<BreadcrumbList className="flex-nowrap text-[13px]">
+			<BreadcrumbList className="flex-nowrap">
 				{section && (
 					<>
 						<BreadcrumbItem className="max-sm:hidden">{section}</BreadcrumbItem>
@@ -237,9 +240,7 @@ function Crumbs() {
 										{label}
 									</BreadcrumbLink>
 								) : (
-									<BreadcrumbPage className="truncate font-medium">
-										{label}
-									</BreadcrumbPage>
+									<BreadcrumbPage className="truncate">{label}</BreadcrumbPage>
 								)}
 							</BreadcrumbItem>
 						</Fragment>
@@ -301,16 +302,20 @@ function Console() {
 		);
 	}
 	return (
-		<SidebarProvider className="text-sm">
+		<SidebarProvider>
 			<Nav />
-			<SidebarInset className="min-w-0 bg-background">
-				<header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur sm:px-6">
-					<SidebarTrigger aria-label="菜单" className="md:hidden" />
+			<SidebarInset className="min-w-0">
+				<header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+					<SidebarTrigger aria-label="收起或展开导航" className="-ml-1" />
+					<Separator
+						orientation="vertical"
+						className="mr-2 data-vertical:h-4 data-vertical:self-auto"
+					/>
 					<Crumbs />
 					<Button
 						variant="ghost"
 						size="icon"
-						className="ml-auto text-muted-foreground"
+						className="ml-auto"
 						nativeButton={false}
 						render={
 							// biome-ignore lint/a11y/useAnchorContent: the label is aria-label
@@ -325,9 +330,9 @@ function Console() {
 						<BookOpen />
 					</Button>
 				</header>
-				<div className="w-full max-w-[1320px] px-4 pt-6 pb-24 sm:px-8 sm:pt-7">
+				<div className="flex-1 p-4 md:p-6 lg:p-8">
 					{/* Lists use the whole width; form fields stop at a readable width. */}
-					<div className="[&_[data-slot=field]]:max-w-[560px]">
+					<div className="mx-auto max-w-6xl [&_[data-slot=field]]:max-w-2xl">
 						<Page
 							key={leaf.routeId}
 							useHeader={leaf.staticData.useHeader ?? noHeader}
@@ -347,20 +352,27 @@ function Nav() {
 	const { setOpenMobile } = useSidebar();
 	const active = useNavItem()?.to;
 	return (
-		<Sidebar collapsible="offcanvas">
+		<Sidebar collapsible="icon">
 			<SidebarHeader>
-				<div className="flex items-center gap-2.5 px-2 pt-2 pb-1">
-					<span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
-						<Star className="size-3.5" />
-					</span>
-					<span className="font-semibold text-[15px] text-foreground">
-						Polaris
-					</span>
-				</div>
+				<SidebarMenu>
+					<SidebarMenuItem>
+						<SidebarMenuButton size="lg" className="pointer-events-none">
+							<span className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+								<Star className="size-4" />
+							</span>
+							<span className="grid flex-1 text-left text-sm leading-tight">
+								<span className="truncate font-medium">Polaris</span>
+								<span className="truncate text-muted-foreground text-xs">
+									统一认证
+								</span>
+							</span>
+						</SidebarMenuButton>
+					</SidebarMenuItem>
+				</SidebarMenu>
 			</SidebarHeader>
-			<SidebarContent className="gap-0">
+			<SidebarContent>
 				{navSections(me.permissions).map((s) => (
-					<SidebarGroup key={s.title} className="py-1">
+					<SidebarGroup key={s.title}>
 						{s.title && <SidebarGroupLabel>{s.title}</SidebarGroupLabel>}
 						<SidebarMenu>
 							{s.items.map((g) => {
@@ -369,13 +381,13 @@ function Nav() {
 									<SidebarMenuItem key={g.to}>
 										<SidebarMenuButton
 											isActive={active === g.to}
-											className="font-medium data-active:[&_svg]:text-primary"
+											tooltip={g.label}
 											render={
 												<Link to={g.to} onClick={() => setOpenMobile(false)} />
 											}
 										>
 											{Icon && <Icon />}
-											{g.label}
+											<span>{g.label}</span>
 										</SidebarMenuButton>
 									</SidebarMenuItem>
 								);
@@ -384,20 +396,32 @@ function Nav() {
 					</SidebarGroup>
 				))}
 			</SidebarContent>
-			<SidebarFooter className="border-t">
+			<SidebarFooter>
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<DropdownMenu>
-							<DropdownMenuTrigger render={<SidebarMenuButton size="lg" />}>
+							<DropdownMenuTrigger
+								render={
+									<SidebarMenuButton
+										size="lg"
+										className="data-popup-open:bg-sidebar-accent"
+									/>
+								}
+							>
 								<UserAvatar name={me.identifier} />
 								<span
 									title={me.identifier}
-									className="truncate font-medium text-foreground"
+									className="flex-1 truncate text-left font-medium"
 								>
 									{me.identifier}
 								</span>
+								<ChevronsUpDown className="ml-auto size-4" />
 							</DropdownMenuTrigger>
-							<DropdownMenuContent side="top">
+							<DropdownMenuContent
+								side="top"
+								align="start"
+								className="min-w-56"
+							>
 								<DropdownMenuItem render={<Link to="/account" />}>
 									账号中心
 								</DropdownMenuItem>
@@ -407,6 +431,7 @@ function Nav() {
 					</SidebarMenuItem>
 				</SidebarMenu>
 			</SidebarFooter>
+			<SidebarRail />
 		</Sidebar>
 	);
 }
@@ -427,7 +452,7 @@ function PageHeader({
 		<header className="space-y-4">
 			<div>
 				<div className="flex flex-wrap items-center gap-3">
-					<h1 className="flex items-center gap-3 font-semibold text-[22px] tracking-tight">
+					<h1 className="flex items-center gap-3 font-semibold text-2xl tracking-tight">
 						{title}
 					</h1>
 					{badges}
