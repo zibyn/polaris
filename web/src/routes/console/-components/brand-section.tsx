@@ -166,7 +166,7 @@ export function BrandSection({
 									value={
 										/^#[0-9a-fA-F]{6}$/.test(field.state.value)
 											? field.state.value
-											: "#7048e8"
+											: "#171717"
 									}
 									onChange={(e) => field.handleChange(e.target.value)}
 									className="h-9 w-12 cursor-pointer rounded-md border bg-transparent"

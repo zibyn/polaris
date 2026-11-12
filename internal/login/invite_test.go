@@ -27,14 +27,14 @@ func (e *env) invited(identifier string) (sub, token string) {
 	return sub, token
 }
 
-// 邀请接受页走登录页那套视觉规范 (星云品牌区 + 最宽 340px 的表单区), 设完
+// 邀请接受页走登录页那套视觉规范 (品牌行 + 最宽 384px 的卡片), 设完
 // 密码当场建立 Session 并回到 Application —— 不用再登一次 (ADR 0016)。
 func TestAcceptingAnInviteSignsTheUserIn(t *testing.T) {
 	e := start(t)
 	sub, token := e.invited("Alice@Example.com")
 
 	resp, page := e.do("GET", "/invite?token="+token, nil)
-	if resp.StatusCode != 200 || !strings.Contains(page, `class="brand"`) || !strings.Contains(page, "max-width: 340px") {
+	if resp.StatusCode != 200 || !strings.Contains(page, `class="brand"`) || !strings.Contains(page, "max-width: 384px") {
 		t.Fatalf("邀请接受页没走共用视觉规范: %d", resp.StatusCode)
 	}
 	for _, want := range []string{`name="password"`, `minlength="8"`, `value="` + token + `"`} {

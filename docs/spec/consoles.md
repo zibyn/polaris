@@ -229,10 +229,10 @@ Passkey 开关默认打开,关它时若自己只剩 Passkey(既没开两步验�
 
 - 照 shadcn 的 `login-03` block:`bg-muted` 画布上居中,最宽 `max-w-sm`;托管页是 Go 模板,不跑 React,用同一套主题变量手写出等价的 Card、Input、Button 样式。窄屏卡片占满宽度(左右 16px)。
 - 卡片上方是品牌行:品牌标志和品牌名,下一行是口号「一个账号,登录 <品牌名> 的所有应用」(英文页「One account for every <品牌名> app」)。
-- 卡片以 Application 为主角:顶部是生效品牌的 Logo(没设就是 Polaris 标志),标题「登录」,下一行「继续前往 <Application 名>」;外部登录与 Passkey 按钮在「或」分隔线下方;卡片底部是「由 Polaris 提供安全登录」。
+- 卡片以 Application 为主角:标题「登录」,下一行「继续前往 <Application 名>」;外部登录与 Passkey 按钮在「或」分隔线下方;卡片底部是「由 Polaris 提供安全登录」。品牌标志只出现在卡片上方的品牌行,卡片里不重复。
 - **品牌**(ADR 0028):托管页能定制的只有品牌名、Logo、主色三项,实例设默认,Application 逐项覆盖。能认出 Application 的页面用它的生效品牌;认不出的(邀请接受页、首次引导、不带 `id_token_hint` 或 `client_id` 的退出页、授权请求本身无效时的错误页)用实例品牌。
   - 一项都没设时,品牌行是 Polaris 标志和「Polaris」,主色是 shadcn 默认的近黑 `--primary`。
-  - 设了任何一项:品牌行和卡片顶部换成 Logo(没设就不放)和品牌名(没设就写 Polaris);卡片底部的「由 Polaris 提供安全登录」隐藏。退出页的「退出 …？」也用品牌名。
+  - 设了任何一项:品牌行换成 Logo(没设就不放)和品牌名(没设就写 Polaris);卡片底部的「由 Polaris 提供安全登录」隐藏。退出页的「退出 …？」也用品牌名。
   - 品牌名替换品牌行、口号里的「Polaris」和 `<title>`;表单区的「继续前往 <Application 名>」不变。Logo 同时用作 favicon,由 Polaris 自己在 `/brand-logos/{key}` 提供(带 `Content-Security-Policy: sandbox`),托管页只用 `<img>` 引用。
   - 主色只配一个 `#rrggbb`,服务端推出 `--primary`、`--primary-hover`(加深)、`--primary-soft`(浅底)、`--primary-ink`(加深到在浅底上达到 4.5:1)四个值写进页面;保存时要求白字在主色上达到 WCAG AA 的 4.5:1。
   - 不开放自定义 CSS、HTML 模板、主题或 JS。要整页自己设计登录界面的 Application,用直连认证 API 自己画 UI。

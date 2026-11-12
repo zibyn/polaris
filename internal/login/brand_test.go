@@ -109,23 +109,23 @@ func (e *env) setBrand(name, logo, color string) {
 	}
 }
 
-// The instance's 品牌 replaces the 「星云」 look on every hosted page: its
-// name in the brand panel and the title, its Logo for the star and the
-// favicon, its colour's shades, and no Polaris byline.
+// The instance's 品牌 replaces the Polaris look on every hosted page: its
+// name in the brand row, the slogan and the title, its Logo for the mark
+// and the favicon, its colour's shades, and no Polaris byline.
 func TestInstanceBrandOnTheLoginPage(t *testing.T) {
 	e := start(t)
 	e.setBrand("Acme", "LOGO", "#0a66c2")
 	_, page := e.authorize("")
 	for _, want := range []string{
 		"<title>登录 · Acme</title>", `<link rel="icon" href="/brand-logos/LOGO">`,
-		`<div><img src="/brand-logos/LOGO" alt="">Acme</div>`, `<img class="logo" src="/brand-logos/LOGO" alt="">`,
+		`<div><img src="/brand-logos/LOGO" alt="">Acme</div>`, "一个账号，登录 Acme 的所有应用",
 		"--primary: #0a66c2;", "继续前往 <b>Test RP</b>",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("no %s in:\n%s", want, page)
 		}
 	}
-	for _, gone := range []string{`class="sky"`, `class="star"`, "由 Polaris 提供安全登录", "Polaris"} {
+	for _, gone := range []string{`class="mark"`, "由 Polaris 提供安全登录", "Polaris"} {
 		if strings.Contains(page, gone) {
 			t.Errorf("%s still in:\n%s", gone, page)
 		}

@@ -12,11 +12,11 @@ export function BrandTab() {
 	const client = useQueryClient();
 	return (
 		<BrandSection
-			intro="设置任一项后，登录页品牌区不再显示星云，底部不再显示「由 Polaris 提供安全登录」。应用可在登录标签中逐项覆盖。"
+			intro="设置任一项后，登录页上方改为这里的 Logo 和品牌名，底部不再显示「由 Polaris 提供安全登录」。应用可在品牌标签中逐项覆盖。"
 			brand={policy.brand}
 			editable={editable}
 			follows="Polaris"
-			followsColor="#7048e8"
+			followsColor="#171717"
 			logoPath="/settings/brand/logo"
 			onLogo={(logo) => {
 				// The next save sends the Logo back; it must be this one.

@@ -136,7 +136,7 @@ export type Policy = {
 	adminsNeedTwoFactor: boolean;
 	passkeyLogin: boolean;
 	openRegistration: boolean;
-	brand?: Brand; // absent for none: the 「星云」 look
+	brand?: Brand; // absent for none: the plain Polaris look
 };
 // Brand is a 品牌 (ADR 0028): the instance's, or an Application's own items
 // over it. logo is a reference the upload returned, served at

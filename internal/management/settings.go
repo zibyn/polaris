@@ -28,7 +28,7 @@ type Policy struct {
 	AdminsNeedTwoFactor bool   `json:"adminsNeedTwoFactor" doc:"管理员必须启用两步验证或 Passkey: Users holding a Management API Role can't use it without 两步验证 or a Passkey; only an admin who has either turns it on"`
 	PasskeyLogin        bool   `json:"passkeyLogin" doc:"The instance offers Passkey login (default true): off hides every Passkey entry, refuses every ceremony, and stops Passkeys from satisfying 管理员必须启用两步验证或 Passkey, while keeping the added ones"`
 	OpenRegistration    bool   `json:"openRegistration" doc:"开放注册 (default true): off, a code login or External Identity no User holds is refused instead of signing a new User up; admins and 注册邀请 still add Users"`
-	Brand               *Brand `json:"brand,omitempty" doc:"The instance's 品牌 on the hosted pages (ADR 0028), every Application's default; absent for none: the 「星云」 look. Its Logo is uploaded with set-instance-logo"`
+	Brand               *Brand `json:"brand,omitempty" doc:"The instance's 品牌 on the hosted pages (ADR 0028), every Application's default; absent for none: the plain Polaris look. Its Logo is uploaded with set-instance-logo"`
 }
 
 type policyBody struct{ Body Policy }

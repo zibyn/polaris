@@ -1,5 +1,5 @@
 // Star is the four-pointed Polaris mark, the brand's one graphic. It takes
-// its color from currentColor; in the Polaris color it's text-star.
+// its color from currentColor.
 export function Star({ className }: { className?: string }) {
 	return (
 		<svg viewBox="0 0 24 24" aria-hidden="true" className={className}>

@@ -2,6 +2,7 @@ package login
 
 import (
 	"bytes"
+	"flag"
 	"net/http/httptest"
 	"os"
 	"regexp"
@@ -20,12 +21,20 @@ import (
 	_ "github.com/zibyn/polaris/internal/provider/wecom"
 )
 
-// The Chinese pages are, byte for byte, what they were before the message
-// tables and brands came in (testdata/golden, captured then).
+// The Chinese pages are, byte for byte, testdata/golden; a deliberate
+// change to the templates rewrites it with -update.
+var update = flag.Bool("update", false, "rewrite testdata/golden from the templates")
+
 func TestPagesGolden(t *testing.T) {
 	for name, c := range goldenCases() {
 		w := httptest.NewRecorder()
 		page(w, langZH, chrome{Name: "Polaris"}, 200, c.tmpl, c.data)
+		if *update {
+			if err := os.WriteFile("testdata/golden/"+name+".html", w.Body.Bytes(), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
 		want, err := os.ReadFile("testdata/golden/" + name + ".html")
 		if err != nil {
 			t.Fatal(err)

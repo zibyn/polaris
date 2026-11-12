@@ -1130,10 +1130,10 @@ func (s *Service) page(w http.ResponseWriter, r *http.Request, uiLocales, client
 }
 
 // chrome is what a hosted page shows around its form: its title and the
-// 品牌 (ADR 0028). The zero brand, with Name Polaris, is the 「星云」 one.
+// 品牌 (ADR 0028). The zero brand, with Name Polaris, is the plain Polaris one.
 type chrome struct {
 	Title, Name string
-	// Branded: some item of the brand is set, and the nebula, the star and
+	// Branded: some item of the brand is set, and the Polaris mark and
 	// 「由 Polaris 提供安全登录」 go.
 	Branded bool
 	Logo    string // the Logo's path, also the favicon
@@ -1144,7 +1144,7 @@ type chrome struct {
 var titles = map[string]string{"login": "登录", "setup": "首次引导", "invite": "设置密码", "denied": "没有权限", "logout": "退出登录"}
 
 // brand is the chrome of the Application clientID's pages. One it cannot
-// read is the 「星云」 one: the page still shows.
+// read is the plain Polaris one: the page still shows.
 func (s *Service) brand(ctx context.Context, clientID string) chrome {
 	b, err := s.q.Brand(ctx, clientID)
 	if err != nil {
