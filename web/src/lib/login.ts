@@ -196,3 +196,24 @@ export const disableImpact = (p: { bound: number; onlyLoginPath: number }) =>
 	p.bound
 		? `已有 ${p.bound} 个用户绑定，其中 ${p.onlyLoginPath} 个没有其他登录方式，停用后将无法登录。`
 		: "暂无用户绑定。";
+
+// identifierLabel is what the hosted page's first step asks for, as
+// internal/login/login.go builds it: the code kinds with a Channel, then
+// 用户名 when password login is on. The 登录体验 preview shows it.
+export const identifierLabel = (
+	kinds: readonly ("phone" | "email")[],
+	passwordOn: boolean,
+) => {
+	const codes =
+		kinds.length === 2
+			? "手机号或邮箱"
+			: kinds[0] === "phone"
+				? "手机号"
+				: kinds[0] === "email"
+					? "邮箱"
+					: "";
+	if (!passwordOn) {
+		return codes;
+	}
+	return codes ? `${codes.replace("或", "、")}或用户名` : "用户名";
+};

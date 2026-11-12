@@ -5,6 +5,7 @@ import {
 	channelSchema,
 	disableImpact,
 	hasChannel,
+	identifierLabel,
 	lastRotation,
 	numberSchema,
 	planPolicySave,
@@ -387,4 +388,16 @@ test("disabling a Provider says whom it locks out", () => {
 		"已有 12 个用户绑定，其中 3 个没有其他登录方式，停用后将无法登录。",
 	);
 	assert.equal(disableImpact({ bound: 0, onlyLoginPath: 0 }), "暂无用户绑定。");
+});
+
+test("the preview asks for what the hosted page asks for", () => {
+	assert.equal(
+		identifierLabel(["phone", "email"], true),
+		"手机号、邮箱或用户名",
+	);
+	assert.equal(identifierLabel(["phone"], true), "手机号或用户名");
+	assert.equal(identifierLabel(["email"], false), "邮箱");
+	assert.equal(identifierLabel(["phone", "email"], false), "手机号或邮箱");
+	assert.equal(identifierLabel([], true), "用户名");
+	assert.equal(identifierLabel([], false), "");
 });
