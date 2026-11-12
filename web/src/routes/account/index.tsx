@@ -6,6 +6,7 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { ShieldAlert, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { encode } from "uqr";
@@ -18,7 +19,15 @@ import {
 } from "#/components/profile-details";
 import { Star } from "#/components/star";
 import { Badge } from "#/components/ui/badge";
-import { Button } from "#/components/ui/button";
+import { Button, buttonVariants } from "#/components/ui/button";
+import {
+	Card,
+	CardAction,
+	CardDescription,
+	CardFooter,
+	CardHeader,
+	CardTitle,
+} from "#/components/ui/card";
 import {
 	Dialog,
 	DialogContent,
@@ -76,7 +85,6 @@ import {
 import { kindName, primaryIdentifier } from "#/lib/users";
 import { meQuery } from "#/routes/account/route";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
-import { Panel } from "#/routes/console/-components/panel";
 import { DangerZone, Section } from "#/routes/console/-components/section";
 
 export const Route = createFileRoute("/account/")({
@@ -174,23 +182,26 @@ function Account() {
 	const main = primaryIdentifier(user.identifiers);
 
 	return (
-		<div className="min-h-svh bg-canvas p-2 text-sm sm:p-6">
-			<Panel className="mx-auto max-w-2xl space-y-4 px-6 py-8 sm:px-14 sm:py-11">
-				<div className="flex items-center gap-2 font-semibold">
-					{/* As on the hosted pages: a brand's Logo, if any, replaces the star. */}
+		<div className="min-h-svh bg-muted/40 text-sm">
+			<header className="sticky top-0 z-10 border-b bg-background">
+				<div className="mx-auto flex h-14 max-w-5xl items-center gap-2 px-4 font-medium">
+					{/* As on the hosted pages: a brand's Logo, if any, replaces the mark. */}
 					{brand.logo ? (
-						<img src={brand.logo} alt="" className="size-5 object-contain" />
+						<img src={brand.logo} alt="" className="size-6 object-contain" />
 					) : (
 						!(brand.name || brand.color) && (
-							<Star className="size-5 text-star" />
+							<span className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
+								<Star className="size-3.5" />
+							</span>
 						)
 					)}
 					{brand.name || "Polaris"}
-					<div className="ml-auto flex gap-4">
+					<span className="text-muted-foreground">账号中心</span>
+					<div className="ml-auto flex items-center gap-1">
 						{brand.back && (
 							<a
 								href={brand.back.url}
-								className="font-medium text-[13px] text-primary-ink underline-offset-2 hover:underline"
+								className={buttonVariants({ variant: "ghost", size: "sm" })}
 							>
 								返回 {brand.back.name}
 							</a>
@@ -199,60 +210,76 @@ function Account() {
 						{user.admin && (
 							<Link
 								to="/console"
-								className="font-medium text-[13px] text-primary-ink underline-offset-2 hover:underline"
+								className={buttonVariants({ variant: "ghost", size: "sm" })}
 							>
 								返回管理端
 							</Link>
 						)}
 					</div>
 				</div>
-				<header className="flex items-center gap-4">
-					<UserAvatar
-						name={user.nickname ?? main}
-						picture={user.picture}
-						size="lg"
-					/>
-					<div className="min-w-0">
-						<h1 className="truncate font-semibold text-2xl tracking-tight">
-							{user.nickname ?? main ?? user.sub}
-						</h1>
-						<p className="text-[13px] text-muted-foreground">
-							注册于 {date(user.createdAt)}
-						</p>
-					</div>
-					<Button variant="outline" className="ml-auto" onClick={logout}>
-						退出登录
-					</Button>
-				</header>
-				<ProfileSection me={user} />
-				<LoginMethods me={user} guard={guard} />
-				<Security me={user} guard={guard} />
-				<Sessions />
-				<RecentLogins />
-				<Section title="数据与隐私">
-					<ItemList>
-						<PropRow
-							label="导出我的数据"
-							actions={
-								<Button
-									variant="ghost"
-									size="sm"
-									onClick={() =>
-										guard(() => exportData(user.sub).catch(failed("导出失败")))
-									}
-								>
-									导出
+			</header>
+			<div className="mx-auto grid max-w-5xl items-start gap-6 p-4 md:p-6 lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-8">
+				<Toc />
+				<main className="min-w-0 space-y-4">
+					<Card>
+						<CardHeader>
+							<div className="flex items-center gap-4">
+								<UserAvatar
+									name={user.nickname ?? main}
+									picture={user.picture}
+									size="lg"
+								/>
+								<div className="min-w-0">
+									<CardTitle className="truncate text-xl">
+										<h1>{user.nickname ?? main ?? user.sub}</h1>
+									</CardTitle>
+									<CardDescription>
+										注册于 {date(user.createdAt)}
+									</CardDescription>
+								</div>
+							</div>
+							<CardAction>
+								<Button variant="outline" onClick={logout}>
+									退出登录
 								</Button>
-							}
-						>
-							<Muted>登录方式、设备与会话、同意记录和安全事件，JSON 格式</Muted>
-						</PropRow>
-					</ItemList>
-				</Section>
-				<DangerZone title="危险操作">
-					<DeleteAccount guard={guard} onDeleted={() => setDeleted(true)} />
-				</DangerZone>
-			</Panel>
+							</CardAction>
+						</CardHeader>
+						<SecuritySummary me={user} />
+					</Card>
+					<ProfileSection me={user} />
+					<LoginMethods me={user} guard={guard} />
+					<Security me={user} guard={guard} />
+					<Sessions />
+					<RecentLogins />
+					<Section title="数据与隐私" id="privacy">
+						<ItemList>
+							<PropRow
+								label="导出我的数据"
+								actions={
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() =>
+											guard(() =>
+												exportData(user.sub).catch(failed("导出失败")),
+											)
+										}
+									>
+										导出
+									</Button>
+								}
+							>
+								<Muted>
+									登录方式、设备与会话、同意记录和安全事件，JSON 格式
+								</Muted>
+							</PropRow>
+						</ItemList>
+					</Section>
+					<DangerZone title="危险操作">
+						<DeleteAccount guard={guard} onDeleted={() => setDeleted(true)} />
+					</DangerZone>
+				</main>
+			</div>
 			<Reauth
 				me={user}
 				open={pending !== null}
@@ -265,6 +292,108 @@ function Account() {
 				}}
 			/>
 		</div>
+	);
+}
+
+// Toc is the page's table of contents: a column on wide screens that marks
+// the section in view, a row of links on narrow ones.
+const tocItems = [
+	["profile", "个人资料"],
+	["methods", "登录方式"],
+	// The 安全 section keeps #passkeys, where passkey-endpoints points.
+	["passkeys", "安全"],
+	["sessions", "设备与会话"],
+	["logins", "最近登录"],
+	["privacy", "数据与隐私"],
+] as const;
+
+function Toc() {
+	const [current, setCurrent] = useState<string>("profile");
+	useEffect(() => {
+		const seen = new IntersectionObserver(
+			(entries) => {
+				const top = entries
+					.filter((e) => e.isIntersecting)
+					.sort(
+						(a, b) => a.boundingClientRect.top - b.boundingClientRect.top,
+					)[0];
+				if (top) setCurrent(top.target.id);
+			},
+			{ rootMargin: "-56px 0px -60% 0px" },
+		);
+		for (const [id] of tocItems) {
+			const el = document.getElementById(id);
+			if (el) seen.observe(el);
+		}
+		return () => seen.disconnect();
+	}, []);
+	return (
+		<nav
+			aria-label="账号中心目录"
+			className="-mx-4 flex gap-1 overflow-x-auto px-4 lg:sticky lg:top-20 lg:mx-0 lg:flex-col lg:px-0"
+		>
+			{tocItems.map(([id, label]) => (
+				<a
+					key={id}
+					href={`#${id}`}
+					aria-current={current === id ? "location" : undefined}
+					className={buttonVariants({
+						variant: current === id ? "secondary" : "ghost",
+						size: "sm",
+						className: "shrink-0 justify-start",
+					})}
+				>
+					{label}
+				</a>
+			))}
+		</nav>
+	);
+}
+
+// SecuritySummary counts what keeps the account safe: a phone number or
+// email to get back in by, 两步验证, and a Passkey while the instance
+// offers them. It points at the first one missing.
+function SecuritySummary({ me }: { me: Me }) {
+	const passkeys = useSuspenseQuery(passkeysQuery).data.passkeys;
+	const checks = [
+		{
+			ok: me.identifiers.some((i) => i.kind !== "username"),
+			todo: "绑定手机号或邮箱",
+			href: "#methods",
+		},
+		{ ok: me.twoFactor.enabled, todo: "开启两步验证", href: "#passkeys" },
+		...(me.passkeyLogin
+			? [{ ok: passkeys.length > 0, todo: "添加 Passkey", href: "#passkeys" }]
+			: []),
+	];
+	const met = checks.filter((c) => c.ok).length;
+	const next = checks.find((c) => !c.ok);
+	return (
+		<CardFooter className="gap-3">
+			{next ? (
+				<ShieldAlert className="size-5 shrink-0 text-warning-foreground" />
+			) : (
+				<ShieldCheck className="size-5 shrink-0 text-success" />
+			)}
+			<div className="min-w-0 flex-1">
+				<p className="font-medium">
+					账号安全：{next ? "待加强" : "良好"}
+					<span className="ml-2 font-normal text-muted-foreground tabular-nums">
+						{met} / {checks.length}
+					</span>
+				</p>
+				{next && (
+					<p className="text-muted-foreground">
+						{next.todo}后，你的账号更难被盗用。
+					</p>
+				)}
+			</div>
+			{next && (
+				<a href={next.href} className={buttonVariants({ size: "sm" })}>
+					{next.todo}
+				</a>
+			)}
+		</CardFooter>
 	);
 }
 
@@ -314,7 +443,7 @@ function ProfileSection({ me }: { me: Me }) {
 		onError: failed("移除头像失败"),
 	});
 	return (
-		<Section title="个人资料">
+		<Section title="个人资料" id="profile">
 			<ItemList>
 				<PropRow
 					label="昵称"
@@ -481,7 +610,7 @@ function LoginMethods({ me, guard }: { me: Me; guard: Guard }) {
 	});
 	const username = me.identifiers.find((i) => i.kind === "username");
 	return (
-		<Section title="登录方式">
+		<Section title="登录方式" id="methods">
 			<ItemList>
 				{(["phone", "email"] as const).map((kind) => {
 					const id = me.identifiers.find((i) => i.kind === kind);
@@ -1262,6 +1391,7 @@ function RecentLogins() {
 	const { logins, failedCount } = useSuspenseQuery(loginsQuery).data;
 	return (
 		<Section
+			id="logins"
 			title="最近登录"
 			intro={
 				failedCount > 0
