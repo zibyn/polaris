@@ -355,7 +355,7 @@ function Nav() {
 	const { setOpenMobile } = useSidebar();
 	const active = useNavItem()?.to;
 	return (
-		<Sidebar collapsible="icon">
+		<Sidebar variant="inset" collapsible="icon">
 			<SidebarHeader>
 				<SidebarMenu>
 					<SidebarMenuItem>
