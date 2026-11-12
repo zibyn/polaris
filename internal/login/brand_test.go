@@ -110,7 +110,7 @@ func (e *env) setBrand(name, logo, color string) {
 }
 
 // The instance's 品牌 replaces the Polaris look on every hosted page: its
-// name in the brand row, the slogan and the title, its Logo for the mark
+// name in the brand row and the title, its Logo for the mark
 // and the favicon, its colour's shades, and no Polaris byline.
 func TestInstanceBrandOnTheLoginPage(t *testing.T) {
 	e := start(t)
@@ -118,7 +118,7 @@ func TestInstanceBrandOnTheLoginPage(t *testing.T) {
 	_, page := e.authorize("")
 	for _, want := range []string{
 		"<title>登录 · Acme</title>", `<link rel="icon" href="/brand-logos/LOGO">`,
-		`<div><img src="/brand-logos/LOGO" alt="">Acme</div>`, "一个账号，登录 Acme 的所有应用",
+		`<div><img src="/brand-logos/LOGO" alt="">Acme</div>`, "一个账号，登录所有应用",
 		"--primary: #0a66c2;", "继续前往 <b>Test RP</b>",
 	} {
 		if !strings.Contains(page, want) {
