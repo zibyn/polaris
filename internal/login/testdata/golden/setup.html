@@ -64,10 +64,13 @@ form > button.resend:disabled { color: var(--faint); text-decoration: none; curs
  
 .field-group { display: grid; gap: 4px; font-size: 13px; font-weight: 500; }
 .field { position: relative; display: block; }
-.field input { width: 100%; padding-inline-end: 56px; }
-.field button.reveal { position: absolute; inset-block: 2px; inset-inline-end: 2px; min-height: 0; padding: 0 8px; border-radius: 6px; background: transparent; color: var(--primary-ink); font-size: 12px; font-weight: 500; }
-.field button.reveal:hover { background: var(--primary-soft); }
-.field button.reveal:focus-visible { outline-offset: -2px; }
+.field input { width: 100%; padding-inline-end: 40px; }
+ 
+.field button.reveal { position: absolute; inset-block: 2px; inset-inline-end: 2px; display: grid; place-items: center; width: 32px; min-height: 0; padding: 0; border-radius: 4px; background: transparent; color: var(--muted); box-shadow: none; }
+.field button.reveal:hover { background: var(--primary-soft); color: var(--ink); }
+.field button.reveal svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.field button.reveal .off, .field button.reveal.shown .on { display: none; }
+.field button.reveal.shown .off { display: block; }
 .who { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px; background: var(--canvas); overflow-wrap: anywhere; }
 .who a { font-size: 13px; flex: none; }
 .error { color: var(--danger); font-size: 13px; }
@@ -131,7 +134,7 @@ addEventListener("click", e => {
   if (!input) return;
   const show = input.type === "password";
   input.type = show ? "text" : "password";
-  button.textContent = show ? "隐藏" : "显示";
+  button.classList.toggle("shown", show);
   button.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
 });
 
@@ -168,7 +171,7 @@ addEventListener("DOMContentLoaded", () => {
     <label for="password">密码</label>
     <span class="field">
       <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8">
-      <button type="button" class="reveal" aria-label="显示密码">显示</button>
+      <button type="button" class="reveal" aria-label="显示密码"><svg class="on" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg><svg class="off" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg></button>
     </span>
   </span>
   <p class="error" role="alert">setup token 无效</p>

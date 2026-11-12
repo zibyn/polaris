@@ -21,8 +21,6 @@ var messagesEN = map[string]string{
 	"设置密码":             "Set your password",
 	"没有权限":             "No access",
 	"退出登录":             "Sign out",
-	"隐藏":               "Hide",
-	"显示":               "Show",
 	"隐藏密码":             "Hide password",
 	"显示密码":             "Show password",
 	"由 Polaris 提供安全登录": "Secured by Polaris",
