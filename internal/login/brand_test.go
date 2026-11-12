@@ -118,7 +118,7 @@ func TestInstanceBrandOnTheLoginPage(t *testing.T) {
 	_, page := e.authorize("")
 	for _, want := range []string{
 		"<title>登录 · Acme</title>", `<link rel="icon" href="/brand-logos/LOGO">`,
-		`<div><img src="/brand-logos/LOGO" alt="">Acme</div>`, "一个账号，登录所有应用",
+		`<div><img src="/brand-logos/LOGO" alt="">Acme</div>`,
 		"--primary: #0a66c2;", "继续前往 <b>Test RP</b>",
 	} {
 		if !strings.Contains(page, want) {

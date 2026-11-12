@@ -24,7 +24,6 @@ var messagesEN = map[string]string{
 	"隐藏密码":             "Hide password",
 	"显示密码":             "Show password",
 	"由 Polaris 提供安全登录": "Secured by Polaris",
-	"一个账号，登录所有应用":      "One account for all your apps",
 	"我已阅读并同意":          "I have read and agree to the ",
 	"《用户协议》":           "Terms of Service",
 	"和":                " and the ",
