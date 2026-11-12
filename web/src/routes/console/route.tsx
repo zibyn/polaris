@@ -79,6 +79,7 @@ import { Tabs, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import { UserAvatar } from "#/components/user-avatar";
 import { APIError, api, logout, type Me } from "#/lib/console-api";
 import { navItems, navSections, needsTwoFactor } from "#/lib/nav";
+import { GlobalSearch } from "./-components/global-search";
 
 export const meQuery = queryOptions({
 	queryKey: ["me"],
@@ -312,10 +313,10 @@ function Console() {
 						className="mr-2 data-vertical:h-4 data-vertical:self-auto"
 					/>
 					<Crumbs />
+					<GlobalSearch />
 					<Button
 						variant="ghost"
 						size="icon"
-						className="ml-auto"
 						nativeButton={false}
 						render={
 							// biome-ignore lint/a11y/useAnchorContent: the label is aria-label
