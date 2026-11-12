@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-v="a" data-s="overview">
+<html lang="zh-CN" data-v="d" data-a="linear" data-s="overview">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -45,6 +45,19 @@
   color-scheme: dark;
 }
 
+[data-v=d] {
+  /* A + B 融合：A 的浅色外壳与居中登录卡，B 的 Inter、中性灰、小圆角；主色取 Linear 靛蓝或 Clerk 紫 */
+  --font: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --bg: #FBFBFC; --panel: #FFFFFF; --raise: #FFFFFF; --sunken: #F4F4F6;
+  --fg: #1B1B1F; --muted: #6B6F76; --faint: #80848B;
+  --border: #E6E6EA; --border-strong: #D5D6DB;
+  --pri: #5E6AD2; --pri-hover: #4E5AC0; --pri-fg: #FFFFFF; --pri-soft: #EEF0FB; --pri-ink: #4752B8;
+  --side: #F4F4F6; --side-fg: #5F636B; --side-active: #E8E8EC; --side-active-fg: #1B1B1F; --side-label: #9A9DA3; --side-border: #E6E6EA;
+  --r: 8px; --r-sm: 6px; --shadow: 0 1px 2px rgb(16 16 24 / .04);
+  --login-bg: #F4F4F6;
+}
+[data-v=d][data-a=clerk] { --pri: #6C47FF; --pri-hover: #5B36F0; --pri-soft: #F1EDFF; --pri-ink: #5A35E8; }
+
 /* ---------- base ---------- */
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -84,11 +97,11 @@ html:is([data-s=overview],[data-s=users],[data-s=app],[data-s=signin]) .shell { 
 .nav a { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: var(--r-sm); color: var(--side-fg); font-weight: 500; transition: background .12s, color .12s; }
 .nav a:hover { text-decoration: none; background: var(--side-active); color: var(--side-active-fg); }
 .nav a[aria-current=page] { background: var(--side-active); color: var(--side-active-fg); }
-[data-v=a] .nav a[aria-current=page] svg { color: var(--pri); }
+:is([data-v=a],[data-v=d]) .nav a[aria-current=page] svg { color: var(--pri); }
 .nav .count { margin-left: auto; font-size: 11px; color: var(--side-label); }
 .me { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--side-border); }
 .me .who { line-height: 1.25; min-width: 0; } .me .who b { display: block; font-size: 13px; color: var(--side-active-fg); font-weight: 550; }
-[data-v=a] .me .who b { color: var(--fg); }
+:is([data-v=a],[data-v=d]) .me .who b { color: var(--fg); }
 .me .who span { font-size: 12px; }
 .avatar { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600; background: var(--pri-soft); color: var(--pri-ink); flex: none; }
 [data-v=b] .avatar { background: #E4E4E7; color: #18181B; }
@@ -142,7 +155,7 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border);
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 24px; overflow-x: auto; scrollbar-width: none; }
 .tabs button { border: 0; background: none; padding: 10px 12px; color: var(--muted); font-weight: 550; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; white-space: nowrap; }
 .tabs button[aria-selected=true] { color: var(--fg); border-color: var(--pri); }
-[data-v=b] .tabs button[aria-selected=true] { border-color: var(--fg); }
+[data-v=b] .tabs button[aria-selected=true], [data-v=d] .tabs button[aria-selected=true] { border-color: var(--fg); }
 .copy { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--sunken); font: 12.5px var(--mono); color: var(--fg); cursor: pointer; }
 .copy svg { width: 13px; height: 13px; color: var(--muted); }
 .copy .k { font-family: var(--font); color: var(--muted); }
@@ -257,15 +270,15 @@ td input[type=checkbox], th input[type=checkbox] { accent-color: var(--pri); }
 
 #login { min-height: 100vh; background: var(--login-bg); }
 .login-wrap { min-height: 100vh; display: grid; }
-[data-v=a] .login-wrap { place-items: center; padding: 24px; }
-[data-v=a] .login-card { width: 400px; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 36px 36px 28px; box-shadow: 0 12px 40px rgb(15 23 42 / .08); }
-[data-v=a] .login-aside { display: none; }
+:is([data-v=a],[data-v=d]) .login-wrap { place-items: center; padding: 24px; }
+:is([data-v=a],[data-v=d]) .login-card { width: 400px; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 36px 36px 28px; box-shadow: 0 12px 40px rgb(15 23 42 / .08); }
+:is([data-v=a],[data-v=d]) .login-aside { display: none; }
 [data-v=b] .login-wrap, [data-v=c] .login-wrap { grid-template-columns: 1fr 1fr; }
 .login-aside { background: var(--login-side); color: #fff; padding: 40px; display: flex; flex-direction: column; }
 .login-aside .q { margin-top: auto; font-size: 26px; line-height: 1.35; font-weight: 600; letter-spacing: -.01em; max-width: 440px; }
 .login-aside .q small { display: block; margin-top: 16px; font-size: 13px; font-weight: 400; color: rgb(255 255 255 / .6); }
 [data-v=b] .login-card, [data-v=c] .login-card { width: 360px; margin: auto; }
-[data-v=a] .login-top { position: fixed; top: 20px; left: 24px; }
+:is([data-v=a],[data-v=d]) .login-top { position: fixed; top: 20px; left: 24px; }
 
 /* ---------- account center ---------- */
 #account { min-height: 100vh; background: var(--bg); }
@@ -305,7 +318,7 @@ td input[type=checkbox], th input[type=checkbox] { accent-color: var(--pri); }
   .toolbar .input { width: 100%; } .toolbar .si { flex: 1 1 100%; }
   .hide-sm { display: none; }
   [data-v=b] .login-wrap, [data-v=c] .login-wrap { grid-template-columns: 1fr; } .login-aside { display: none; }
-  [data-v=a] .login-card, .login-card { width: 100%; max-width: 400px; padding: 28px 20px; }
+  .login-card { width: 100%; max-width: 400px; padding: 28px 20px; }
   .acc { grid-template-columns: 1fr; padding: 16px; } .acc nav { display: flex; overflow-x: auto; }
   .acc-top { padding: 0 16px; } .acc-top .back span { display: none; }
 }
@@ -547,7 +560,8 @@ res.redirect(<span class="k">await</span> polaris.authorizeUrl())</pre>
 
 <!-- prototype switcher -->
 <div class="proto" role="toolbar" aria-label="原型切换">
-  <div class="seg" data-key="v"><button data-val="a">A 信任蓝</button><button data-val="b">B 石墨</button><button data-val="c">C 深空</button></div>
+  <div class="seg" data-key="v"><button data-val="a">A 信任蓝</button><button data-val="b">B 石墨</button><button data-val="c">C 深空</button><button data-val="d">D 融合</button></div>
+  <div class="seg" data-key="a" title="仅对 D 生效"><button data-val="linear">Linear 靛蓝</button><button data-val="clerk">Clerk 紫</button></div>
   <div class="seg" data-key="s"><button data-val="overview">概览</button><button data-val="users">用户</button><button data-val="app">应用详情</button><button data-val="signin">登录体验</button><button data-val="account">账号中心</button><button data-val="login">登录页</button></div>
 </div>
 
@@ -563,15 +577,16 @@ function set(key, val) {
     document.querySelectorAll('.nav a').forEach(a => a.dataset.go && a.dataset.go === navOf[val] ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
     window.scrollTo(0, 0);
   }
-  history.replaceState(null, '', `#${h.dataset.v}/${h.dataset.s}`);
+  history.replaceState(null, '', `#${h.dataset.v}/${h.dataset.s}/${h.dataset.a}`);
 }
 document.querySelectorAll('.proto .seg').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) set(seg.dataset.key, b.dataset.val); }));
 document.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) { e.preventDefault(); set('s', g.dataset.go); } });
 document.querySelectorAll('.switch').forEach(s => s.addEventListener('click', () => s.setAttribute('aria-checked', s.getAttribute('aria-checked') !== 'true')));
 document.querySelectorAll('.segm').forEach(g => g.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); }));
 document.querySelectorAll('.tabs').forEach(g => g.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; g.querySelectorAll('button').forEach(x => x.setAttribute('aria-selected', x === b)); }));
-const [v, s] = location.hash.slice(1).split('/');
-set('v', ['a','b','c'].includes(v) ? v : 'a');
+const [v, s, a] = location.hash.slice(1).split('/');
+set('a', a === 'clerk' ? 'clerk' : 'linear');
+set('v', ['a','b','c','d'].includes(v) ? v : 'd');
 set('s', s in crumbs || s === 'account' || s === 'login' ? s : 'overview');
 lucide.createIcons();
 </script>
