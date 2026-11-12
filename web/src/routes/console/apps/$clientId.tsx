@@ -17,14 +17,22 @@ import {
 	useSearch,
 } from "@tanstack/react-router";
 import { Check, ChevronRight } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { z } from "zod";
 import { CopyButton } from "#/components/copy-button";
 import { FormField, failed, saved } from "#/components/form";
 import { PropRow } from "#/components/item-list";
 import { Alert, AlertDescription } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
-import { Button } from "#/components/ui/button";
+import { Button, buttonVariants } from "#/components/ui/button";
+import {
+	Card,
+	CardAction,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "#/components/ui/card";
 import { Checkbox } from "#/components/ui/checkbox";
 import {
 	Collapsible,
@@ -81,6 +89,8 @@ import {
 	newSecrets,
 	type Platform,
 	platformKeys,
+	platformOf,
+	platforms,
 	snippet,
 } from "#/lib/onboarding";
 import {
@@ -272,44 +282,100 @@ function ApplicationPage() {
 	const editable = can("applications:write") && !app.builtin;
 	const shown = new Set<string>(tabsFor(app).map(([key]) => key));
 	return (
-		<>
-			<TabsContent value="basic">
-				<BasicTab app={app} editable={editable} />
-			</TabsContent>
-			{shown.has("credentials") && (
-				<TabsContent value="credentials">
-					<ClientAuthn app={app} editable={editable} />
+		<div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+			<div className="min-w-0">
+				<TabsContent value="basic">
+					<BasicTab app={app} editable={editable} />
 				</TabsContent>
-			)}
-			{shown.has("login") && (
-				<TabsContent value="login">
-					<LoginTab app={app} editable={editable} />
+				{shown.has("credentials") && (
+					<TabsContent value="credentials">
+						<ClientAuthn app={app} editable={editable} />
+					</TabsContent>
+				)}
+				{shown.has("login") && (
+					<TabsContent value="login">
+						<LoginTab app={app} editable={editable} />
+					</TabsContent>
+				)}
+				{shown.has("roles") && (
+					<TabsContent value="roles">
+						<RolesTab app={app} />
+					</TabsContent>
+				)}
+				{shown.has("methods") && (
+					<TabsContent value="methods">
+						<LoginMethods app={app} editable={editable} />
+					</TabsContent>
+				)}
+				{shown.has("brand") && (
+					<TabsContent value="brand">
+						<AppBrand app={app} editable={editable} />
+					</TabsContent>
+				)}
+				{shown.has("native") && (
+					<TabsContent value="native">
+						<NativeApps app={app} editable={editable} />
+					</TabsContent>
+				)}
+				<TabsContent value="webhook">
+					<NotifyTab app={app} editable={editable} />
 				</TabsContent>
-			)}
-			{shown.has("roles") && (
-				<TabsContent value="roles">
-					<RolesTab app={app} />
-				</TabsContent>
-			)}
-			{shown.has("methods") && (
-				<TabsContent value="methods">
-					<LoginMethods app={app} editable={editable} />
-				</TabsContent>
-			)}
-			{shown.has("brand") && (
-				<TabsContent value="brand">
-					<AppBrand app={app} editable={editable} />
-				</TabsContent>
-			)}
-			{shown.has("native") && (
-				<TabsContent value="native">
-					<NativeApps app={app} editable={editable} />
-				</TabsContent>
-			)}
-			<TabsContent value="webhook">
-				<NotifyTab app={app} editable={editable} />
-			</TabsContent>
-		</>
+			</div>
+			{!app.builtin && <Guide app={app} />}
+		</div>
+	);
+}
+
+// Guide sits beside every tab: what to put in the code, and the code.
+function Guide({ app }: { app: Application }) {
+	const issuer = location.origin;
+	const platform = platformOf(app);
+	const code = snippet(platform, {
+		issuer,
+		clientId: app.clientId,
+		redirectUri: app.redirectUris[0],
+	});
+	const rows: [string, string | undefined][] = [
+		["Issuer", issuer],
+		["client_id", app.clientId],
+		["回调地址", app.redirectUris[0]],
+	];
+	return (
+		<Card className="xl:sticky xl:top-6">
+			<CardHeader className="border-b">
+				<CardTitle>接入指南</CardTitle>
+				<CardDescription>{platforms[platform].name}</CardDescription>
+				<CardAction>
+					<a
+						href="https://github.com/zibyn/polaris/tree/main/docs"
+						target="_blank"
+						rel="noreferrer"
+						className={buttonVariants({ variant: "link", size: "sm" })}
+					>
+						完整文档
+					</a>
+				</CardAction>
+			</CardHeader>
+			<CardContent className="space-y-4">
+				<dl className="grid grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-sm">
+					{rows
+						.filter((r): r is [string, string] => !!r[1])
+						.map(([k, v]) => (
+							<Fragment key={k}>
+								<dt className="text-muted-foreground">{k}</dt>
+								<dd className="truncate font-mono text-xs" title={v}>
+									{v}
+								</dd>
+								<CopyButton value={v} />
+							</Fragment>
+						))}
+				</dl>
+				<p className="text-muted-foreground text-sm">{code.help}</p>
+				<pre className="overflow-x-auto rounded-lg bg-muted p-4 text-xs">
+					{code.code}
+				</pre>
+			</CardContent>
+		</Card>
 	);
 }
 
@@ -1411,7 +1477,10 @@ function Onboarding({
 		),
 	};
 	return (
-		<Collapsible defaultOpen className="rounded-xl bg-primary-soft p-6">
+		<Collapsible
+			defaultOpen
+			className="rounded-xl bg-card p-6 ring-1 ring-foreground/10"
+		>
 			<CollapsibleTrigger className="flex items-center gap-1 font-semibold text-[15px] [&[data-panel-open]>svg]:rotate-90">
 				<ChevronRight className="size-4 transition-transform" />
 				接入清单

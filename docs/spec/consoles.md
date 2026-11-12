@@ -213,6 +213,7 @@ Passkey 开关默认打开,关它时若自己只剩 Passkey(既没开两步验�
 - **表格**:用 `Table` 和现有的 `DataTable`,工具栏(搜索 `Input`、`ToggleGroup` 式分段、`Button variant="outline"` 的筛选)在表格上方;操作收进行尾的 `DropdownMenu`;分页在下方。
 - **列表行**:只读的「名称 / 值」用 `Item`(现有 `PropRow`),不用禁用的输入框;开关行是「说明在左、`Switch` 在右」。
 - **抽屉与对话框**:创建、编辑用 `Sheet`(右侧),确认用 `AlertDialog` 或 `Dialog`,规则见[导航](#导航)与文案风格指南。
+- **接入指南**:非内置应用的详情页,宽屏在 Tab 内容右侧固定一张 `Card`(窄屏移到下方):Issuer、`client_id`、第一个回调地址(各带复制),以及按应用类型推出的平台的接入代码(与接入清单同一份片段;无后端应用有回调地址算纯前端网页,没有算手机 App)。
 - **危险区**:页面最下方一张红色描边的 `Card`,标题用 `text-destructive`,先说明后果,再给 `Button variant="destructive"`。
 - **空状态**:用 `Empty`。
 

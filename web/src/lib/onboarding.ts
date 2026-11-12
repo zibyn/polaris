@@ -126,3 +126,17 @@ client_secret = （创建时保存的值）`,
 			};
 	}
 }
+
+// platformOf guesses a platform back from an Application, for the 接入指南
+// beside its detail page: the platform itself isn't stored. A public one
+// with a callback signs in through the browser; without, it's an App.
+export const platformOf = (
+	app: Pick<Application, "type" | "redirectUris">,
+): Platform =>
+	app.type === "m2m"
+		? "m2m"
+		: app.type === "confidential"
+			? "web"
+			: app.redirectUris.length > 0
+				? "spa"
+				: "app";

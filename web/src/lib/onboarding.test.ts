@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checklist, type Platform, platforms, snippet } from "./onboarding.ts";
+import {
+	checklist,
+	type Platform,
+	platformOf,
+	platforms,
+	snippet,
+} from "./onboarding.ts";
 
 test("each platform card maps to its type and callback requirement", () => {
 	const got = Object.fromEntries(
@@ -75,4 +81,17 @@ test("each platform gets its own integration code", () => {
 	for (const p of ["app", "mini", "spa", "web", "m2m"] as const) {
 		assert.match(code(p), /app_1/);
 	}
+});
+
+test("the 接入指南 guesses the platform back from the Application", () => {
+	assert.equal(platformOf({ type: "m2m", redirectUris: [] }), "m2m");
+	assert.equal(
+		platformOf({ type: "confidential", redirectUris: ["https://a/cb"] }),
+		"web",
+	);
+	assert.equal(
+		platformOf({ type: "public", redirectUris: ["https://a/cb"] }),
+		"spa",
+	);
+	assert.equal(platformOf({ type: "public", redirectUris: [] }), "app");
 });
