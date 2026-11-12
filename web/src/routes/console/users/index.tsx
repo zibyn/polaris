@@ -10,6 +10,7 @@ import {
 	stripSearchParams,
 	useNavigate,
 } from "@tanstack/react-router";
+import { Upload } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 import { Alert, AlertDescription } from "#/components/ui/alert";
@@ -31,7 +32,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select";
-import { Separator } from "#/components/ui/separator";
 import {
 	Table,
 	TableBody,
@@ -40,11 +40,13 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import { UserAvatar } from "#/components/user-avatar";
 import { api, type Role, type RoleInfo, type User } from "#/lib/console-api";
 import { onlyAdmins, primaryIdentifier, searchSchema } from "#/lib/users";
 import { useCan } from "#/routes/console/route";
 import { CreateUserSheet } from "./-components/create-user-form";
+import { ImportUsersSheet } from "./-components/import-users";
 import {
 	PasswordLoginNotice,
 	usePasswordLoginOff,
@@ -54,7 +56,7 @@ import {
 // nobody has taken over yet, which is what they come here to find.
 const statuses = ["any", "active", "pending"] as const;
 const statusName: Record<(typeof statuses)[number], string> = {
-	any: "全部状态",
+	any: "全部",
 	active: "已激活",
 	pending: "待激活",
 };
@@ -127,6 +129,7 @@ function Users() {
 	const can = useCan();
 	const off = usePasswordLoginOff();
 	const [creating, setCreating] = useState(false);
+	const [importing, setImporting] = useState(false);
 	// 创建用户 is a 待激活 account whose password the admin passes on; with
 	// 密码登录 off there is no way into it, so the entry is disabled. When
 	// the list is admin-only the guide above it carries it instead, as on 应用.
@@ -145,7 +148,7 @@ function Users() {
 
 	return (
 		<div className="flex flex-col gap-6">
-			<div className="flex gap-2">
+			<div className="flex flex-wrap gap-2">
 				<Search
 					key={q}
 					q={q}
@@ -185,7 +188,7 @@ function Users() {
 						))}
 					</SelectContent>
 				</Select>
-				<Select
+				<Tabs
 					value={status}
 					onValueChange={(v) => {
 						const s = `${v ?? ""}` as (typeof statuses)[number];
@@ -197,22 +200,22 @@ function Users() {
 						});
 					}}
 				>
-					<SelectTrigger className="w-32" aria-label="按状态筛选">
-						<SelectValue>
-							{(v: string) => statusName[v as (typeof statuses)[number]]}
-						</SelectValue>
-					</SelectTrigger>
-					<SelectContent>
+					<TabsList aria-label="按状态筛选">
 						{statuses.map((s) => (
-							<SelectItem key={s} value={s}>
+							<TabsTrigger key={s} value={s}>
 								{statusName[s]}
-							</SelectItem>
+							</TabsTrigger>
 						))}
-					</SelectContent>
-				</Select>
+					</TabsList>
+				</Tabs>
+				{can("users:write") && (
+					<Button variant="outline" onClick={() => setImporting(true)}>
+						<Upload />
+						导入
+					</Button>
+				)}
 				{!empty && create}
 			</div>
-			<Separator />
 			{can("users:write") && off && <PasswordLoginNotice />}
 			{empty && (
 				<Empty className="border">
@@ -236,65 +239,74 @@ function Users() {
 			{/* Admins are Users too: they stay listed under the guide, as
 			    built-in items do on 应用. */}
 			{rows.length > 0 && (
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>用户</TableHead>
-							<TableHead>登录标识</TableHead>
-							<TableHead>角色</TableHead>
-							<TableHead>注册时间</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{rows.map((u) => (
-							<TableRow
-								key={u.sub}
-								className="cursor-pointer hover:bg-muted/50"
-								onClick={() =>
-									navigate({
-										to: "/console/users/$sub",
-										params: { sub: u.sub },
-									})
-								}
-							>
-								<TableCell>
-									<span className="flex items-center gap-3 font-medium">
-										<UserAvatar name={primaryIdentifier(u.identifiers)} />
-										{/* The row click is the mouse's way in; the name is the
-									    keyboard's, and the only thing a screen reader hears. */}
-										<Link
-											to="/console/users/$sub"
-											params={{ sub: u.sub }}
-											className="rounded-sm hover:underline"
-											onClick={(e) => e.stopPropagation()}
-										>
-											{userName(u)}
-										</Link>
-										{u.disabledAt && (
-											<Badge variant="destructive">已禁用</Badge>
-										)}
-										{u.pending && <Badge variant="warning">待激活</Badge>}
-									</span>
-								</TableCell>
-								<TableCell className="text-muted-foreground">
-									{u.identifiers.map((i) => i.value).join(" · ") || "—"}
-								</TableCell>
-								<TableCell>
-									<span className="flex flex-wrap gap-1">
-										{u.roles.map((r) => (
-											<Badge key={roleKey(r)} variant="secondary">
-												{r.name}
-											</Badge>
-										))}
-									</span>
-								</TableCell>
-								<TableCell className="text-muted-foreground">
-									{date(u.createdAt)}
-								</TableCell>
+				<div className="overflow-hidden rounded-lg border">
+					<Table>
+						<TableHeader className="bg-muted">
+							<TableRow>
+								<TableHead>用户</TableHead>
+								<TableHead>状态</TableHead>
+								<TableHead>角色</TableHead>
+								<TableHead>注册时间</TableHead>
 							</TableRow>
-						))}
-					</TableBody>
-				</Table>
+						</TableHeader>
+						<TableBody>
+							{rows.map((u) => (
+								<TableRow
+									key={u.sub}
+									className="cursor-pointer hover:bg-muted/50"
+									onClick={() =>
+										navigate({
+											to: "/console/users/$sub",
+											params: { sub: u.sub },
+										})
+									}
+								>
+									<TableCell>
+										<span className="flex items-center gap-3 font-medium">
+											<UserAvatar name={primaryIdentifier(u.identifiers)} />
+											{/* The row click is the mouse's way in; the name is the
+									    keyboard's, and the only thing a screen reader hears. */}
+											<Link
+												to="/console/users/$sub"
+												params={{ sub: u.sub }}
+												className="rounded-sm hover:underline"
+												onClick={(e) => e.stopPropagation()}
+											>
+												{userName(u)}
+											</Link>
+										</span>
+										{u.identifiers.length > 1 && (
+											<span className="mt-0.5 block pl-11 text-muted-foreground text-xs">
+												{u.identifiers.map((i) => i.value).join(" · ")}
+											</span>
+										)}
+									</TableCell>
+									<TableCell>
+										{u.disabledAt ? (
+											<Badge variant="destructive">已禁用</Badge>
+										) : u.pending ? (
+											<Badge variant="warning">待激活</Badge>
+										) : (
+											<Badge variant="success">已激活</Badge>
+										)}
+									</TableCell>
+									<TableCell>
+										<span className="flex flex-wrap gap-1">
+											{u.roles.map((r) => (
+												<Badge key={roleKey(r)} variant="secondary">
+													{r.name}
+												</Badge>
+											))}
+										</span>
+									</TableCell>
+									<TableCell className="text-muted-foreground">
+										{date(u.createdAt)}
+									</TableCell>
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
+				</div>
 			)}
 			{!empty && rows.length === 0 && (
 				<p className="flex items-center justify-center gap-2 py-4 text-muted-foreground">
@@ -323,6 +335,7 @@ function Users() {
 				</Button>
 			)}
 			<CreateUserSheet open={creating} onOpenChange={setCreating} />
+			<ImportUsersSheet open={importing} onOpenChange={setImporting} />
 		</div>
 	);
 }
