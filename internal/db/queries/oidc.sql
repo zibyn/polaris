@@ -116,10 +116,13 @@ WHERE oidc_grants.id = $1 AND (expires_at IS NULL OR expires_at > now())
                                     WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()));
 
 -- name: GrantByAuthCodeHash :one
-SELECT * FROM oidc_grants
+-- Reading the code spends it, in one statement: of concurrent redemptions
+-- only one gets the grant, and a failed one burns the code too.
+UPDATE oidc_grants SET auth_code_hash = NULL
 WHERE auth_code_hash = $1 AND (expires_at IS NULL OR expires_at > now())
   AND (session_id IS NULL OR EXISTS (SELECT 1 FROM sessions s
-                                    WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()));
+                                    WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()))
+RETURNING *;
 
 -- name: GrantByRefreshTokenHash :one
 SELECT * FROM oidc_grants

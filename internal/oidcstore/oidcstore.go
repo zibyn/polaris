@@ -252,10 +252,14 @@ func (s *Store) SaveGrant(ctx context.Context, g *goidc.Grant) error {
 		return s.q.EndReusedRefreshToken(ctx, hash(g.RefreshToken))
 	}
 	session, _ := g.Store[SessionKey].(string)
+	code := g.AuthCode
+	if g.AuthCodeConsumedAt != 0 || g.RevokedAt != 0 {
+		code = "" // GrantByAuthCode spent it; saving again must not bring it back
+	}
 	return s.q.SaveGrant(ctx, sqlc.SaveGrantParams{
 		ID:               g.ID,
 		ClientID:         g.ClientID,
-		AuthCodeHash:     hash(g.AuthCode),
+		AuthCodeHash:     hash(code),
 		RefreshTokenHash: hash(g.RefreshToken),
 		ExpiresAt:        s.grantExpiry(g),
 		SessionID:        pgtype.Text{String: session, Valid: session != ""},

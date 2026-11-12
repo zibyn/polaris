@@ -352,12 +352,15 @@ func (q *Queries) Grant(ctx context.Context, id string) (OidcGrant, error) {
 }
 
 const grantByAuthCodeHash = `-- name: GrantByAuthCodeHash :one
-SELECT id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id FROM oidc_grants
+UPDATE oidc_grants SET auth_code_hash = NULL
 WHERE auth_code_hash = $1 AND (expires_at IS NULL OR expires_at > now())
   AND (session_id IS NULL OR EXISTS (SELECT 1 FROM sessions s
                                     WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()))
+RETURNING id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id
 `
 
+// Reading the code spends it, in one statement: of concurrent redemptions
+// only one gets the grant, and a failed one burns the code too.
 func (q *Queries) GrantByAuthCodeHash(ctx context.Context, authCodeHash []byte) (OidcGrant, error) {
 	row := q.db.QueryRow(ctx, grantByAuthCodeHash, authCodeHash)
 	var i OidcGrant
