@@ -19,13 +19,6 @@ import { z } from "zod";
 import { Alert, AlertDescription } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
-import {
-	Empty,
-	EmptyContent,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyTitle,
-} from "#/components/ui/empty";
 import { Field, FieldError, FieldLabel } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
 import {
@@ -46,7 +39,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import { UserAvatar } from "#/components/user-avatar";
 import { api, type Role, type RoleInfo, type User } from "#/lib/console-api";
-import { onlyAdmins, primaryIdentifier, searchSchema } from "#/lib/users";
+import { primaryIdentifier, searchSchema } from "#/lib/users";
 import { providersQuery } from "#/routes/console/providers/index";
 import { useCan } from "#/routes/console/route";
 import { CreateUserSheet } from "./-components/create-user-form";
@@ -149,8 +142,7 @@ function Users() {
 	const [creating, setCreating] = useState(false);
 	const [importing, setImporting] = useState(false);
 	// 创建用户 is a 待激活 account whose password the admin passes on; with
-	// 密码登录 off there is no way into it, so the entry is disabled. When
-	// the list is admin-only the guide above it carries it instead, as on 应用.
+	// 密码登录 off there is no way into it, so the entry is disabled.
 	const create =
 		can("users:write") &&
 		(off ? (
@@ -158,11 +150,6 @@ function Users() {
 		) : (
 			<Button onClick={() => setCreating(true)}>创建用户</Button>
 		));
-	const empty = onlyAdmins(
-		rows,
-		users.hasNextPage,
-		!!(q || role || provider || status !== "any"),
-	);
 
 	return (
 		<div className="flex flex-col gap-6">
@@ -258,30 +245,9 @@ function Users() {
 						导入
 					</Button>
 				)}
-				{!empty && create}
+				{create}
 			</div>
 			{can("users:write") && off && <PasswordLoginNotice />}
-			{empty && (
-				<Empty className="border">
-					<EmptyHeader>
-						<EmptyTitle>
-							{rows.length > 0 ? "还没有管理员以外的用户" : "还没有用户"}
-						</EmptyTitle>
-						<EmptyDescription>
-							用户注册或由管理员创建后显示在这里。
-						</EmptyDescription>
-					</EmptyHeader>
-					<EmptyContent>
-						{create || (
-							<span className="text-muted-foreground">
-								需要「管理员」角色才能创建。
-							</span>
-						)}
-					</EmptyContent>
-				</Empty>
-			)}
-			{/* Admins are Users too: they stay listed under the guide, as
-			    built-in items do on 应用. */}
 			{rows.length > 0 && (
 				<div className="overflow-hidden rounded-lg border">
 					<Table>
@@ -361,7 +327,7 @@ function Users() {
 					</Table>
 				</div>
 			)}
-			{!empty && rows.length === 0 && (
+			{rows.length === 0 && (
 				<p className="flex items-center justify-center gap-2 py-4 text-muted-foreground">
 					没有符合条件的用户
 					<Button

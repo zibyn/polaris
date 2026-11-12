@@ -3,7 +3,6 @@ import { test } from "node:test";
 import {
 	avatarInitial,
 	createUserSchema,
-	onlyAdmins,
 	primaryIdentifier,
 	searchSchema,
 } from "./users.ts";
@@ -91,29 +90,4 @@ test("creating a User needs 8 characters of password", () => {
 		}).error?.issues[0].message,
 		"密码至少 8 位。",
 	);
-});
-
-const manager = {
-	api: "urn:polaris:management-api",
-	key: "admin",
-	name: "管理员",
-};
-
-test("only admins: nothing but admins have signed up yet", () => {
-	assert.equal(onlyAdmins([{ roles: [manager] }], false, false), true);
-	assert.equal(onlyAdmins([], false, false), true);
-});
-
-test("only admins: one User of your own ends it", () => {
-	assert.equal(
-		onlyAdmins([{ roles: [manager] }, { roles: [] }], false, false),
-		false,
-	);
-});
-
-test("only admins: a filtered list or another page can't say it", () => {
-	// Searching turns up admins too; that says nothing about the rest.
-	assert.equal(onlyAdmins([{ roles: [manager] }], false, true), false);
-	// More pages hold Users this page hasn't seen.
-	assert.equal(onlyAdmins([{ roles: [manager] }], true, false), false);
 });

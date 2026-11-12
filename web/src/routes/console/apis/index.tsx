@@ -11,16 +11,8 @@ import { DataTable, type features } from "#/components/data-table";
 import { FormError, FormField } from "#/components/form";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
-import {
-	Empty,
-	EmptyContent,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyTitle,
-} from "#/components/ui/empty";
 import { Input } from "#/components/ui/input";
 import { apiSchema } from "#/lib/apis";
-import { onlyBuiltin } from "#/lib/apps";
 import { type APIDef, api, apiPath } from "#/lib/console-api";
 import { FormSheet } from "#/routes/console/-components/form-sheet";
 import { useCan } from "#/routes/console/route";
@@ -89,35 +81,14 @@ function APIs() {
 	const writable = can("applications:write");
 	const [creating, setCreating] = useState(false);
 	const add = <Button onClick={() => setCreating(true)}>添加 API 资源</Button>;
-	// The empty state carries the button; the toolbar's would be a duplicate.
-	const empty = onlyBuiltin(apis);
 	return (
 		<div className="flex flex-col gap-6">
-			{empty && (
-				<Empty className="border">
-					<EmptyHeader>
-						<EmptyTitle>还没有自定义 API 资源</EmptyTitle>
-						<EmptyDescription>
-							后端需要权限控制时添加。仅使用登录可不添加。
-						</EmptyDescription>
-					</EmptyHeader>
-					<EmptyContent>
-						{writable ? (
-							add
-						) : (
-							<span className="text-muted-foreground">
-								需要「管理员」角色才能创建。
-							</span>
-						)}
-					</EmptyContent>
-				</Empty>
-			)}
 			<DataTable
 				data={apis}
 				columns={columns}
 				filterPlaceholder="搜索 API 资源名称或标识符"
 				empty="没有匹配的 API 资源"
-				actions={!empty && writable && add}
+				actions={writable && add}
 			/>
 			<FormSheet
 				open={creating}

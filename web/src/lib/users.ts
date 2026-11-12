@@ -1,6 +1,6 @@
 // User list and detail logic. Pure TypeScript: tested with node --test.
 import { z } from "zod";
-import type { Identifier, User } from "./console-api.ts";
+import type { Identifier } from "./console-api.ts";
 
 export const managementAPI = "urn:polaris:management-api";
 
@@ -28,20 +28,6 @@ export const primaryIdentifier = (identifiers: Identifier[]) =>
 // skipping a mainland phone number's +86.
 export const avatarInitial = (identifier: string) =>
 	identifier.replace(/^\+86/, "").charAt(0).toUpperCase();
-
-// onlyAdmins: nothing but admins have signed up yet, which is the Users
-// list's empty state (docs/spec/consoles.md「空状态」). Only an unfiltered
-// list that fits on one page can say it: with a filter on, an admin-only
-// result speaks for the filter, and a page with more behind it hasn't seen
-// everyone. No Users at all counts, too.
-export const onlyAdmins = (
-	users: Pick<User, "roles">[],
-	hasMore: boolean,
-	filtered: boolean,
-) =>
-	!filtered &&
-	!hasMore &&
-	users.every((u) => u.roles.some((r) => r.api === managementAPI));
 
 // query is what a user search box takes.
 export const query = z.string().trim().max(100, "最多输入 100 个字。");
