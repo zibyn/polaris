@@ -351,7 +351,7 @@ function BasicTab({ app, editable }: TabProps) {
 	});
 	const chosenApi = useStore(form.store, (s) => s.values.defaultApi);
 	return (
-		<div className="space-y-10">
+		<div className="space-y-4">
 			<Section
 				title="基本信息"
 				editable={editable}
@@ -1439,7 +1439,7 @@ function Onboarding({
 				<div className="mt-4 space-y-1 text-muted-foreground text-sm">
 					<p>
 						在
-						<Link to="/console/settings" className="underline">
+						<Link to="/console/sign-in" className="underline">
 							「登录方式」
 						</Link>
 						中查看用户可用的登录方式。

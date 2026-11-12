@@ -23,7 +23,7 @@ export const signingKeysQuery = queryOptions({
 
 export function SecurityTab() {
 	return (
-		<div className="space-y-10">
+		<div className="space-y-4">
 			<SigningKeys />
 			<PolicyNumber
 				title="审计保留期"

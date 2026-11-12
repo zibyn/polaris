@@ -20,8 +20,7 @@ export const checklist = (
 		{
 			label: "配置通道",
 			hint: "下一步：配置验证码通道，用于发送登录验证码。",
-			to: "/console/settings",
-			search: { tab: "channels" },
+			to: "/console/channels",
 			permission: "config:read",
 			done: data.channels && data.channels.length > 0,
 		},

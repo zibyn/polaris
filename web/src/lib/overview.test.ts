@@ -103,9 +103,8 @@ test("a finished or loading checklist has no summary", () => {
 	assert.equal(checklistSummary(checklist(owner, {})), undefined);
 });
 
-test("a fresh setup starts at the 通道 tab of 设置", () => {
+test("a fresh setup starts at 验证码通道", () => {
 	const s = checklistSummary(checklist(owner, fresh));
 	assert.equal(s?.next.label, "配置通道");
-	assert.equal(s?.next.to, "/console/settings");
-	assert.deepEqual(s?.next.search, { tab: "channels" });
+	assert.equal(s?.next.to, "/console/channels");
 });

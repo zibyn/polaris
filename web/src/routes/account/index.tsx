@@ -175,7 +175,7 @@ function Account() {
 
 	return (
 		<div className="min-h-svh bg-canvas p-2 text-sm sm:p-6">
-			<Panel className="mx-auto max-w-2xl space-y-10 px-6 py-8 sm:px-14 sm:py-11">
+			<Panel className="mx-auto max-w-2xl space-y-4 px-6 py-8 sm:px-14 sm:py-11">
 				<div className="flex items-center gap-2 font-semibold">
 					{/* As on the hosted pages: a brand's Logo, if any, replaces the star. */}
 					{brand.logo ? (

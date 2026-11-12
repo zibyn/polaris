@@ -40,11 +40,7 @@ export function ChannelsLink({
 }: {
 	children?: ReactNode;
 }) {
-	return (
-		<Link to="/console/settings" search={{ tab: "channels" }}>
-			{children}
-		</Link>
-	);
+	return <Link to="/console/channels">{children}</Link>;
 }
 
 // lose is what users can't do while the kind has no channel.
@@ -67,7 +63,7 @@ const date = (s: string) => new Date(s).toLocaleString("zh-CN");
 
 export function ChannelsTab() {
 	return (
-		<div className="space-y-10">
+		<div className="space-y-4">
 			<Channels />
 			<PolicyNumber
 				title="每日发送上限"
@@ -180,7 +176,7 @@ function Channel({
 									title={`停用${label}通道？`}
 								>
 									需先在登录方式中关闭「必须绑定手机号」，否则停用短信后，没有手机号的用户将无法登录。{" "}
-									<Link to="/console/settings" className="underline">
+									<Link to="/console/sign-in" className="underline">
 										前往登录方式
 									</Link>
 								</ConfirmDialog>

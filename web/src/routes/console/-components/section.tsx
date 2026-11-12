@@ -12,11 +12,11 @@ import {
 	TooltipTrigger,
 } from "#/components/ui/tooltip";
 
-// Section is a section title and its content, no card around it. With a
-// TanStack form the content is that form: children are what an editor may
-// change, extra stays usable for readers (copying client_id). Without one
-// the rows act on their own. Put sections in a space-y-10 parent for the
-// 40px between.
+// Section is a card: the title row, then the content, and with a form a
+// grey save bar at the foot. With a TanStack form the content is that
+// form: children are what an editor may change, extra stays usable for
+// readers (copying client_id). Without one the rows act on their own. Put
+// sections in a space-y-4 parent for the 16px between.
 export function Section({
 	title,
 	intro,
@@ -39,32 +39,42 @@ export function Section({
 	children: ReactNode;
 }) {
 	return (
-		<section id={id}>
-			<SectionHeading title={title} intro={intro} actions={actions} />
+		<section
+			id={id}
+			className="scroll-mt-20 rounded-lg border bg-card shadow-xs"
+		>
+			<div className="border-b px-5 py-3.5">
+				<SectionHeading title={title} intro={intro} actions={actions} />
+			</div>
 			{form ? (
 				<form
 					noValidate
-					className="mt-4 space-y-6"
 					onSubmit={(e) => {
 						e.preventDefault();
 						form.handleSubmit();
 					}}
 				>
-					<FieldSet disabled={!editable} className="gap-6">
-						{children}
-					</FieldSet>
-					{extra}
-					{footer}
+					<div className="space-y-6 p-5">
+						<FieldSet disabled={!editable} className="gap-6">
+							{children}
+						</FieldSet>
+						{extra}
+					</div>
+					{footer && (
+						<div className="flex flex-wrap items-center justify-end gap-3 rounded-b-lg border-t bg-muted px-5 py-3">
+							{footer}
+						</div>
+					)}
 				</form>
 			) : (
-				<div className="mt-4">{children}</div>
+				<div className="p-5">{children}</div>
 			)}
 		</section>
 	);
 }
 
 // SectionHeading is a section's title and the line under it, with any
-// section-wide actions on the right. Content follows mt-4 below it.
+// section-wide actions on the right.
 export function SectionHeading({
 	title,
 	intro,
@@ -77,7 +87,7 @@ export function SectionHeading({
 	return (
 		<div className="flex flex-wrap items-start gap-x-4 gap-y-2">
 			<div className="min-w-0 flex-1">
-				<h2 className="font-semibold text-[15px]">{title}</h2>
+				<h2 className="font-semibold text-sm">{title}</h2>
 				{intro && (
 					<p className="mt-1 text-[13px] text-muted-foreground">{intro}</p>
 				)}
@@ -96,7 +106,9 @@ export function SaveBar({
 }) {
 	return (
 		<>
-			<FormError error={save.error} />
+			<div className="mr-auto">
+				<FormError error={save.error} />
+			</div>
 			<Button type="submit" disabled={save.isPending}>
 				保存
 			</Button>
@@ -114,41 +126,38 @@ export function DangerZone({
 	children: ReactNode;
 }) {
 	return (
-		<section className="space-y-3 rounded-xl border border-destructive/50 p-6">
-			<h2 className="font-semibold text-[15px] text-destructive">{title}</h2>
+		<section className="space-y-3 rounded-lg border border-destructive/40 bg-card p-5">
+			<h2 className="font-semibold text-destructive text-sm">{title}</h2>
 			{children}
 		</section>
 	);
 }
 
-// IdLine is one identifier in a detail page's header (Header.ids): its
-// name, the value in mono, and a click to copy it. The tooltip carries
+// IdLine is one identifier in a detail page's header (Header.ids): a
+// grey chip with its name, the value in mono, and a click to copy it. The tooltip carries
 // the whole value when it is truncated (a long callback URL).
 export function IdLine({ label, value }: { label: string; value: string }) {
 	return (
-		<span className="inline-flex min-w-0 items-center gap-1 text-[13px]">
-			<span className="shrink-0 whitespace-nowrap text-muted-foreground">
-				{label}
-			</span>
-			<Tooltip>
-				<TooltipTrigger
-					render={
-						<Button
-							variant="ghost"
-							size="xs"
-							onClick={() => copyText(value)}
-							className="min-w-0 font-mono text-primary-ink"
-						/>
-					}
-				>
-					<span className="truncate">{value}</span>
-					<Copy data-icon="inline-end" aria-hidden />
-					<span className="sr-only">复制</span>
-				</TooltipTrigger>
-				<TooltipContent className="max-w-md break-all">
-					{value}（点击复制）
-				</TooltipContent>
-			</Tooltip>
-		</span>
+		<Tooltip>
+			<TooltipTrigger
+				render={
+					<button
+						type="button"
+						onClick={() => copyText(value)}
+						className="inline-flex h-7 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md border bg-muted px-2 text-[12.5px] transition-colors hover:border-border-strong"
+					/>
+				}
+			>
+				<span className="shrink-0 whitespace-nowrap text-muted-foreground">
+					{label}
+				</span>
+				<span className="truncate font-mono">{value}</span>
+				<Copy className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+				<span className="sr-only">复制</span>
+			</TooltipTrigger>
+			<TooltipContent className="max-w-md break-all">
+				{value}（点击复制）
+			</TooltipContent>
+		</Tooltip>
 	);
 }

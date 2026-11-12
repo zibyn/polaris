@@ -302,7 +302,7 @@ function UserPage() {
 	const client = useQueryClient();
 	return (
 		<>
-			<TabsContent value="profile" className="max-w-3xl space-y-10">
+			<TabsContent value="profile" className="max-w-3xl space-y-4">
 				<Section title="个人资料">
 					<ItemList>
 						<PropRow
@@ -449,7 +449,7 @@ function UserPage() {
 					/>
 				</Section>
 			</TabsContent>
-			<TabsContent value="security" className="max-w-3xl space-y-10">
+			<TabsContent value="security" className="max-w-3xl space-y-4">
 				<Section title="已绑定的外部账号">
 					<ExternalIdentities sub={u.sub} who={name} writable={writable} />
 				</Section>
@@ -1090,7 +1090,7 @@ function RoleAssignment({ user }: { user: UserDetail }) {
 	);
 	const heldAPIs = [...new Set(user.roles.map((r) => r.api))];
 	return (
-		<div className="space-y-10">
+		<div className="space-y-4">
 			<Section
 				title="角色"
 				intro="权限变更在 access token 过期后生效（最长 10 分钟）。"

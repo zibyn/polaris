@@ -141,7 +141,7 @@ function APIPage() {
 	}
 	const defaulting = defaultFor(applications, def.identifier);
 	return (
-		<div className="space-y-10">
+		<div className="space-y-4">
 			<TabsContent value="permissions">
 				<Permissions def={def} />
 			</TabsContent>

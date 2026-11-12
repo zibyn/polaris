@@ -63,7 +63,7 @@ function Home() {
 		stats.push({ label: "应用", value: apps && ownCount(apps.applications) });
 	}
 	return (
-		<div className="space-y-10 pt-4">
+		<div className="space-y-4 pt-4">
 			{o.sendsLastDay >= o.dailySendLimit && (
 				<Alert variant="destructive">
 					<AlertDescription>
@@ -177,11 +177,7 @@ function Checklist() {
 			<div className="min-w-0 flex-1 basis-48">
 				<SectionHeading title={summary.title} intro={summary.next.hint} />
 			</div>
-			<Link
-				to={summary.next.to}
-				search={"search" in summary.next ? summary.next.search : undefined}
-				className={buttonVariants({ size: "lg" })}
-			>
+			<Link to={summary.next.to} className={buttonVariants({ size: "lg" })}>
 				{summary.next.label}
 			</Link>
 			<Tooltip>

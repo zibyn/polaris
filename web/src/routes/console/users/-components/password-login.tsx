@@ -21,9 +21,7 @@ export function PasswordLoginNotice({ detail }: { detail?: string }) {
 		<Alert variant="warning">
 			<AlertDescription>
 				请先在「登录方式」中开启密码登录。{detail}{" "}
-				<Link to="/console/settings" search={{ tab: "login" }}>
-					去开启密码登录
-				</Link>
+				<Link to="/console/sign-in">去开启密码登录</Link>
 			</AlertDescription>
 		</Alert>
 	);

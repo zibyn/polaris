@@ -15,6 +15,19 @@ import {
 	useSearch,
 } from "@tanstack/react-router";
 import {
+	AppWindow,
+	BookOpen,
+	KeyRound,
+	LayoutDashboard,
+	LockKeyhole,
+	LogIn,
+	type LucideIcon,
+	MessageSquareText,
+	ScrollText,
+	Server,
+	Users,
+} from "lucide-react";
+import {
 	type ComponentType,
 	Fragment,
 	type ReactNode,
@@ -49,6 +62,7 @@ import {
 	SidebarContent,
 	SidebarFooter,
 	SidebarGroup,
+	SidebarGroupLabel,
 	SidebarHeader,
 	SidebarInset,
 	SidebarMenu,
@@ -61,7 +75,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import { UserAvatar } from "#/components/user-avatar";
 import { APIError, api, logout, type Me } from "#/lib/console-api";
-import { navGroups, needsTwoFactor } from "#/lib/nav";
+import { navItems, navSections, needsTwoFactor } from "#/lib/nav";
 
 export const meQuery = queryOptions({
 	queryKey: ["me"],
@@ -165,49 +179,65 @@ declare module "@tanstack/react-router" {
 	}
 }
 
-// Every group names its pages, whatever the admin may open.
-const allGroups = navGroups([
-	"users:read",
-	"applications:read",
-	"audit:read",
-	"config:read",
-]);
+const icons: Record<string, LucideIcon> = {
+	"/console": LayoutDashboard,
+	"/console/apps": AppWindow,
+	"/console/apis": Server,
+	"/console/sign-in": LogIn,
+	"/console/providers": KeyRound,
+	"/console/channels": MessageSquareText,
+	"/console/users": Users,
+	"/console/audit": ScrollText,
+	"/console/security": LockKeyhole,
+};
 
-// Crumbs is the breadcrumb atop a console page below a nav group: the
-// group, then each matched route that names itself; the last is the page
-// you're on. A group's own page has nothing above it, and the title right
-// below already names it, so it draws none.
-function Crumbs() {
+// Every item names its pages, whatever the admin may open.
+const all = ["users:read", "applications:read", "audit:read", "config:read"];
+const allSections = navSections(all);
+
+// useNavItem is the sidebar item the current page sits under.
+function useNavItem() {
 	const path = useLocation({ select: (l) => l.pathname.replace(/\/$/, "") });
-	const group = allGroups
+	return navItems(all)
 		.filter((g) => path === g.to || path.startsWith(`${g.to}/`))
 		.at(-1);
+}
+
+// Crumbs sits in the top bar: the section, the item, then each matched
+// route that names itself. The last is the page you're on, bold and not a
+// link; a section title is never a link, there is no page behind it.
+function Crumbs() {
+	const item = useNavItem();
+	const section = allSections.find((s) =>
+		s.items.some((i) => i.to === item?.to),
+	)?.title;
 	const crumbs = [
-		...(group
-			? [{ id: group.to, pathname: group.to, crumb: group.label }]
-			: []),
+		...(item ? [{ id: item.to, pathname: item.to, crumb: item.label }] : []),
 		...useMatches().flatMap((m) =>
 			m.staticData.crumb ? [{ ...m, crumb: m.staticData.crumb }] : [],
 		),
 	];
-	if (crumbs.length < 2) {
-		return null;
-	}
 	return (
-		<Breadcrumb>
-			<BreadcrumbList className="text-[13px]">
+		<Breadcrumb className="min-w-0">
+			<BreadcrumbList className="flex-nowrap text-[13px]">
+				{section && (
+					<>
+						<BreadcrumbItem className="max-sm:hidden">{section}</BreadcrumbItem>
+						<BreadcrumbSeparator className="max-sm:hidden" />
+					</>
+				)}
 				{crumbs.map(({ id, pathname, crumb: C }, i) => {
 					const label = typeof C === "string" ? C : <C />;
 					return (
 						<Fragment key={id}>
 							{i > 0 && <BreadcrumbSeparator />}
-							<BreadcrumbItem>
+							<BreadcrumbItem className="min-w-0">
 								{i < crumbs.length - 1 ? (
 									<BreadcrumbLink render={<Link to={pathname} />}>
 										{label}
 									</BreadcrumbLink>
 								) : (
-									<BreadcrumbPage className="text-muted-foreground">
+									<BreadcrumbPage className="truncate font-medium">
 										{label}
 									</BreadcrumbPage>
 								)}
@@ -231,10 +261,10 @@ function Page({ useHeader }: { useHeader: () => Header | null }) {
 	const navigate = useNavigate();
 	if (!header?.tabs) {
 		return (
-			<>
+			<div className="space-y-6">
 				{header && <PageHeader {...header} />}
 				<Outlet />
-			</>
+			</div>
 		);
 	}
 	const first = header.tabs[0][0];
@@ -271,18 +301,33 @@ function Console() {
 		);
 	}
 	return (
-		<SidebarProvider className="bg-sidebar text-sm">
+		<SidebarProvider className="text-sm">
 			<Nav />
-			<SidebarInset className="min-w-0 md:peer-data-[variant=inset]:rounded-2xl md:peer-data-[variant=inset]:shadow-xs md:peer-data-[variant=inset]:ring-1 md:peer-data-[variant=inset]:ring-border">
-				{/* Below md the sidebar is a drawer behind this trigger. */}
-				<div className="flex items-center gap-2 border-b px-4 py-2 md:hidden">
-					<SidebarTrigger aria-label="菜单" />
-					<span className="font-semibold">Polaris</span>
-				</div>
-				<div className="p-6 sm:p-8 xl:p-14">
-					{/* Lists use the whole panel; form fields stop at a readable width. */}
-					<div className="space-y-6 [&_[data-slot=field]]:max-w-2xl">
-						<Crumbs />
+			<SidebarInset className="min-w-0 bg-background">
+				<header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur sm:px-6">
+					<SidebarTrigger aria-label="菜单" className="md:hidden" />
+					<Crumbs />
+					<Button
+						variant="ghost"
+						size="icon"
+						className="ml-auto text-muted-foreground"
+						nativeButton={false}
+						render={
+							// biome-ignore lint/a11y/useAnchorContent: the label is aria-label
+							<a
+								href="https://github.com/zibyn/polaris/tree/main/docs"
+								target="_blank"
+								rel="noreferrer"
+								aria-label="文档"
+							/>
+						}
+					>
+						<BookOpen />
+					</Button>
+				</header>
+				<div className="w-full max-w-[1320px] px-4 pt-6 pb-24 sm:px-8 sm:pt-7">
+					{/* Lists use the whole width; form fields stop at a readable width. */}
+					<div className="[&_[data-slot=field]]:max-w-[560px]">
 						<Page
 							key={leaf.routeId}
 							useHeader={leaf.staticData.useHeader ?? noHeader}
@@ -295,54 +340,62 @@ function Console() {
 }
 
 // Nav is the console's sidebar: the mark (room to switch to other
-// products later, not clickable yet), the groups, and the signed-in
+// products later, not clickable yet), the sections, and the signed-in
 // admin's menu. Below md it opens as a drawer.
 function Nav() {
 	const me = useMe();
 	const { setOpenMobile } = useSidebar();
-	const pathname = useLocation({ select: (l) => l.pathname });
+	const active = useNavItem()?.to;
 	return (
-		<Sidebar variant="inset" collapsible="offcanvas">
+		<Sidebar collapsible="offcanvas">
 			<SidebarHeader>
-				<div className="flex items-center gap-3 p-2">
-					<span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-						<Star className="size-4" />
+				<div className="flex items-center gap-2.5 px-2 pt-2 pb-1">
+					<span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
+						<Star className="size-3.5" />
 					</span>
-					<span className="leading-tight">
-						<span className="block font-semibold">Polaris</span>
-						<span className="block text-muted-foreground text-xs">Auth</span>
+					<span className="font-semibold text-[15px] text-foreground">
+						Polaris
 					</span>
 				</div>
 			</SidebarHeader>
-			<SidebarContent>
-				<SidebarGroup>
-					<SidebarMenu>
-						{navGroups(me.permissions).map((g) => (
-							<SidebarMenuItem key={g.label}>
-								<SidebarMenuButton
-									isActive={
-										g.to === "/console"
-											? pathname === "/console" || pathname === "/console/"
-											: pathname.startsWith(g.to)
-									}
-									render={
-										<Link to={g.to} onClick={() => setOpenMobile(false)} />
-									}
-								>
-									{g.label}
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-						))}
-					</SidebarMenu>
-				</SidebarGroup>
+			<SidebarContent className="gap-0">
+				{navSections(me.permissions).map((s) => (
+					<SidebarGroup key={s.title} className="py-1">
+						{s.title && <SidebarGroupLabel>{s.title}</SidebarGroupLabel>}
+						<SidebarMenu>
+							{s.items.map((g) => {
+								const Icon = icons[g.to];
+								return (
+									<SidebarMenuItem key={g.to}>
+										<SidebarMenuButton
+											isActive={active === g.to}
+											className="font-medium data-active:[&_svg]:text-primary"
+											render={
+												<Link to={g.to} onClick={() => setOpenMobile(false)} />
+											}
+										>
+											{Icon && <Icon />}
+											{g.label}
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+								);
+							})}
+						</SidebarMenu>
+					</SidebarGroup>
+				))}
 			</SidebarContent>
-			<SidebarFooter>
+			<SidebarFooter className="border-t">
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<DropdownMenu>
 							<DropdownMenuTrigger render={<SidebarMenuButton size="lg" />}>
 								<UserAvatar name={me.identifier} />
-								<span title={me.identifier}>{me.identifier}</span>
+								<span
+									title={me.identifier}
+									className="truncate font-medium text-foreground"
+								>
+									{me.identifier}
+								</span>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent side="top">
 								<DropdownMenuItem render={<Link to="/account" />}>
@@ -374,7 +427,7 @@ function PageHeader({
 		<header className="space-y-4">
 			<div>
 				<div className="flex flex-wrap items-center gap-3">
-					<h1 className="flex items-center gap-3 font-semibold text-2xl tracking-tight">
+					<h1 className="flex items-center gap-3 font-semibold text-[22px] tracking-tight">
 						{title}
 					</h1>
 					{badges}
@@ -385,12 +438,10 @@ function PageHeader({
 					)}
 				</div>
 				{ids && (
-					<div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-1">
-						{ids}
-					</div>
+					<div className="mt-2.5 flex flex-wrap items-center gap-2">{ids}</div>
 				)}
 				{description && (
-					<p className="mt-2 text-muted-foreground">{description}</p>
+					<p className="mt-1 text-muted-foreground">{description}</p>
 				)}
 			</div>
 			{details}

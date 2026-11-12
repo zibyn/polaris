@@ -29,7 +29,7 @@ export function LoginTab() {
 	const p = policy;
 	const sms = hasChannel(channels, "phone");
 	return (
-		<div className="space-y-10">
+		<div className="space-y-4">
 			<CodeLogin channels={channels} />
 			<Switches current={p} editable={editable} sms={sms} />
 		</div>
