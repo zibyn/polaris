@@ -26,6 +26,7 @@ import {
 	MessageSquareText,
 	ScrollText,
 	Server,
+	ShieldCheck,
 	Users,
 } from "lucide-react";
 import {
@@ -191,6 +192,7 @@ const icons: Record<string, LucideIcon> = {
 	"/console/providers": KeyRound,
 	"/console/channels": MessageSquareText,
 	"/console/users": Users,
+	"/console/roles": ShieldCheck,
 	"/console/audit": ScrollText,
 	"/console/security": LockKeyhole,
 };

@@ -17,6 +17,7 @@ import { Route as AccountCallbackRouteImport } from './routes/account_/callback'
 import { Route as ConsoleIndexRouteImport } from './routes/console/index'
 import { Route as ConsoleAuditRouteImport } from './routes/console/audit'
 import { Route as ConsoleChannelsRouteImport } from './routes/console/channels'
+import { Route as ConsoleRolesRouteImport } from './routes/console/roles'
 import { Route as ConsoleSecurityRouteImport } from './routes/console/security'
 import { Route as ConsoleSettingsRouteImport } from './routes/console/settings'
 import { Route as ConsoleSignInRouteImport } from './routes/console/sign-in'
@@ -71,6 +72,11 @@ const ConsoleAuditRoute = ConsoleAuditRouteImport.update({
 const ConsoleChannelsRoute = ConsoleChannelsRouteImport.update({
   id: '/channels',
   path: '/channels',
+  getParentRoute: () => ConsoleRouteRoute,
+} as any)
+const ConsoleRolesRoute = ConsoleRolesRouteImport.update({
+  id: '/roles',
+  path: '/roles',
   getParentRoute: () => ConsoleRouteRoute,
 } as any)
 const ConsoleSecurityRoute = ConsoleSecurityRouteImport.update({
@@ -156,6 +162,7 @@ export interface FileRoutesByFullPath {
   '/account/callback': typeof AccountCallbackRoute
   '/console/audit': typeof ConsoleAuditRoute
   '/console/channels': typeof ConsoleChannelsRoute
+  '/console/roles': typeof ConsoleRolesRoute
   '/console/security': typeof ConsoleSecurityRoute
   '/console/settings': typeof ConsoleSettingsRoute
   '/console/sign-in': typeof ConsoleSignInRoute
@@ -179,6 +186,7 @@ export interface FileRoutesByTo {
   '/account/callback': typeof AccountCallbackRoute
   '/console/audit': typeof ConsoleAuditRoute
   '/console/channels': typeof ConsoleChannelsRoute
+  '/console/roles': typeof ConsoleRolesRoute
   '/console/security': typeof ConsoleSecurityRoute
   '/console/settings': typeof ConsoleSettingsRoute
   '/console/sign-in': typeof ConsoleSignInRoute
@@ -204,6 +212,7 @@ export interface FileRoutesById {
   '/account_/callback': typeof AccountCallbackRoute
   '/console/audit': typeof ConsoleAuditRoute
   '/console/channels': typeof ConsoleChannelsRoute
+  '/console/roles': typeof ConsoleRolesRoute
   '/console/security': typeof ConsoleSecurityRoute
   '/console/settings': typeof ConsoleSettingsRoute
   '/console/sign-in': typeof ConsoleSignInRoute
@@ -231,6 +240,7 @@ export interface FileRouteTypes {
     | '/account/callback'
     | '/console/audit'
     | '/console/channels'
+    | '/console/roles'
     | '/console/security'
     | '/console/settings'
     | '/console/sign-in'
@@ -254,6 +264,7 @@ export interface FileRouteTypes {
     | '/account/callback'
     | '/console/audit'
     | '/console/channels'
+    | '/console/roles'
     | '/console/security'
     | '/console/settings'
     | '/console/sign-in'
@@ -278,6 +289,7 @@ export interface FileRouteTypes {
     | '/account_/callback'
     | '/console/audit'
     | '/console/channels'
+    | '/console/roles'
     | '/console/security'
     | '/console/settings'
     | '/console/sign-in'
@@ -361,6 +373,13 @@ declare module '@tanstack/react-router' {
       path: '/channels'
       fullPath: '/console/channels'
       preLoaderRoute: typeof ConsoleChannelsRouteImport
+      parentRoute: typeof ConsoleRouteRoute
+    }
+    '/console/roles': {
+      id: '/console/roles'
+      path: '/roles'
+      fullPath: '/console/roles'
+      preLoaderRoute: typeof ConsoleRolesRouteImport
       parentRoute: typeof ConsoleRouteRoute
     }
     '/console/security': {
@@ -499,6 +518,7 @@ const ConsoleApisApiRouteRouteWithChildren =
 interface ConsoleRouteRouteChildren {
   ConsoleAuditRoute: typeof ConsoleAuditRoute
   ConsoleChannelsRoute: typeof ConsoleChannelsRoute
+  ConsoleRolesRoute: typeof ConsoleRolesRoute
   ConsoleSecurityRoute: typeof ConsoleSecurityRoute
   ConsoleSettingsRoute: typeof ConsoleSettingsRoute
   ConsoleSignInRoute: typeof ConsoleSignInRoute
@@ -517,6 +537,7 @@ interface ConsoleRouteRouteChildren {
 const ConsoleRouteRouteChildren: ConsoleRouteRouteChildren = {
   ConsoleAuditRoute: ConsoleAuditRoute,
   ConsoleChannelsRoute: ConsoleChannelsRoute,
+  ConsoleRolesRoute: ConsoleRolesRoute,
   ConsoleSecurityRoute: ConsoleSecurityRoute,
   ConsoleSettingsRoute: ConsoleSettingsRoute,
   ConsoleSignInRoute: ConsoleSignInRoute,

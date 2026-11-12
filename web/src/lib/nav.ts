@@ -28,7 +28,14 @@ const sections = [
 	},
 	{
 		title: "用户管理",
-		items: [{ label: "用户", permission: "users:read", to: "/console/users" }],
+		items: [
+			{ label: "用户", permission: "users:read", to: "/console/users" },
+			{
+				label: "角色与权限",
+				permission: "applications:read",
+				to: "/console/roles",
+			},
+		],
 	},
 	{
 		title: "系统",

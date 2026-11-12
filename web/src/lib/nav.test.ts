@@ -29,6 +29,7 @@ test("an owner sees every item in sidebar order", () => {
 		"认证源",
 		"验证码通道",
 		"用户",
+		"角色与权限",
 		"审计日志",
 		"安全",
 	]);
@@ -40,7 +41,11 @@ test("an owner sees every item in sidebar order", () => {
 
 test("each item needs the Permission consoles.md lists", () => {
 	assert.deepEqual(labels(["users:read"]), ["概览", "用户"]);
-	assert.deepEqual(labels(["applications:read"]), ["应用", "API 资源"]);
+	assert.deepEqual(labels(["applications:read"]), [
+		"应用",
+		"API 资源",
+		"角色与权限",
+	]);
 	assert.deepEqual(labels(["config:read"]), [
 		"登录体验",
 		"认证源",
