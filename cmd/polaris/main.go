@@ -115,12 +115,15 @@ func serve() error {
 		Handler: server.New(pool.Ping, spa, cfg.TrustedProxies, auth.Register,
 			managementSvc.Register, accountSvc.Register),
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second, // fits a ~2 MB logo upload; no WriteTimeout
+		IdleTimeout:       120 * time.Second,
 	}
 	servers := []*http.Server{srv}
 	if cfg.MetricsListen != "" {
 		mux := http.NewServeMux()
 		mux.Handle("GET /metrics", metrics.Handler(pool))
-		m := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+		m := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second}
 		// Bound here so a port that is taken fails startup, not a goroutine.
 		ln, err := net.Listen("tcp", cfg.MetricsListen)
 		if err != nil {
@@ -188,8 +191,17 @@ var cleanupTasks = []func(context.Context, *pgxpool.Pool) error{
 	identity.DeleteExpiredInvites,
 }
 
-// runCleanup runs cleanupTasks once an hour.
+// runCleanup runs cleanupTasks at startup, then once an hour, so replicas
+// restarting more often than hourly still clean up and rotate keys.
 func runCleanup(ctx context.Context, pool *pgxpool.Pool) {
+	run := func() {
+		for _, task := range cleanupTasks {
+			if err := task(ctx, pool); err != nil {
+				slog.Error("cleanup", "err", err)
+			}
+		}
+	}
+	run()
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
 	for {
@@ -197,11 +209,7 @@ func runCleanup(ctx context.Context, pool *pgxpool.Pool) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			for _, task := range cleanupTasks {
-				if err := task(ctx, pool); err != nil {
-					slog.Error("cleanup", "err", err)
-				}
-			}
+			run()
 		}
 	}
 }
