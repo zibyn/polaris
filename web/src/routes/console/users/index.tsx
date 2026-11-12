@@ -87,7 +87,7 @@ export const Route = createFileRoute("/console/users/")({
 
 const pageSize = 50;
 
-const usersQuery = ({
+export const usersQuery = ({
 	q,
 	api: roleAPI,
 	role,
@@ -111,7 +111,7 @@ export const date = (s: string) => new Date(s).toLocaleString("zh-CN");
 
 // userName shows a User by their primary Identifier; one with none falls
 // back to the first 8 characters of their ID.
-const userName = (u: User) =>
+export const userName = (u: User) =>
 	primaryIdentifier(u.identifiers) ?? (
 		<span className="font-mono text-muted-foreground">{u.sub.slice(0, 8)}</span>
 	);
@@ -328,7 +328,13 @@ function Users() {
 }
 
 // Search is the user search box; it searches on Enter.
-function Search({ q, onSearch }: { q: string; onSearch: (q: string) => void }) {
+export function Search({
+	q,
+	onSearch,
+}: {
+	q: string;
+	onSearch: (q: string) => void;
+}) {
 	const form = useForm({
 		defaultValues: { q },
 		validationLogic: revalidateLogic(),

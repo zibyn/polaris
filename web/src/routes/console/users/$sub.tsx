@@ -40,7 +40,13 @@ import {
 	EmptyHeader,
 	EmptyTitle,
 } from "#/components/ui/empty";
-import { FieldGroup, FieldLegend, FieldSet } from "#/components/ui/field";
+import {
+	Field,
+	FieldGroup,
+	FieldLabel,
+	FieldLegend,
+	FieldSet,
+} from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
 import {
 	Item,
@@ -50,9 +56,17 @@ import {
 	ItemTitle,
 } from "#/components/ui/item";
 import { Label } from "#/components/ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "#/components/ui/select";
 import { TabsContent } from "#/components/ui/tabs";
 import { UserAvatar } from "#/components/user-avatar";
 import { nicknameSchema } from "#/lib/account";
+import { granted, toggled } from "#/lib/apis";
 import {
 	APIError,
 	api,
@@ -72,7 +86,9 @@ import {
 	primaryIdentifier,
 } from "#/lib/users";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
+import { FormSheet } from "#/routes/console/-components/form-sheet";
 import { IdLine, Section } from "#/routes/console/-components/section";
+import { apisQuery } from "#/routes/console/apis/index";
 import { type Header, useCan } from "#/routes/console/route";
 import { date, rolesQuery } from "#/routes/console/users/index";
 import {
@@ -1026,17 +1042,37 @@ function Passkeys({
 	);
 }
 
-// RoleAssignment is the 角色 section: every API resource's Roles with the
-// User's ticked; each saves on its own. Management API Roles need
-// admin-roles:assign.
+// useSetRoles replaces the User's Roles on one API resource.
+function useSetRoles(sub: string) {
+	const client = useQueryClient();
+	return useMutation({
+		mutationFn: (v: { api: string; roles: string[] }) =>
+			api(`/users/${encodeURIComponent(sub)}/roles`, {
+				method: "PUT",
+				body: v,
+			}),
+		onSuccess: () => invalidateUser(client, sub),
+	});
+}
+
+// RoleAssignment is the 角色 tab: the Roles the User holds, each taken back
+// on its own; 分配角色 picks an API resource, then its Roles; and the
+// Permissions they add up to. Management API Roles need admin-roles:assign.
 function RoleAssignment({ user }: { user: UserDetail }) {
 	const can = useCan();
 	const { roles } = useSuspenseQuery(rolesQuery).data;
+	// Permissions come with the API resources, behind applications:read.
+	const apis = useQuery({ ...apisQuery, enabled: can("applications:read") })
+		.data?.apis;
+	const remove = useSetRoles(user.sub);
 	const [assigning, setAssigning] = useState(false);
-	const byAPI = new Map<string, RoleInfo[]>();
-	for (const r of roles) {
-		byAPI.set(r.api, [...(byAPI.get(r.api) ?? []), r]);
-	}
+	const mayAssign = (apiID: string) =>
+		can(apiID === managementAPI ? "admin-roles:assign" : "roles:assign");
+	const heldOn = (apiID: string) =>
+		user.roles.filter((r) => r.api === apiID).map((r) => r.key);
+	const apiName = (apiID: string) =>
+		roles.find((r) => r.api === apiID)?.apiName ?? apiID;
+	const assignable = [...new Set(roles.map((r) => r.api))].filter(mayAssign);
 	// Only the built-in Management API Roles: nothing of the reader's own.
 	const noOwnRoles = roles.every((r) => r.api === managementAPI);
 	const toAPIs = noOwnRoles && can("applications:read") && (
@@ -1047,126 +1083,240 @@ function RoleAssignment({ user }: { user: UserDetail }) {
 			去「API 资源」添加角色
 		</Link>
 	);
-	// Without one Role the reader may assign, 分配角色 leads nowhere.
-	const assignable =
-		can("roles:assign") && (!noOwnRoles || can("admin-roles:assign"));
-	if (user.roles.length === 0 && !assigning) {
-		return (
-			<Section title="角色">
-				<Empty className="border">
-					<EmptyHeader>
-						<EmptyTitle>没有角色</EmptyTitle>
-						<EmptyDescription>用户当前没有任何权限。</EmptyDescription>
-					</EmptyHeader>
-					<EmptyContent>
-						{can("roles:assign") ? (
-							<>
-								{assignable && (
-									<Button size="sm" onClick={() => setAssigning(true)}>
-										分配角色
-									</Button>
-								)}
-								{toAPIs}
-							</>
-						) : (
-							<span className="text-muted-foreground">
-								需要「管理员」角色才能分配角色。
-							</span>
-						)}
-					</EmptyContent>
-				</Empty>
-			</Section>
-		);
-	}
+	const assign = assignable.length > 0 && (
+		<Button size="sm" onClick={() => setAssigning(true)}>
+			分配角色
+		</Button>
+	);
+	const heldAPIs = [...new Set(user.roles.map((r) => r.api))];
 	return (
-		<Section title="角色" actions={can("roles:assign") && toAPIs}>
-			<ItemList>
-				{[...byAPI].map(([apiID, list]) => (
-					<APIRoles key={apiID} user={user} apiID={apiID} roles={list} />
-				))}
-			</ItemList>
-		</Section>
+		<div className="space-y-10">
+			<Section
+				title="角色"
+				intro="权限变更在 access token 过期后生效（最长 10 分钟）。"
+				actions={
+					user.roles.length > 0 && (
+						<>
+							{toAPIs}
+							{assign}
+						</>
+					)
+				}
+			>
+				{user.roles.length === 0 ? (
+					<Empty className="border">
+						<EmptyHeader>
+							<EmptyTitle>没有角色</EmptyTitle>
+							<EmptyDescription>用户当前没有任何权限。</EmptyDescription>
+						</EmptyHeader>
+						<EmptyContent>
+							{can("roles:assign") ? (
+								<>
+									{assign}
+									{toAPIs}
+								</>
+							) : (
+								<span className="text-muted-foreground">
+									需要「管理员」角色才能分配角色。
+								</span>
+							)}
+						</EmptyContent>
+					</Empty>
+				) : (
+					<ItemList>
+						{user.roles.map((r) => (
+							<Item key={`${r.api}\n${r.key}`}>
+								<ItemContent>
+									<ItemTitle>
+										{r.name}
+										<span className="font-mono font-normal text-muted-foreground text-xs">
+											{r.key}
+										</span>
+									</ItemTitle>
+									<ItemDescription className="text-xs">
+										{apiName(r.api)}
+									</ItemDescription>
+								</ItemContent>
+								{mayAssign(r.api) && (
+									<ItemActions>
+										<ConfirmDialog
+											trigger={
+												<Button
+													size="sm"
+													variant="ghost"
+													disabled={remove.isPending}
+												>
+													移除
+												</Button>
+											}
+											title={`收回角色「${r.name}」？`}
+											action="收回角色"
+											onConfirm={() =>
+												remove.mutate(
+													{
+														api: r.api,
+														roles: toggled(heldOn(r.api), [r.key], false),
+													},
+													{ onError: failed("收回角色失败") },
+												)
+											}
+										>
+											用户将失去该角色带来的权限，在「{apiName(r.api)}
+											」上的其他角色不受影响。
+										</ConfirmDialog>
+									</ItemActions>
+								)}
+							</Item>
+						))}
+					</ItemList>
+				)}
+			</Section>
+			{apis && heldAPIs.length > 0 && (
+				<Section
+					title="有效权限"
+					intro="所持角色的权限并集，按 API 资源分别写入 access token 的 entitlements。"
+				>
+					<div className="space-y-4">
+						{heldAPIs.map((apiID) => {
+							const def = apis.find((a) => a.identifier === apiID);
+							const keys = def ? granted(def.roles, heldOn(apiID)) : [];
+							return (
+								<div key={apiID} className="space-y-2">
+									<p className="text-[13px] text-muted-foreground">
+										{apiName(apiID)}
+									</p>
+									{keys.length === 0 ? (
+										<p className="text-sm">所持角色没有任何权限。</p>
+									) : (
+										<div className="flex flex-wrap gap-1.5">
+											{keys.map((k) => (
+												<Badge key={k} variant="outline">
+													{def?.permissions.find((p) => p.key === k)?.name}
+													<span className="font-mono text-muted-foreground">
+														{k}
+													</span>
+												</Badge>
+											))}
+										</div>
+									)}
+								</div>
+							);
+						})}
+					</div>
+				</Section>
+			)}
+			<FormSheet
+				open={assigning}
+				onOpenChange={setAssigning}
+				title="分配角色"
+				description="选择 API 资源，再勾选角色；该 API 资源上未勾选的角色会被收回。"
+			>
+				{assigning && (
+					<AssignRoles
+						sub={user.sub}
+						apis={assignable}
+						roles={roles}
+						heldOn={heldOn}
+						onDone={() => setAssigning(false)}
+					/>
+				)}
+			</FormSheet>
+		</div>
 	);
 }
 
-function APIRoles({
-	user,
-	apiID,
+// AssignRoles sets the User's Roles on one API resource at a time; switching
+// API resource starts over from what they hold there.
+function AssignRoles({
+	sub,
+	apis,
 	roles,
+	heldOn,
+	onDone,
 }: {
-	user: UserDetail;
-	apiID: string;
+	sub: string;
+	apis: string[];
 	roles: RoleInfo[];
+	heldOn: (api: string) => string[];
+	onDone: () => void;
 }) {
-	const can = useCan();
-	const client = useQueryClient();
-	const editable = can(
-		apiID === managementAPI ? "admin-roles:assign" : "roles:assign",
+	const save = useSetRoles(sub);
+	// A business API first: that's what an admin most often comes to give.
+	const [apiID, setAPI] = useState(
+		apis.find((a) => a !== managementAPI) ?? apis[0],
 	);
-	const held = user.roles.filter((r) => r.api === apiID).map((r) => r.key);
-	const save = useMutation({
-		mutationFn: (keys: string[]) =>
-			api(`/users/${encodeURIComponent(user.sub)}/roles`, {
-				method: "PUT",
-				body: { api: apiID, roles: keys },
-			}),
-		onSuccess: () => invalidateUser(client, user.sub),
-	});
-	const form = useForm({
-		defaultValues: { roles: held },
-		onSubmit: ({ value }) => save.mutate(value.roles, { onSuccess: saved }),
-	});
+	const [keys, setKeys] = useState(() => heldOn(apiID));
+	const choices = roles.filter((r) => r.api === apiID);
 	return (
-		<form
-			key={held.join()}
-			noValidate
-			className="space-y-2 py-3"
-			onSubmit={(e) => {
-				e.preventDefault();
-				form.handleSubmit();
-			}}
-		>
-			<form.Field name="roles">
-				{(field) => (
-					<FieldSet className="gap-2">
-						<FieldLegend
-							variant="label"
-							className="mb-0 font-normal text-[13px] text-muted-foreground"
-						>
-							{roles[0].apiName}
-						</FieldLegend>
-						<div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-							{roles.map((r) => (
-								<Label key={r.key} className="font-normal">
-									<Checkbox
-										disabled={!editable}
-										checked={field.state.value.includes(r.key)}
-										onCheckedChange={(on) =>
-											field.handleChange(
-												on
-													? [...field.state.value, r.key]
-													: field.state.value.filter((k) => k !== r.key),
-											)
-										}
-									/>
-									{r.name}
-								</Label>
-							))}
-							{editable && (
-								<Button
-									type="submit"
-									size="sm"
-									variant="outline"
-									disabled={save.isPending}
-								>
-									保存
-								</Button>
-							)}
-						</div>
-					</FieldSet>
-				)}
-			</form.Field>
+		<div className="flex flex-col gap-5">
+			<Field>
+				<FieldLabel>API 资源</FieldLabel>
+				<Select
+					value={apiID}
+					onValueChange={(v) => {
+						const next = `${v ?? ""}`;
+						setAPI(next);
+						setKeys(heldOn(next));
+						save.reset();
+					}}
+				>
+					<SelectTrigger aria-label="API 资源">
+						<SelectValue>
+							{(v: string) => roles.find((r) => r.api === v)?.apiName}
+						</SelectValue>
+					</SelectTrigger>
+					<SelectContent>
+						{apis.map((a) => (
+							<SelectItem key={a} value={a}>
+								{roles.find((r) => r.api === a)?.apiName}
+								<span className="font-mono text-muted-foreground text-xs">
+									{a}
+								</span>
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</Field>
+			<FieldSet>
+				<FieldLegend variant="label">角色</FieldLegend>
+				<div className="divide-y rounded-lg border">
+					{choices.map((r) => (
+						<Label key={r.key} className="flex px-3 py-2 font-normal">
+							<Checkbox
+								checked={keys.includes(r.key)}
+								onCheckedChange={(on) => setKeys(toggled(keys, [r.key], on))}
+							/>
+							{r.name}
+							{r.builtin && <Badge variant="secondary">内置</Badge>}
+							<span className="ml-auto font-mono text-muted-foreground text-xs">
+								{r.key}
+							</span>
+						</Label>
+					))}
+				</div>
+			</FieldSet>
 			<FormError error={save.error} />
-		</form>
+			<div className="flex gap-2">
+				<Button
+					disabled={save.isPending}
+					onClick={() =>
+						save.mutate(
+							{ api: apiID, roles: keys },
+							{
+								onSuccess: () => {
+									saved();
+									onDone();
+								},
+							},
+						)
+					}
+				>
+					保存
+				</Button>
+				<Button variant="ghost" onClick={onDone}>
+					取消
+				</Button>
+			</div>
+		</div>
 	);
 }

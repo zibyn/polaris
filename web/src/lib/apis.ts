@@ -51,3 +51,33 @@ export const roleSchema = z.object({
 	name,
 	permissions: z.array(z.string()),
 });
+
+// matching narrows a Permission picker to the keys or names containing q.
+export const matching = <P extends { key: string; name: string }>(
+	permissions: P[],
+	q: string,
+) => {
+	const s = q.trim().toLowerCase();
+	return s
+		? permissions.filter(
+				(p) =>
+					p.key.toLowerCase().includes(s) || p.name.toLowerCase().includes(s),
+			)
+		: permissions;
+};
+
+// toggled ticks keys on or off in a selection, leaving the rest as they are.
+export const toggled = (held: string[], keys: string[], on: boolean) =>
+	on ? [...new Set([...held, ...keys])] : held.filter((k) => !keys.includes(k));
+
+// granted is what the held Roles on one API add up to: their Permissions'
+// union, as the access token's entitlements carry it.
+export const granted = (
+	roles: Pick<RoleDef, "key" | "permissions">[],
+	held: string[],
+) =>
+	[
+		...new Set(
+			roles.filter((r) => held.includes(r.key)).flatMap((r) => r.permissions),
+		),
+	].sort();

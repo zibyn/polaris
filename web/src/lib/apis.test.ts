@@ -3,9 +3,12 @@ import { test } from "node:test";
 import {
 	apiSchema,
 	defaultFor,
+	granted,
+	matching,
 	permissionSchema,
 	roleSchema,
 	rolesWith,
+	toggled,
 } from "./apis.ts";
 
 const orders = "api://orders";
@@ -97,4 +100,39 @@ test("a role needs a key and a name; permissions may be empty", () => {
 		),
 		{ name: "请输入名称。" },
 	);
+});
+
+test("the Permission picker matches key or name, ignoring case", () => {
+	const ps = [
+		{ key: "orders:read", name: "查看订单" },
+		{ key: "orders:export", name: "导出订单" },
+		{ key: "users:read", name: "查看用户" },
+	];
+	assert.deepEqual(
+		matching(ps, " ORDERS ").map((p) => p.key),
+		["orders:read", "orders:export"],
+	);
+	assert.deepEqual(
+		matching(ps, "查看").map((p) => p.key),
+		["orders:read", "users:read"],
+	);
+	assert.equal(matching(ps, "").length, 3);
+});
+
+test("ticking keys keeps the others and never doubles one", () => {
+	assert.deepEqual(toggled(["a", "b"], ["b", "c"], true), ["a", "b", "c"]);
+	assert.deepEqual(toggled(["a", "b", "c"], ["b", "c"], false), ["a"]);
+});
+
+test("held Roles grant the union of their Permissions", () => {
+	const roles = [
+		{ key: "viewer", permissions: ["orders:read"] },
+		{ key: "editor", permissions: ["orders:write", "orders:read"] },
+		{ key: "admin", permissions: ["orders:delete"] },
+	];
+	assert.deepEqual(granted(roles, ["viewer", "editor"]), [
+		"orders:read",
+		"orders:write",
+	]);
+	assert.deepEqual(granted(roles, []), []);
 });

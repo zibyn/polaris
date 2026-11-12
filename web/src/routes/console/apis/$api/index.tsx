@@ -14,7 +14,7 @@ import {
 	useNavigate,
 	useParams,
 } from "@tanstack/react-router";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import { z } from "zod";
 import { FormError, FormField, failed, saved } from "#/components/form";
 import { ItemList } from "#/components/item-list";
@@ -57,6 +57,7 @@ import { applicationsQuery } from "#/lib/queries";
 import { ConfirmDialog } from "#/routes/console/-components/confirm-dialog";
 import { FormSheet } from "#/routes/console/-components/form-sheet";
 import { DangerZone, IdLine } from "#/routes/console/-components/section";
+import { PermissionPicker } from "#/routes/console/apis/-components/permission-picker";
 import { apisQuery } from "#/routes/console/apis/index";
 import { type Header, useCan } from "#/routes/console/route";
 
@@ -68,27 +69,10 @@ const search = z.object({
 		.catch(defaults.tab),
 });
 
-export const Route = createFileRoute("/console/apis/$api")({
-	staticData: { crumb: APIName, useHeader },
+export const Route = createFileRoute("/console/apis/$api/")({
+	staticData: { useHeader },
 	validateSearch: search,
 	search: { middlewares: [stripSearchParams(defaults)] },
-	loader: async ({ context: { queryClient }, params }) => {
-		const [apis] = await Promise.all([
-			queryClient.ensureQueryData(apisQuery),
-			queryClient.ensureQueryData(applicationsQuery),
-		]);
-		if (!apis.apis.some((a) => a.identifier === params.api)) {
-			throw notFound();
-		}
-	},
-	notFoundComponent: () => (
-		<p className="text-sm">
-			API 资源不存在或已被删除。
-			<Link to="/console/apis" className="underline">
-				返回 API 资源列表
-			</Link>
-		</p>
-	),
 	component: APIPage,
 });
 
@@ -99,7 +83,7 @@ const tabs = [
 
 // useAPIMutation runs a Management API write and refreshes the API list.
 // Pass onError for an action outside a form; a form shows the error itself.
-function useAPIMutation<T>(
+export function useAPIMutation<T>(
 	fn: (v: T) => Promise<unknown>,
 	onError?: (e: Error) => void,
 ) {
@@ -122,12 +106,6 @@ function useAPI(identifier: string) {
 		defaulting:
 			def && apps ? defaultFor(apps.applications, def.identifier) : undefined,
 	};
-}
-
-// APIName is the API resource's crumb, kept current by the query.
-function APIName(): ReactNode {
-	const { api: identifier } = useParams({ from: "/console/apis/$api" });
-	return useAPI(identifier).def?.name;
 }
 
 function useHeader(): Header | null {
@@ -175,7 +153,7 @@ function APIPage() {
 	);
 }
 
-function AppLinks({ apps }: { apps: Application[] }) {
+export function AppLinks({ apps }: { apps: Application[] }) {
 	return (
 		<span className="flex flex-wrap gap-x-3">
 			{apps.map((a) => (
@@ -360,10 +338,10 @@ function Roles({
 	// Management API Roles hand out admin Permissions: owners only.
 	const editable =
 		can("applications:write") && (!def.builtin || can("admin-roles:assign"));
-	const [editing, setEditing] = useState<RoleDef | "new" | null>(null);
-	const close = () => setEditing(null);
+	const [adding, setAdding] = useState(false);
+	const close = () => setAdding(false);
 	const add = editable ? (
-		<Button size="sm" onClick={() => setEditing("new")}>
+		<Button size="sm" onClick={() => setAdding(true)}>
 			添加角色
 		</Button>
 	) : (
@@ -392,33 +370,17 @@ function Roles({
 			)}
 			<ItemList>
 				{def.roles.map((r) => (
-					<RoleRow
-						key={r.key}
-						def={def}
-						role={r}
-						editable={editable}
-						onEdit={() => setEditing(r)}
-					/>
+					<RoleRow key={r.key} def={def} role={r} editable={editable} />
 				))}
 			</ItemList>
 			{def.roles.length > 0 && editable && add}
 			<FormSheet
-				open={editing !== null}
-				onOpenChange={(open) => !open && close()}
-				title={
-					editing === null || editing === "new"
-						? "添加角色"
-						: `编辑角色「${editing.name}」`
-				}
+				open={adding}
+				onOpenChange={setAdding}
+				title="添加角色"
 				description="分配给用户后，角色的权限会写入其令牌。"
 			>
-				{editing !== null && (
-					<RoleForm
-						def={def}
-						role={editing === "new" ? undefined : editing}
-						onDone={close}
-					/>
-				)}
+				{adding && <RoleForm def={def} onDone={close} />}
 			</FormSheet>
 		</div>
 	);
@@ -431,18 +393,16 @@ const holders = (role: RoleDef): string[] =>
 		role.applications ? `${role.applications} 个应用` : "",
 	].filter(Boolean);
 
-// RoleRow shows a Role; 编辑 opens it in the drawer. Built-in Roles stay as
-// they are.
+// RoleRow shows a Role, its name leading to the Role's page where it is
+// edited. Built-in Roles stay as they are.
 function RoleRow({
 	def,
 	role,
 	editable: canEdit,
-	onEdit,
 }: {
 	def: APIDef;
 	role: RoleDef;
 	editable: boolean;
-	onEdit: () => void;
 }) {
 	const editable = canEdit && !role.builtin;
 	const remove = useAPIMutation(
@@ -473,7 +433,13 @@ function RoleRow({
 		<Item>
 			<ItemContent>
 				<ItemTitle>
-					{role.name}
+					<Link
+						to="/console/apis/$api/roles/$role"
+						params={{ api: def.identifier, role: role.key }}
+						className="rounded-sm hover:underline"
+					>
+						{role.name}
+					</Link>
 					<span className="font-mono font-normal text-muted-foreground text-xs">
 						{role.key}
 					</span>
@@ -510,9 +476,6 @@ function RoleRow({
 							默认
 						</Label>
 					)}
-					<Button size="sm" variant="ghost" onClick={onEdit}>
-						编辑
-					</Button>
 					<ConfirmDialog
 						trigger={
 							<Button size="sm" variant="ghost" disabled={remove.isPending}>
@@ -533,15 +496,16 @@ function RoleRow({
 	);
 }
 
-// RoleForm edits a Role; without one it defines a new one.
-function RoleForm({
+// RoleForm edits a Role; without one it defines a new one. Without onDone
+// it is the Role page's own form: no 取消, and it stays after saving.
+export function RoleForm({
 	def,
 	role,
 	onDone,
 }: {
 	def: APIDef;
 	role?: RoleDef;
-	onDone: () => void;
+	onDone?: () => void;
 }) {
 	const put = useAPIMutation(
 		(v: { key: string; name: string; permissions: string[] }) =>
@@ -570,7 +534,7 @@ function RoleForm({
 				{
 					onSuccess: () => {
 						saved();
-						onDone();
+						onDone?.();
 					},
 				},
 			),
@@ -615,23 +579,11 @@ function RoleForm({
 								该 API 资源还没有权限，请先在「权限」标签页中添加。
 							</p>
 						) : (
-							<div className="flex max-h-64 flex-wrap gap-x-4 gap-y-2 overflow-y-auto">
-								{def.permissions.map((p) => (
-									<Label key={p.key} className="font-normal">
-										<Checkbox
-											checked={field.state.value.includes(p.key)}
-											onCheckedChange={(on) =>
-												field.handleChange(
-													on
-														? [...field.state.value, p.key]
-														: field.state.value.filter((k) => k !== p.key),
-												)
-											}
-										/>
-										{p.name}
-									</Label>
-								))}
-							</div>
+							<PermissionPicker
+								permissions={def.permissions}
+								value={field.state.value}
+								onChange={field.handleChange}
+							/>
 						)}
 					</FieldSet>
 				)}
@@ -641,9 +593,11 @@ function RoleForm({
 				<Button type="submit" disabled={put.isPending}>
 					保存
 				</Button>
-				<Button type="button" variant="ghost" onClick={onDone}>
-					取消
-				</Button>
+				{onDone && (
+					<Button type="button" variant="ghost" onClick={onDone}>
+						取消
+					</Button>
+				)}
 			</div>
 		</form>
 	);
@@ -703,7 +657,7 @@ function DeleteAPI({
 	);
 }
 
-function CannotCreate() {
+export function CannotCreate() {
 	return (
 		<span className="text-muted-foreground">需要「管理员」角色才能创建。</span>
 	);
