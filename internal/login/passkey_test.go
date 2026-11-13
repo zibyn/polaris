@@ -10,8 +10,10 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/passkey"
 	"github.com/zibyn/polaris/internal/passkey/passkeytest"
 )
@@ -156,6 +158,26 @@ func TestPasskeyLoginPastTOTP(t *testing.T) {
 	resp, page := e.post(page, url.Values{"op": {"passkey"}, "passkey": {string(a.Assert(options))}})
 	if resp.StatusCode/100 != 3 {
 		t.Fatalf("passkey login past TOTP: %d %s", resp.StatusCode, page)
+	}
+}
+
+// A Passkey is no TOTP code or 恢复码: it signs its User in while their
+// 两步验证 is locked (ADR 0036).
+func TestPasskeyLoginWhileTwoFactorLocked(t *testing.T) {
+	e := start(t)
+	a := passkeytest.New(t)
+	sub := passkeyUser(t, e, a)
+	e.twoFactor(sub)
+	if _, err := e.pool.Exec(context.Background(), "INSERT INTO lockouts (key, until) VALUES ($1, now() + interval '15 minutes')", identity.TwoFactorLockKey(sub)); err != nil {
+		t.Fatal(err)
+	}
+
+	_, page := e.authorize("")
+	options, _ := optionsOf(t, page)
+	a.SignCount = 1
+	resp, page := e.post(page, url.Values{"op": {"passkey"}, "passkey": {string(a.Assert(options))}})
+	if resp.StatusCode/100 != 3 {
+		t.Fatalf("passkey login while 两步验证 locked: %d %s", resp.StatusCode, page)
 	}
 }
 
@@ -425,5 +447,36 @@ func TestDirectPasskeyBeginRateLimited(t *testing.T) {
 				t.Fatalf("begin from a locked-out IP: %+v", begun)
 			}
 		})
+	}
+}
+
+// One auth_session ends in one authorization code: the same assertion
+// submitted on it twice at once signs the User in once, and the other
+// request is told the auth_session is gone.
+func TestDirectPasskeyLoginOneCode(t *testing.T) {
+	e := start(t)
+	a := passkeytest.New(t)
+	passkeyUser(t, e, a)
+
+	begun := e.challenge(url.Values{"passkey": {"begin"}})
+	// A zero counter, as a synced Passkey keeps, so no counter check
+	// stands between the two submissions.
+	form := url.Values{"auth_session": {begun.AuthSession}, "passkey": {string(a.Assert(begun.Options))}}
+	var wg sync.WaitGroup
+	got := make([]challengeResp, 2)
+	for i := range got {
+		wg.Go(func() { got[i] = e.challenge(form) })
+	}
+	wg.Wait()
+	codes, gone := 0, 0
+	for _, r := range got {
+		if r.Code != "" {
+			codes++
+		} else if r.Error == "invalid_session" {
+			gone++
+		}
+	}
+	if codes != 1 || gone != 1 {
+		t.Fatalf("two submissions of one auth_session: %+v", got)
 	}
 }

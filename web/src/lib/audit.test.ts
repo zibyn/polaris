@@ -70,6 +70,7 @@ const spec: Record<string, [string, string][]> = {
 		["login.succeeded", "登录成功"],
 		["login.failed", "登录失败"],
 		["login.password_locked", "密码输错次数过多，暂时锁定"],
+		["login.two_factor_locked", "两步验证输错次数过多，暂时锁定"],
 		["login.ip_locked", "同一 IP 登录失败过多，暂时锁定"],
 		["refresh_token.reused", "疑似登录凭据被盗用，已下线会话"],
 		["passkey.counter_regressed", "Passkey 计数器回退，拒绝登录"],
@@ -460,6 +461,17 @@ test("every event reads as a sentence", () => {
 				},
 			},
 			"用户 a@x.com 密码输错次数过多，已锁定到 14:30",
+		],
+		[
+			{
+				event: "login.two_factor_locked",
+				...alice,
+				detail: {
+					until: new Date(2026, 9, 7, 14, 30).toISOString(),
+					client_id: "SHOP",
+				},
+			},
+			"用户 a@x.com 两步验证输错次数过多，已锁定到 14:30",
 		],
 		[
 			{ event: "login.ip_locked", detail: { ip: "203.0.113.7" } },

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"slices"
@@ -50,6 +51,7 @@ type env struct {
 	inbox  *inbox
 	ua     string // the User-Agent the browser sends, if set
 	lang   string // the Accept-Language the browser sends, if set
+	ip     string // the client IP the browser comes from, if set, as a proxy forwards it
 }
 
 // start runs the whole HTTP surface against a fresh database, with one public
@@ -88,7 +90,8 @@ func start(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts.Config.Handler = server.New(pool.Ping, http.NotFoundHandler(), nil, auth.Register)
+	// Loopback is a trusted proxy, so a test may come from any e.ip.
+	ts.Config.Handler = server.New(pool.Ping, http.NotFoundHandler(), []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, auth.Register)
 	e := &env{t: t, issuer: issuer, client: client, ids: identity.New(pool, keyring), pool: pool, inbox: &inbox{codes: map[string]string{}}}
 	e.newBrowser()
 	hook := httptest.NewServer(e.inbox)
@@ -128,6 +131,9 @@ func (e *env) do(method, path string, form url.Values) (*http.Response, string) 
 	if e.lang != "" {
 		req.Header.Set("Accept-Language", e.lang)
 	}
+	if e.ip != "" {
+		req.Header.Set("X-Forwarded-For", e.ip)
+	}
 	resp, err := e.client.Do(req)
 	if err != nil {
 		e.t.Fatal(err)
@@ -166,7 +172,7 @@ var actionRE = regexp.MustCompile(`<form[^>]*action="([^"]+)"`)
 // submit posts the password form found in page.
 func (e *env) submit(page, username, password string) (*http.Response, string) {
 	e.t.Helper()
-	return e.post(page, url.Values{"op": {"password"}, "username": {username}, "password": {password}})
+	return e.post(page, url.Values{"op": {"password"}, "username": {username}, "password": {password}, "altcha": {e.solve()}})
 }
 
 // post posts form to the login page's form action.
@@ -425,7 +431,7 @@ func TestAccessTokenCarriesRolesOfItsAPI(t *testing.T) {
 }
 
 // The first step asks only for an Identifier; a username goes on to a
-// password step, with no code sent and no PoW asked for.
+// password step, with no code sent; the PoW comes with the password.
 func TestUsernameGoesToPasswordStep(t *testing.T) {
 	e := start(t)
 	e.bootstrap("owner", "password1")
@@ -436,7 +442,7 @@ func TestUsernameGoesToPasswordStep(t *testing.T) {
 	}
 	resp, page := e.post(page, url.Values{"op": {"send"}, "identifier": {"owner"}, "agree": {"v1"}})
 	// The terms were agreed to on the first step; the box is not shown again.
-	if resp.StatusCode != 200 || strings.Count(page, `name="password"`) != 1 || strings.Contains(page, "<altcha-widget") ||
+	if resp.StatusCode != 200 || strings.Count(page, `name="password"`) != 1 || !strings.Contains(page, "<altcha-widget") ||
 		!strings.Contains(page, `name="username" value="owner"`) || strings.Contains(page, `type="checkbox"`) ||
 		!strings.Contains(page, `name="agree" value="v1"`) {
 		t.Fatalf("want the password step, got %d:\n%s", resp.StatusCode, page)
@@ -447,7 +453,7 @@ func TestUsernameGoesToPasswordStep(t *testing.T) {
 	if _, back := e.link(page, "更换账号"); !strings.Contains(back, `name="identifier"`) || strings.Contains(back, `name="password"`) {
 		t.Errorf("更换账号 does not go back to the first step:\n%s", back)
 	}
-	resp, _ = e.post(page, url.Values{"op": {"password"}, "username": {"owner"}, "password": {"password1"}, "agree": {"v1"}})
+	resp, _ = e.post(page, url.Values{"op": {"password"}, "username": {"owner"}, "password": {"password1"}, "agree": {"v1"}, "altcha": {e.solve()}})
 	if claims := e.idToken(e.code(resp)); !slices.Equal(claims["amr"].([]any), []any{"pwd"}) {
 		t.Errorf("id token claims: %v", claims)
 	}
@@ -484,7 +490,7 @@ func (e *env) link(page, text string) (*http.Response, string) {
 }
 
 // The password form takes the Identifier and the password together, with
-// no PoW, and links back to codes.
+// the PoW, and links back to codes.
 func TestPasswordForm(t *testing.T) {
 	e := start(t)
 	e.bootstrap("owner", "password1")
@@ -492,7 +498,7 @@ func TestPasswordForm(t *testing.T) {
 	_, page := e.authorize("")
 	_, page = e.link(page, "使用密码登录")
 	if strings.Count(page, `name="username"`) != 1 || strings.Count(page, `name="password"`) != 1 ||
-		strings.Count(page, `name="agree"`) != 1 || strings.Contains(page, `name="identifier"`) || strings.Contains(page, "<altcha-widget") {
+		strings.Count(page, `name="agree"`) != 1 || strings.Contains(page, `name="identifier"`) || !strings.Contains(page, "<altcha-widget") {
 		t.Fatalf("password form:\n%s", page)
 	}
 	// Unticked, the form comes back as it was.
@@ -503,7 +509,22 @@ func TestPasswordForm(t *testing.T) {
 	if _, back := e.link(page, "改用验证码登录"); !strings.Contains(back, `name="identifier"`) || strings.Contains(back, `name="password"`) {
 		t.Errorf("back to codes:\n%s", back)
 	}
-	resp, _ := e.post(page, url.Values{"op": {"password"}, "mode": {"password"}, "username": {"owner"}, "password": {"password1"}, "agree": {"v1"}})
+	resp, _ := e.post(page, url.Values{"op": {"password"}, "mode": {"password"}, "username": {"owner"}, "password": {"password1"}, "agree": {"v1"}, "altcha": {e.solve()}})
+	e.code(resp)
+}
+
+// A hosted-page password login needs the PoW, as the direct API's does
+// (ADR 0014). Without a solution nothing is checked, so no failure counts.
+func TestPasswordLoginNeedsPoW(t *testing.T) {
+	e := start(t)
+	e.bootstrap("owner", "password1")
+	_, page := e.authorize("")
+	for range 6 {
+		if _, body := e.post(page, url.Values{"op": {"password"}, "username": {"owner"}, "password": {"wrong"}}); !strings.Contains(body, "人机验证未通过") {
+			t.Fatalf("no PoW: %s", body)
+		}
+	}
+	resp, _ := e.submit(page, "owner", "password1")
 	e.code(resp)
 }
 

@@ -54,7 +54,7 @@ func (q *Queries) UserLoginFailures(ctx context.Context, arg UserLoginFailuresPa
 const userLogins = `-- name: UserLogins :many
 SELECT l.at, l.event, l.detail, COALESCE(a.name, l.detail->>'client_id', '')::text AS application
 FROM audit_log l LEFT JOIN applications a ON a.client_id = l.detail->>'client_id'
-WHERE l.sub = $1::text AND l.event IN ('login.succeeded', 'login.failed', 'login.password_locked')
+WHERE l.sub = $1::text AND l.event IN ('login.succeeded', 'login.failed', 'login.password_locked', 'login.two_factor_locked')
   AND l.at > now() - make_interval(days => $2::int)
 ORDER BY l.at DESC, l.id DESC
 LIMIT $3::int

@@ -589,6 +589,11 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			form.PasswordForm = true // back to the form with the box to tick
 			return fail(errAgree)
 		}
+		// PoW guards against password stuffing (ADR 0014), so before the
+		// password is checked and before any failure counts.
+		if err := s.pow.Verify(ctx, r.PostFormValue("altcha")); err != nil {
+			return fail(err)
+		}
 		sub, err := s.ids.Password(ctx, identity.AttemptFrom(r, c.ID), form.Username, r.PostFormValue("password"))
 		if err != nil {
 			return fail(err)

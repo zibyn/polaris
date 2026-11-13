@@ -50,6 +50,13 @@ test("a lockout shows until when", () => {
 	});
 	assert.equal(line.result, "已锁定");
 	assert.equal(line.what, "多次失败后已锁定到 14:30");
+	const twoFactor = loginLine({
+		at,
+		result: "locked",
+		method: "totp",
+		application: "a",
+	});
+	assert.equal(twoFactor.what, "两步验证多次失败后已锁定");
 });
 
 test("the device is the UA's label and the IP", () => {

@@ -118,8 +118,8 @@ func (s *Store) Confirm(ctx context.Context, sub, code string) ([]string, error)
 	return codes, err
 }
 
-// Disable turns 两步验证 off, deleting the TOTP and every 恢复码; audited as
-// event done by by.
+// Disable turns 两步验证 off, deleting the TOTP and every 恢复码 and ending
+// its lockout (ADR 0036); audited as event done by by.
 func (s *Store) Disable(ctx context.Context, sub, event string, by audit.Actor) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
@@ -129,6 +129,9 @@ func (s *Store) Disable(ctx context.Context, sub, event string, by audit.Actor) 
 			return notOn(ctx, q, sub)
 		}
 		if err := q.DeleteRecoveryCodes(ctx, sub); err != nil {
+			return err
+		}
+		if err := q.ClearLockout(ctx, identity.TwoFactorLockKey(sub)); err != nil {
 			return err
 		}
 		return writeAudit(ctx, q, event, sub, by)

@@ -117,6 +117,7 @@ var messagesEN = map[string]string{
 	string(identity.ErrInviteSpent):        "This invitation link is no longer valid. Ask your admin for a new one.",
 	string(identity.ErrPasswordLocked):     "Too many wrong passwords. Try again in 15 minutes or sign in with a code.",
 	string(identity.ErrIPLocked):           "Too many failed attempts. Try again in an hour.",
+	string(identity.ErrTwoFactorLocked):    "Too many wrong codes. Try again in 15 minutes.",
 	string(identity.ErrWrongCode):          "Wrong or expired code",
 	string(identity.ErrWrongTOTP):          "Wrong code, or already used",
 	string(identity.ErrWrongRecoveryCode):  "Wrong recovery code, or already used",

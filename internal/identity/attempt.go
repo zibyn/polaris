@@ -91,8 +91,9 @@ func (s *Store) Code(ctx context.Context, a Attempt, identifier, pendingSub stri
 }
 
 // SecondFactor runs check, of sub's TOTP code or, if recovery, 恢复码, from
-// a.IP: refused while that IP is locked out, and a wrong one counted toward
-// its lockout and audited as login.failed.
+// a.IP: refused while that IP, then sub's 两步验证, is locked out; a wrong
+// one, or any tried while sub is locked, counts toward both lockouts and is
+// audited as login.failed.
 func (s *Store) SecondFactor(ctx context.Context, a Attempt, sub string, recovery bool, check func() error) error {
 	if a.ClientID == "" {
 		return errNoClientID
@@ -101,7 +102,7 @@ func (s *Store) SecondFactor(ctx context.Context, a Attempt, sub string, recover
 	if recovery {
 		method = "recovery_code"
 	}
-	return s.loginFailed(ctx, a, sub, method, s.FromIP(ctx, a.IP, check))
+	return s.loginFailed(ctx, a, sub, method, s.FromIP(ctx, a.IP, func() error { return s.twoFactor(ctx, a, sub, check) }))
 }
 
 // errNoClientID is a caller's bug: a login event says which Application it

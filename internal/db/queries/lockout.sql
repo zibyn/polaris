@@ -18,6 +18,11 @@ RETURNING until;
 -- name: ClearLoginFailures :exec
 DELETE FROM login_failures WHERE key = $1;
 
+-- name: ClearLockout :exec
+-- Ends key's lockout and forgets its failures.
+WITH unlocked AS (DELETE FROM lockouts WHERE lockouts.key = @key)
+DELETE FROM login_failures WHERE login_failures.key = @key;
+
 -- name: DeleteOldLoginFailures :exec
 WITH expired AS (DELETE FROM lockouts WHERE until < now())
 DELETE FROM login_failures WHERE at < now() - make_interval(secs => @keep_secs::int);

@@ -116,10 +116,18 @@ WHERE oidc_grants.id = $1 AND (expires_at IS NULL OR expires_at > now())
                                     WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()));
 
 -- name: GrantByAuthCodeHash :one
-SELECT * FROM oidc_grants
-WHERE auth_code_hash = $1 AND (expires_at IS NULL OR expires_at > now())
-  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM sessions s
-                                    WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()));
+-- Reading the code spends it, in one statement: of concurrent redemptions
+-- only the first sees spent = false; the row lock makes the rest wait and
+-- see true, so they are reuses.
+WITH prev AS (
+    SELECT oidc_grants.id, oidc_grants.auth_code_spent FROM oidc_grants
+    WHERE oidc_grants.auth_code_hash = $1 AND (oidc_grants.expires_at IS NULL OR oidc_grants.expires_at > now())
+      AND (oidc_grants.session_id IS NULL OR EXISTS (SELECT 1 FROM sessions s
+                                        WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()))
+    FOR UPDATE
+)
+UPDATE oidc_grants g SET auth_code_spent = true FROM prev WHERE g.id = prev.id
+RETURNING g.id, g.sealed, prev.auth_code_spent AS reused;
 
 -- name: GrantByRefreshTokenHash :one
 SELECT * FROM oidc_grants
@@ -142,7 +150,7 @@ ON CONFLICT (hash) DO UPDATE SET expires_at = EXCLUDED.expires_at, data = EXCLUD
 -- name: ChallengeSession :one
 SELECT client_id, data FROM oidc_challenge_sessions WHERE hash = $1 AND expires_at > now();
 
--- name: DeleteChallengeSession :exec
+-- name: DeleteChallengeSession :execrows
 DELETE FROM oidc_challenge_sessions WHERE hash = $1;
 
 -- name: SaveLogoutSession :exec

@@ -9,12 +9,12 @@ import (
 	"github.com/zibyn/polaris/internal/db/sqlc"
 )
 
-// Login is one of the User's sign-ins, failed sign-ins or password
-// lockouts, from the audit log (docs/spec/consoles.md「最近登录」).
+// Login is one of the User's sign-ins, failed sign-ins or password or
+// 两步验证 lockouts, from the audit log (docs/spec/consoles.md「最近登录」).
 type Login struct {
 	At     time.Time `json:"at"`
 	Result string    `json:"result" enum:"succeeded,failed,locked"`
-	Method string    `json:"method,omitempty" enum:"password,code,passkey,provider,totp,recovery_code" doc:"The first factor of a sign-in, or the step that failed; none for a lockout"`
+	Method string    `json:"method,omitempty" enum:"password,code,passkey,provider,totp,recovery_code" doc:"The first factor of a sign-in, or the step that failed or locked"`
 	// TwoFactor is only for a sign-in.
 	TwoFactor   bool       `json:"twoFactor,omitempty" doc:"The sign-in passed 两步验证 too"`
 	Application string     `json:"application" doc:"Name of the Application, or its client_id when it has none or is gone"`
@@ -64,8 +64,10 @@ func login(r sqlc.UserLoginsRow) Login {
 		l.Method, l.TwoFactor = loginMethod(d.AMR)
 	case "login.failed":
 		l.Result, l.Method = "failed", d.Method
-	default:
-		l.Result, l.LockedUntil = "locked", d.Until
+	case "login.password_locked":
+		l.Result, l.Method, l.LockedUntil = "locked", "password", d.Until
+	case "login.two_factor_locked":
+		l.Result, l.Method, l.LockedUntil = "locked", "totp", d.Until
 	}
 	return l
 }
