@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearLockout = `-- name: ClearLockout :exec
+WITH unlocked AS (DELETE FROM lockouts WHERE lockouts.key = $1)
+DELETE FROM login_failures WHERE login_failures.key = $1
+`
+
+// Ends key's lockout and forgets its failures.
+func (q *Queries) ClearLockout(ctx context.Context, key string) error {
+	_, err := q.db.Exec(ctx, clearLockout, key)
+	return err
+}
+
 const clearLoginFailures = `-- name: ClearLoginFailures :exec
 DELETE FROM login_failures WHERE key = $1
 `

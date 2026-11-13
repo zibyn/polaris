@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"slices"
@@ -50,6 +51,7 @@ type env struct {
 	inbox  *inbox
 	ua     string // the User-Agent the browser sends, if set
 	lang   string // the Accept-Language the browser sends, if set
+	ip     string // the client IP the browser comes from, if set, as a proxy forwards it
 }
 
 // start runs the whole HTTP surface against a fresh database, with one public
@@ -88,7 +90,8 @@ func start(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts.Config.Handler = server.New(pool.Ping, http.NotFoundHandler(), nil, auth.Register)
+	// Loopback is a trusted proxy, so a test may come from any e.ip.
+	ts.Config.Handler = server.New(pool.Ping, http.NotFoundHandler(), []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, auth.Register)
 	e := &env{t: t, issuer: issuer, client: client, ids: identity.New(pool, keyring), pool: pool, inbox: &inbox{codes: map[string]string{}}}
 	e.newBrowser()
 	hook := httptest.NewServer(e.inbox)
@@ -127,6 +130,9 @@ func (e *env) do(method, path string, form url.Values) (*http.Response, string) 
 	}
 	if e.lang != "" {
 		req.Header.Set("Accept-Language", e.lang)
+	}
+	if e.ip != "" {
+		req.Header.Set("X-Forwarded-For", e.ip)
 	}
 	resp, err := e.client.Do(req)
 	if err != nil {

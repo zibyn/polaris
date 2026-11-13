@@ -999,6 +999,38 @@ func TestReauthenticationWithTwoFactor(t *testing.T) {
 	}
 }
 
+// Reauthenticating counts toward the same 两步验证 lock as logging in: the
+// tenth wrong code locks it, a right one refused too. Turning 两步验证 off
+// ends the lock at once.
+func TestReauthenticationTwoFactorLock(t *testing.T) {
+	e := start(t)
+	e.user("ALICE", "phone:+8613800138000")
+	tok := e.signIn("ALICE", 0)
+	secret, _ := e.enableTwoFactor(tok)
+
+	for i := range 10 {
+		if c := e.call("POST", tok, "/v1/account/reauth", map[string]string{"totp": "000000"}, nil); c != 422 {
+			t.Fatalf("wrong TOTP %d: %d", i+1, c)
+		}
+	}
+	if c := e.call("POST", tok, "/v1/account/reauth", map[string]string{"totp": totp(t, secret, time.Now().Add(30*time.Second))}, nil); c != 422 {
+		t.Errorf("right TOTP while locked: %d", c)
+	}
+	var n int
+	if err := e.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM audit_log WHERE sub = 'ALICE' AND event = 'login.two_factor_locked'").Scan(&n); err != nil || n != 1 {
+		t.Errorf("%d login.two_factor_locked events: %v", n, err)
+	}
+
+	if c := e.call("DELETE", tok, "/v1/account/2fa", nil, nil); c != 204 {
+		t.Fatalf("turn off: %d", c)
+	}
+	secret, _ = e.enableTwoFactor(tok)
+	if c := e.call("POST", tok, "/v1/account/reauth", map[string]string{"totp": totp(t, secret, time.Now().Add(30*time.Second))}, nil); c != 204 {
+		t.Errorf("reauth after turning off and on: %d", c)
+	}
+}
+
 func TestDeleteAccountRevokesApple(t *testing.T) {
 	e := start(t)
 	ctx := context.Background()

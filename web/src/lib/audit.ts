@@ -94,6 +94,7 @@ export const eventGroups: [string, [string, string][]][] = [
 			["login.succeeded", "登录成功"],
 			["login.failed", "登录失败"],
 			["login.password_locked", "密码输错次数过多，暂时锁定"],
+			["login.two_factor_locked", "两步验证输错次数过多，暂时锁定"],
 			["login.ip_locked", "同一 IP 登录失败过多，暂时锁定"],
 			["refresh_token.reused", "疑似登录凭据被盗用，已下线会话"],
 			["passkey.counter_regressed", "Passkey 计数器回退，拒绝登录"],
@@ -376,7 +377,9 @@ export function describe(
 				],
 				title: whereFrom(),
 			};
-		case "login.password_locked": {
+		case "login.password_locked":
+		case "login.two_factor_locked": {
+			const what = ev.event === "login.password_locked" ? "密码" : "两步验证";
 			const until = str("until")
 				? new Date(str("until")).toLocaleTimeString("zh-CN", {
 						hour: "2-digit",
@@ -387,8 +390,8 @@ export function describe(
 				parts: [
 					...user,
 					until
-						? ` 密码输错次数过多，已锁定到 ${until}`
-						: " 密码输错次数过多，暂时锁定",
+						? ` ${what}输错次数过多，已锁定到 ${until}`
+						: ` ${what}输错次数过多，暂时锁定`,
 				],
 				title: whereFrom(),
 			};

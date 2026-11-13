@@ -77,7 +77,7 @@
 - **登录**:第一因素通过后进入两步验证这一步,输入一个 TOTP 或一个恢复码,两者效果相同。步骤顺序固定为 TOTP → 绑手机号 → 同意协议;TOTP 通过之前不建 Session,也不发授权码,"已通过第一因素"的状态只存在 AuthnSession 的 store(托管页)或 `auth_session`(直连 API)里。
   - **托管页**:输入框标注 `autocomplete="one-time-code"`;可切换到「使用恢复码」。
   - **直连 API**:返回 `next: "totp"`,在同一 `auth_session` 里提交 `totp` 或 `recovery_code`,见 [protocol.md](protocol.md#直连认证-api)。
-  - **输错**:每个待完成的登录最多输错 5 次,第 5 次后本次登录作废(托管页回到第一步,直连 API 的 `auth_session` 失效)。不按 User 锁定。
+  - **输错**:每个待完成的登录最多输错 5 次,第 5 次后本次登录作废(托管页回到第一步,直连 API 的 `auth_session` 失效)。另按 User 锁定,见 [security-compliance.md](security-compliance.md#失败锁定)(ADR 0036)。
   - **时钟偏差**:接受前后各一个 30 秒时间步。
 - **已有浏览器 Session**:静默登录不再要求 TOTP,那个 Session 建立时已经输过了。
 - **`amr`**:做过两步验证的登录为 `[第一因素, "otp", "mfa"]`,不重复:邮箱验证码登录为 `["otp", "mfa"]`。

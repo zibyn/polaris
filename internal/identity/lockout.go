@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zibyn/polaris/internal/db/sqlc"
@@ -21,6 +22,10 @@ const (
 	ipFailures     = 50
 	ipWindow       = time.Hour
 	ipLock         = time.Hour
+	// TOTP codes and 恢复码 together, per User, across logins (ADR 0036).
+	twoFactorTries  = 10
+	twoFactorWindow = 24 * time.Hour
+	twoFactorLock   = 15 * time.Minute
 	// startTries is how many sign-ins one IP may start an hour, and startLock
 	// how long it is then refused: what bounds passkey=begin, which sends
 	// nothing and checks nothing and so cannot be made to cost a PoW
@@ -34,6 +39,8 @@ const (
 const (
 	ErrPasswordLocked Invalid = "密码错误次数过多，请 15 分钟后重试或使用验证码登录"
 	ErrIPLocked       Invalid = "失败次数过多，请 1 小时后重试"
+	// ErrTwoFactorLocked is a User's TOTP and 恢复码 locked (ADR 0036).
+	ErrTwoFactorLocked Invalid = "两步验证错误次数过多，请 15 分钟后重试"
 	// ErrWrongCode is otp's; FromIP counts it.
 	ErrWrongCode Invalid = "验证码错误或已失效"
 	// ErrWrongTOTP and ErrWrongRecoveryCode are twofactor's; FromIP counts
@@ -67,7 +74,41 @@ func (s *Store) FromIP(ctx context.Context, ip string, check func() error) error
 
 // counted reports whether err is a failure FromIP counts.
 func counted(err error) bool {
-	return err == ErrBadCredentials || err == ErrPasswordLocked || err == ErrWrongCode || err == ErrWrongTOTP || err == ErrWrongRecoveryCode //nolint:errorlint // never wrapped
+	return err == ErrBadCredentials || err == ErrPasswordLocked || err == ErrWrongCode || err == ErrWrongTOTP || err == ErrWrongRecoveryCode || err == ErrTwoFactorLocked //nolint:errorlint // never wrapped
+}
+
+// TwoFactorLockKey is the lockout key of sub's 两步验证, cleared when it is
+// turned off.
+func TwoFactorLockKey(sub string) string { return "2fa:" + sub }
+
+// twoFactor runs check, of sub's TOTP code or 恢复码: refused while sub's
+// 两步验证 is locked out; the tenth wrong one in a row within a day locks
+// it, audited with a; a right one starts the count over.
+func (s *Store) twoFactor(ctx context.Context, a Attempt, sub string, check func() error) error {
+	key := TwoFactorLockKey(sub)
+	if locked, err := s.q.LockedOut(ctx, key); err != nil {
+		return err
+	} else if locked {
+		return ErrTwoFactorLocked
+	}
+	switch err := check(); err {
+	case nil:
+		return s.q.ClearLoginFailures(ctx, key)
+	case ErrWrongTOTP, ErrWrongRecoveryCode: //nolint:errorlint // never wrapped
+		locked, dbErr := s.failed(ctx, key, twoFactorTries, twoFactorWindow, twoFactorLock, func(until time.Time) sqlc.AuditParams {
+			return sqlc.AuditParams{
+				Event: "login.two_factor_locked", Sub: pgtype.Text{String: sub, Valid: true}, Detail: a.detail(map[string]any{"until": until}),
+			}
+		})
+		if dbErr != nil {
+			return dbErr
+		} else if locked {
+			return ErrTwoFactorLocked
+		}
+		return err
+	default:
+		return err
+	}
 }
 
 // Start counts a sign-in started from ip against the per-IP budget, and
@@ -124,5 +165,5 @@ func (s *Store) failed(ctx context.Context, key string, max int32, window, lock 
 // DeleteOldLoginFailures removes failures older than any window counts and
 // past lockouts; run by the hourly cleanup.
 func DeleteOldLoginFailures(ctx context.Context, pool *pgxpool.Pool) error {
-	return sqlc.New(pool).DeleteOldLoginFailures(ctx, int32(max(passwordWindow, ipWindow, startWindow).Seconds()))
+	return sqlc.New(pool).DeleteOldLoginFailures(ctx, int32(max(passwordWindow, twoFactorWindow, ipWindow, startWindow).Seconds()))
 }
