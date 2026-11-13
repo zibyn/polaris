@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/passkey"
 	"github.com/zibyn/polaris/internal/passkey/passkeytest"
 )
@@ -157,6 +158,26 @@ func TestPasskeyLoginPastTOTP(t *testing.T) {
 	resp, page := e.post(page, url.Values{"op": {"passkey"}, "passkey": {string(a.Assert(options))}})
 	if resp.StatusCode/100 != 3 {
 		t.Fatalf("passkey login past TOTP: %d %s", resp.StatusCode, page)
+	}
+}
+
+// A Passkey is no TOTP code or 恢复码: it signs its User in while their
+// 两步验证 is locked (ADR 0036).
+func TestPasskeyLoginWhileTwoFactorLocked(t *testing.T) {
+	e := start(t)
+	a := passkeytest.New(t)
+	sub := passkeyUser(t, e, a)
+	e.twoFactor(sub)
+	if _, err := e.pool.Exec(context.Background(), "INSERT INTO lockouts (key, until) VALUES ($1, now() + interval '15 minutes')", identity.TwoFactorLockKey(sub)); err != nil {
+		t.Fatal(err)
+	}
+
+	_, page := e.authorize("")
+	options, _ := optionsOf(t, page)
+	a.SignCount = 1
+	resp, page := e.post(page, url.Values{"op": {"passkey"}, "passkey": {string(a.Assert(options))}})
+	if resp.StatusCode/100 != 3 {
+		t.Fatalf("passkey login while 两步验证 locked: %d %s", resp.StatusCode, page)
 	}
 }
 

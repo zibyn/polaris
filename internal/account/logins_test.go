@@ -77,7 +77,7 @@ func TestRecentLogins(t *testing.T) {
 		newest.Application != "Polaris 账号中心" || newest.IP != "203.0.113.5" || newest.UserAgent != chrome {
 		t.Errorf("password + 两步验证: %+v", newest)
 	}
-	if locked.Result != "locked" || locked.Method != "" || locked.LockedUntil == nil || !locked.LockedUntil.After(time.Now()) {
+	if locked.Result != "locked" || locked.Method != "password" || locked.LockedUntil == nil || !locked.LockedUntil.After(time.Now()) {
 		t.Errorf("lockout: %+v", locked)
 	}
 	if failed.Result != "failed" || failed.Method != "password" || failed.TwoFactor {
@@ -105,5 +105,29 @@ func TestRecentLoginsKeepTheNewest50(t *testing.T) {
 	}
 	if !got.Logins[0].At.After(got.Logins[49].At) {
 		t.Errorf("not newest first: %v .. %v", got.Logins[0].At, got.Logins[49].At)
+	}
+}
+
+// A lockout says which step locked: the password, or 两步验证 (ADR 0036).
+func TestRecentLoginsShowTwoFactorLockouts(t *testing.T) {
+	e := start(t)
+	e.user("ALICE", "phone:+8613800138000")
+	tok := e.signIn("ALICE", 0)
+	if _, err := e.pool.Exec(context.Background(), `
+		INSERT INTO audit_log (event, sub, detail, at) VALUES
+			('login.password_locked', 'ALICE', '{}', now() - interval '1 minute'),
+			('login.two_factor_locked', 'ALICE', '{"until":"2026-01-02T03:04:05Z"}', now())`); err != nil {
+		t.Fatal(err)
+	}
+	var got logins
+	if c := e.call("GET", tok, "/v1/account/logins", nil, &got); c != 200 || len(got.Logins) != 2 || got.FailedCount != 0 {
+		t.Fatalf("%d: %+v", c, got)
+	}
+	twoFactor, password := got.Logins[0], got.Logins[1]
+	if twoFactor.Result != "locked" || twoFactor.Method != "totp" || twoFactor.LockedUntil == nil {
+		t.Errorf("两步验证 lockout: %+v", twoFactor)
+	}
+	if password.Result != "locked" || password.Method != "password" {
+		t.Errorf("password lockout: %+v", password)
 	}
 }

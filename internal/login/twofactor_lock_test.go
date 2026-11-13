@@ -52,25 +52,33 @@ func TestHostedTwoFactorLocksTheUser(t *testing.T) {
 		}
 		return page
 	}
-	page := login("198.51.100.1")
-	for range 4 {
-		_, page = e.post(page, url.Values{"op": {"totp"}, "totp": {"000000"}})
-	}
-	resp, _ := e.post(page, url.Values{"op": {"totp"}, "totp": {totpAt(secret, 0)}})
-	e.code(resp)
-
-	wrong := 0
-	for ip := 2; wrong < 10; ip++ {
-		page = login(fmt.Sprintf("198.51.100.%d", ip))
-		for n := 0; n < 4 && wrong < 10; n++ {
+	// wrongs posts n more wrong codes, a 恢复码 among them, four a login
+	// (the fifth would end it), from a fresh IP each login.
+	ip := 0
+	var page string
+	wrongs := func(n int) {
+		t.Helper()
+		for i := 0; i < n; i++ {
+			if i%4 == 0 {
+				ip++
+				page = login(fmt.Sprintf("198.51.100.%d", ip))
+			}
 			form := url.Values{"op": {"totp"}, "totp": {"000000"}}
-			if n == 1 {
+			if i%4 == 1 {
 				form = url.Values{"op": {"totp"}, "recovery_code": {"aaaa-aaaa"}}
 			}
 			_, page = e.post(page, form)
-			wrong++
 		}
 	}
+	wrongs(9)
+	resp, _ := e.post(page, url.Values{"op": {"totp"}, "totp": {totpAt(secret, 0)}})
+	e.code(resp)
+
+	wrongs(9)
+	if strings.Contains(html.UnescapeString(page), identity.ErrTwoFactorLocked.Error()) {
+		t.Fatalf("9 wrong after a right one locked: %s", page)
+	}
+	_, page = e.post(page, url.Values{"op": {"totp"}, "totp": {"000000"}})
 	resp, page = e.post(page, url.Values{"op": {"totp"}, "totp": {totpAt(secret, 1)}})
 	if resp.StatusCode != 200 || !strings.Contains(html.UnescapeString(page), identity.ErrTwoFactorLocked.Error()) || !strings.Contains(page, totpForm) || e.hasSessionCookie() {
 		t.Fatalf("right TOTP while locked: %d %s", resp.StatusCode, page)

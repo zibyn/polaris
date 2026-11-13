@@ -74,7 +74,11 @@ func (s *Store) FromIP(ctx context.Context, ip string, check func() error) error
 
 // counted reports whether err is a failure FromIP counts.
 func counted(err error) bool {
-	return err == ErrBadCredentials || err == ErrPasswordLocked || err == ErrWrongCode || err == ErrWrongTOTP || err == ErrWrongRecoveryCode || err == ErrTwoFactorLocked //nolint:errorlint // never wrapped
+	switch err { //nolint:errorlint // never wrapped
+	case ErrBadCredentials, ErrPasswordLocked, ErrWrongCode, ErrWrongTOTP, ErrWrongRecoveryCode, ErrTwoFactorLocked:
+		return true
+	}
+	return false
 }
 
 // TwoFactorLockKey is the lockout key of sub's 两步验证, cleared when it is
@@ -86,7 +90,7 @@ func TwoFactorLockKey(sub string) string { return "2fa:" + sub }
 // it, audited with a; a right one starts the count over.
 func (s *Store) twoFactor(ctx context.Context, a Attempt, sub string, check func() error) error {
 	key := TwoFactorLockKey(sub)
-	if locked, err := s.q.LockedOut(ctx, key); err != nil {
+	if locked, err := s.lockedOut(ctx, key); err != nil {
 		return err
 	} else if locked {
 		return ErrTwoFactorLocked

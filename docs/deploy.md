@@ -71,7 +71,7 @@ Polaris 只从环境变量读启动参数,其余配置都在管理端里、存�
 | `polaris_daily_send_limit` | gauge | 每日发送上限,0 表示不限 |
 | `polaris_logins_succeeded_last_24h` | gauge | 最近 24 小时的 `login.succeeded` 审计事件数 |
 | `polaris_logins_failed_last_24h` | gauge | 最近 24 小时的 `login.failed` 审计事件数。对应不到 User 的失败不在其中,撞库看 IP 锁定数 |
-| `polaris_lockouts_last_24h{kind="ip"\|"password"}` | gauge | 最近 24 小时的 IP 锁定 / 密码锁定次数 |
+| `polaris_lockouts_last_24h{kind="ip"\|"password"\|"two_factor"}` | gauge | 最近 24 小时的 IP 锁定 / 密码锁定 / 两步验证锁定次数 |
 | `polaris_webhook_deliveries_pending` | gauge | 待投递的 webhook |
 | `polaris_webhook_deliveries_retrying` | gauge | 其中至少失败过一次的 |
 | `polaris_webhook_dropped_last_24h` | gauge | 最近 24 小时重试用尽、放弃投递的 webhook |

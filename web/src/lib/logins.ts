@@ -17,6 +17,11 @@ const failedAt: Record<string, string> = {
 	recovery_code: "恢复码错误",
 };
 
+const lockedAt: Record<string, string> = {
+	password: "密码",
+	totp: "两步验证",
+};
+
 const time = (s: string) =>
 	new Date(s).toLocaleTimeString("zh-CN", {
 		hour: "2-digit",
@@ -44,9 +49,11 @@ export function loginLine(l: Login): {
 		case "locked":
 			return {
 				result: "已锁定",
-				what: l.lockedUntil
-					? `多次失败后已锁定到 ${time(l.lockedUntil)}`
-					: "多次失败后已锁定",
+				what:
+					(lockedAt[method] ?? "") +
+					(l.lockedUntil
+						? `多次失败后已锁定到 ${time(l.lockedUntil)}`
+						: "多次失败后已锁定"),
 				device,
 			};
 	}

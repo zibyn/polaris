@@ -16,21 +16,23 @@ SELECT (SELECT count(*) FROM sends WHERE sent_at >= now() - make_interval(secs =
        (SELECT count(*) FROM audit_log WHERE event = 'login.failed' AND at >= now() - make_interval(secs => $1::int)) AS logins_failed,
        (SELECT count(*) FROM audit_log WHERE event = 'login.ip_locked' AND at >= now() - make_interval(secs => $1::int)) AS ip_lockouts,
        (SELECT count(*) FROM audit_log WHERE event = 'login.password_locked' AND at >= now() - make_interval(secs => $1::int)) AS password_lockouts,
+       (SELECT count(*) FROM audit_log WHERE event = 'login.two_factor_locked' AND at >= now() - make_interval(secs => $1::int)) AS two_factor_lockouts,
        (SELECT count(*) FROM webhook_deliveries) AS webhook_pending,
        (SELECT count(*) FROM webhook_deliveries WHERE attempts > 0) AS webhook_retrying,
        (SELECT count(*) FROM audit_log WHERE event = 'webhook.failed' AND at >= now() - make_interval(secs => $1::int)) AS webhook_dropped
 `
 
 type MetricsRow struct {
-	CodeSends        int64
-	DailySendLimit   int32
-	LoginsSucceeded  int64
-	LoginsFailed     int64
-	IpLockouts       int64
-	PasswordLockouts int64
-	WebhookPending   int64
-	WebhookRetrying  int64
-	WebhookDropped   int64
+	CodeSends         int64
+	DailySendLimit    int32
+	LoginsSucceeded   int64
+	LoginsFailed      int64
+	IpLockouts        int64
+	PasswordLockouts  int64
+	TwoFactorLockouts int64
+	WebhookPending    int64
+	WebhookRetrying   int64
+	WebhookDropped    int64
 }
 
 // Everything /metrics reads from PG, in one round trip (ADR 0024). Counts
@@ -45,6 +47,7 @@ func (q *Queries) Metrics(ctx context.Context, windowSecs int32) (MetricsRow, er
 		&i.LoginsFailed,
 		&i.IpLockouts,
 		&i.PasswordLockouts,
+		&i.TwoFactorLockouts,
 		&i.WebhookPending,
 		&i.WebhookRetrying,
 		&i.WebhookDropped,

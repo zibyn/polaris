@@ -220,6 +220,8 @@ addEventListener("DOMContentLoaded", () => {
     <span>{{t "我已阅读并同意"}}<a href="{{$.TermsUrl}}" target="_blank" rel="noopener">{{t "《用户协议》"}}</a>{{t "和"}}<a href="{{$.PrivacyUrl}}" target="_blank" rel="noopener">{{t "《隐私政策》"}}</a></span>
   </label>{{end}}{{end}}
 
+{{define "pow"}}<altcha-widget challenge="/altcha/challenge" name="altcha" auto="onsubmit" language="{{t "zh-cn"}}"></altcha-widget>{{end}}
+
 {{define "agreed"}}{{if not .Bind}}{{with .Terms.TermsVersion}}<input type="hidden" name="agree" value="{{.}}">{{end}}{{end}}{{end}}
 
 {{define "login"}}
@@ -320,7 +322,7 @@ addEventListener("DOMContentLoaded", () => {
       {{template "reveal"}}
     </span>
   </span>
-  <altcha-widget challenge="/altcha/challenge" name="altcha" auto="onsubmit" language="{{t "zh-cn"}}"></altcha-widget>
+  {{template "pow"}}
   <button>{{t "登录"}}</button>
 </form>
 <script type="module" src="/altcha/altcha.js"></script>
@@ -339,7 +341,7 @@ addEventListener("DOMContentLoaded", () => {
     </span>
   </span>
   {{template "agree" .Terms}}
-  <altcha-widget challenge="/altcha/challenge" name="altcha" auto="onsubmit" language="{{t "zh-cn"}}"></altcha-widget>
+  {{template "pow"}}
   <button>{{t "登录"}}</button>
   {{if .CodeKinds}}<a href="{{.Action}}">{{t "改用验证码登录"}}</a>{{end}}
 </form>
@@ -351,7 +353,7 @@ addEventListener("DOMContentLoaded", () => {
     <input name="identifier" {{if or .Bind (and (not .PasswordOn) (eq .CodeKinds "手机号"))}}type="tel" autocomplete="tel{{if .Passkey}} webauthn{{end}}"{{else if and (not .PasswordOn) (eq .CodeKinds "邮箱")}}type="email" autocomplete="email{{if .Passkey}} webauthn{{end}}"{{else}}autocomplete="username{{if .Passkey}} webauthn{{end}}"{{end}} autocapitalize="none" required autofocus value="{{.Identifier}}">
   </label>
   {{if not .Bind}}{{template "agree" .Terms}}{{end}}
-  <altcha-widget challenge="/altcha/challenge" name="altcha" auto="onsubmit" language="{{t "zh-cn"}}"></altcha-widget>
+  {{template "pow"}}
   <button>{{if .Bind}}{{t "获取验证码"}}{{else}}{{t "继续"}}{{end}}</button>
   {{if and .PasswordOn (not .Bind)}}<a href="{{.Action}}?password">{{t "使用密码登录"}}</a>{{end}}
 </form>
