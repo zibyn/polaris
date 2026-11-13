@@ -145,6 +145,7 @@ type OidcGrant struct {
 	ExpiresAt        pgtype.Timestamptz
 	Sealed           []byte
 	SessionID        pgtype.Text
+	AuthCodeSpent    bool
 }
 
 type OidcJti struct {

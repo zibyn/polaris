@@ -253,8 +253,8 @@ func (s *Store) SaveGrant(ctx context.Context, g *goidc.Grant) error {
 	}
 	session, _ := g.Store[SessionKey].(string)
 	code := g.AuthCode
-	if g.AuthCodeConsumedAt != 0 || g.RevokedAt != 0 {
-		code = "" // GrantByAuthCode spent it; saving again must not bring it back
+	if g.RevokedAt != 0 {
+		code = "" // a revoked grant's code finds nothing; auth_code_spent guards the rest
 	}
 	return s.q.SaveGrant(ctx, sqlc.SaveGrantParams{
 		ID:               g.ID,
@@ -280,8 +280,18 @@ func (s *Store) Grant(ctx context.Context, id string) (*goidc.Grant, error) {
 	return s.openGrant(s.q.Grant(ctx, id))
 }
 
+// GrantByAuthCode spends the code as it reads it. A code already spent
+// comes back marked consumed, so go-oidc rejects it and revokes the grant.
 func (s *Store) GrantByAuthCode(ctx context.Context, code string) (*goidc.Grant, error) {
-	return s.openGrant(s.q.GrantByAuthCodeHash(ctx, hash(code)))
+	row, err := s.q.GrantByAuthCodeHash(ctx, hash(code))
+	g, err := s.openGrant(sqlc.OidcGrant{ID: row.ID, Sealed: row.Sealed}, err)
+	if err == nil && row.Reused && g.AuthCodeConsumedAt == 0 {
+		// shortcut: the winner hasn't saved yet, and its later SaveGrant overwrites
+		// this revocation; only a reuse after the winner saved revokes for good.
+		// Upgrade with a revoked column if concurrent reuse must revoke too.
+		g.AuthCodeConsumedAt = 1
+	}
+	return g, err
 }
 
 // GrantByRefreshToken also catches reuse: a token that a rotation replaced

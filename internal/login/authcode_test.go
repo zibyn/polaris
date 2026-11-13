@@ -77,3 +77,22 @@ func TestAuthCodeBurnsOnWrongVerifier(t *testing.T) {
 		t.Fatalf("retry with the right verifier: %q, want invalid_grant", errCode)
 	}
 }
+
+// Reusing a redeemed code revokes what it already issued (RFC 6749 §4.1.2):
+// the code may have leaked, so the first holder's tokens can't be trusted.
+func TestAuthCodeReuseRevokesTokens(t *testing.T) {
+	e := start(t)
+	e.bootstrap("owner", "password1")
+	code := e.passwordCode()
+
+	tok, errCode := e.redeem(code, verifier)
+	if errCode != "" || e.userinfo(tok.AccessToken)["sub"] == nil {
+		t.Fatalf("first redemption: %q", errCode)
+	}
+	if _, errCode := e.redeem(code, verifier); errCode != "invalid_grant" {
+		t.Fatalf("reuse: %q, want invalid_grant", errCode)
+	}
+	if info := e.userinfo(tok.AccessToken); info["sub"] != nil {
+		t.Errorf("access token still works after code reuse: %v", info)
+	}
+}

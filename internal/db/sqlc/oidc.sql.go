@@ -332,7 +332,7 @@ func (q *Queries) GraceRotateRefreshToken(ctx context.Context, arg GraceRotateRe
 }
 
 const grant = `-- name: Grant :one
-SELECT id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id FROM oidc_grants
+SELECT id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id, auth_code_spent FROM oidc_grants
 WHERE oidc_grants.id = $1 AND (expires_at IS NULL OR expires_at > now())
   AND (session_id IS NULL OR EXISTS (SELECT 1 FROM sessions s
                                     WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()))
@@ -350,36 +350,41 @@ func (q *Queries) Grant(ctx context.Context, id string) (OidcGrant, error) {
 		&i.ExpiresAt,
 		&i.Sealed,
 		&i.SessionID,
+		&i.AuthCodeSpent,
 	)
 	return i, err
 }
 
 const grantByAuthCodeHash = `-- name: GrantByAuthCodeHash :one
-UPDATE oidc_grants SET auth_code_hash = NULL
-WHERE auth_code_hash = $1 AND (expires_at IS NULL OR expires_at > now())
-  AND (session_id IS NULL OR EXISTS (SELECT 1 FROM sessions s
-                                    WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()))
-RETURNING id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id
+WITH prev AS (
+    SELECT oidc_grants.id, oidc_grants.auth_code_spent FROM oidc_grants
+    WHERE oidc_grants.auth_code_hash = $1 AND (oidc_grants.expires_at IS NULL OR oidc_grants.expires_at > now())
+      AND (oidc_grants.session_id IS NULL OR EXISTS (SELECT 1 FROM sessions s
+                                        WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()))
+    FOR UPDATE
+)
+UPDATE oidc_grants g SET auth_code_spent = true FROM prev WHERE g.id = prev.id
+RETURNING g.id, g.sealed, prev.auth_code_spent AS reused
 `
 
+type GrantByAuthCodeHashRow struct {
+	ID     string
+	Sealed []byte
+	Reused bool
+}
+
 // Reading the code spends it, in one statement: of concurrent redemptions
-// only one gets the grant, and a failed one burns the code too.
-func (q *Queries) GrantByAuthCodeHash(ctx context.Context, authCodeHash []byte) (OidcGrant, error) {
+// only the first sees spent = false; the row lock makes the rest wait and
+// see true, so they are reuses.
+func (q *Queries) GrantByAuthCodeHash(ctx context.Context, authCodeHash []byte) (GrantByAuthCodeHashRow, error) {
 	row := q.db.QueryRow(ctx, grantByAuthCodeHash, authCodeHash)
-	var i OidcGrant
-	err := row.Scan(
-		&i.ID,
-		&i.AuthCodeHash,
-		&i.RefreshTokenHash,
-		&i.ExpiresAt,
-		&i.Sealed,
-		&i.SessionID,
-	)
+	var i GrantByAuthCodeHashRow
+	err := row.Scan(&i.ID, &i.Sealed, &i.Reused)
 	return i, err
 }
 
 const grantByRefreshTokenHash = `-- name: GrantByRefreshTokenHash :one
-SELECT id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id FROM oidc_grants
+SELECT id, auth_code_hash, refresh_token_hash, expires_at, sealed, session_id, auth_code_spent FROM oidc_grants
 WHERE refresh_token_hash = $1 AND (expires_at IS NULL OR expires_at > now())
   AND (session_id IS NULL OR EXISTS (SELECT 1 FROM sessions s
                                     WHERE s.id = oidc_grants.session_id AND s.ended_at IS NULL AND s.lapses_at > now()))
@@ -395,6 +400,7 @@ func (q *Queries) GrantByRefreshTokenHash(ctx context.Context, refreshTokenHash 
 		&i.ExpiresAt,
 		&i.Sealed,
 		&i.SessionID,
+		&i.AuthCodeSpent,
 	)
 	return i, err
 }
