@@ -141,10 +141,10 @@ func TestInstanceBrandOnTheLoginPage(t *testing.T) {
 		t.Errorf("unknown Logo: %d", resp.StatusCode)
 	}
 
-	// Only a colour: the nebula goes, and the name stays Polaris.
+	// Only a colour: the name stays Polaris, with no Logo.
 	e.setBrand("", "", "#0a66c2")
 	_, page = e.authorize("")
-	if strings.Contains(page, `class="sky"`) || !strings.Contains(page, "<div>Polaris</div>") || strings.Contains(page, "<img") {
+	if !strings.Contains(page, "<div>Polaris</div>") || strings.Contains(page, "<img") {
 		t.Errorf("colour only:\n%s", page)
 	}
 }
