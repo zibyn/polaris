@@ -46,7 +46,7 @@ func TestLoginRequiresAgreeingToTheTerms(t *testing.T) {
 	if resp.StatusCode != 200 || !strings.Contains(page, "请先阅读并同意") {
 		t.Fatalf("without agreeing: %d %s", resp.StatusCode, page)
 	}
-	resp, _ = e.post(page, url.Values{"op": {"password"}, "username": {"owner"}, "password": {"password1"}, "agree": {"v1"}})
+	resp, _ = e.post(page, url.Values{"op": {"password"}, "username": {"owner"}, "password": {"password1"}, "agree": {"v1"}, "altcha": {e.solve()}})
 	sub := e.idToken(e.code(resp))["sub"].(string)
 	if got := e.consents(sub); len(got) != 1 || got[0] != "v1@"+clientID {
 		t.Errorf("consents: %v", got)

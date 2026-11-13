@@ -320,8 +320,10 @@ addEventListener("DOMContentLoaded", () => {
       {{template "reveal"}}
     </span>
   </span>
+  <altcha-widget challenge="/altcha/challenge" name="altcha" auto="onsubmit" language="{{t "zh-cn"}}"></altcha-widget>
   <button>{{t "登录"}}</button>
 </form>
+<script type="module" src="/altcha/altcha.js"></script>
 {{else if and (not .Bind) .PasswordOn (or .PasswordForm (not .CodeKinds))}}
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="password">
@@ -337,9 +339,11 @@ addEventListener("DOMContentLoaded", () => {
     </span>
   </span>
   {{template "agree" .Terms}}
+  <altcha-widget challenge="/altcha/challenge" name="altcha" auto="onsubmit" language="{{t "zh-cn"}}"></altcha-widget>
   <button>{{t "登录"}}</button>
   {{if .CodeKinds}}<a href="{{.Action}}">{{t "改用验证码登录"}}</a>{{end}}
 </form>
+<script type="module" src="/altcha/altcha.js"></script>
 {{else if .CodeKinds}}
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="send">

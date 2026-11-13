@@ -47,7 +47,7 @@ func TestUILocalesLastsTheLogin(t *testing.T) {
 	if !strings.Contains(page, `<html lang="en">`) || !strings.Contains(page, ">Password<") {
 		t.Fatalf("password step:\n%s", page)
 	}
-	_, page = e.post(page, url.Values{"op": {"password"}, "username": {"owner"}, "password": {"wrong-password"}})
+	_, page = e.post(page, url.Values{"op": {"password"}, "username": {"owner"}, "password": {"wrong-password"}, "altcha": {e.solve()}})
 	if !strings.Contains(page, "Wrong username or password") {
 		t.Errorf("wrong password, in English:\n%s", page)
 	}
