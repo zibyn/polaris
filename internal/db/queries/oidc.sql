@@ -145,7 +145,7 @@ ON CONFLICT (hash) DO UPDATE SET expires_at = EXCLUDED.expires_at, data = EXCLUD
 -- name: ChallengeSession :one
 SELECT client_id, data FROM oidc_challenge_sessions WHERE hash = $1 AND expires_at > now();
 
--- name: DeleteChallengeSession :exec
+-- name: DeleteChallengeSession :execrows
 DELETE FROM oidc_challenge_sessions WHERE hash = $1;
 
 -- name: SaveLogoutSession :exec

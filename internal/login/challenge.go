@@ -249,8 +249,11 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		}
 		// Spent before the code exists: one auth_session, one code.
 		if token != "" {
-			if err := s.q.DeleteChallengeSession(ctx, hash(token)); err != nil {
+			// Nothing deleted: a concurrent request spent it first.
+			if n, err := s.q.DeleteChallengeSession(ctx, hash(token)); err != nil {
 				return answer{}, err
+			} else if n == 0 {
+				return answer{}, &challengeError{status: http.StatusBadRequest, Code: errInvalidSession, Description: "the auth_session is spent: start over"}
 			}
 		}
 		sess, err := s.store.CreateSession(deviceContext(r), nil, c.ID, sub, authTime, amr, method)
@@ -298,7 +301,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			// The auth_session goes with the account it belonged to, as a
 			// refused assertion's does: nothing is left to continue (ADR 0016).
 			if token != "" {
-				if err := s.q.DeleteChallengeSession(ctx, hash(token)); err != nil {
+				if _, err := s.q.DeleteChallengeSession(ctx, hash(token)); err != nil {
 					return answer{}, err
 				}
 			}
@@ -333,7 +336,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			return signedIn(p.Sub, p.authTime(), p.AMR, p.Method)
 		case wrongSecondFactor(err):
 			if p.missed() {
-				if err := s.q.DeleteChallengeSession(ctx, hash(token)); err != nil {
+				if _, err := s.q.DeleteChallengeSession(ctx, hash(token)); err != nil {
 					return answer{}, err
 				}
 				return answer{}, &challengeError{status: http.StatusBadRequest, Code: errInvalidSession, Description: "too many wrong codes: sign in again"}
@@ -383,7 +386,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			// A refused assertion ends the auth_session: the App starts over
 			// rather than turning the same challenge over (ADR 0014).
 			if token != "" {
-				if err := s.q.DeleteChallengeSession(ctx, hash(token)); err != nil {
+				if _, err := s.q.DeleteChallengeSession(ctx, hash(token)); err != nil {
 					return answer{}, err
 				}
 			}

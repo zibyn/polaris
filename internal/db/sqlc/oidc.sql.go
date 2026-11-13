@@ -191,13 +191,16 @@ func (q *Queries) CreateApplication(ctx context.Context, arg CreateApplicationPa
 	return err
 }
 
-const deleteChallengeSession = `-- name: DeleteChallengeSession :exec
+const deleteChallengeSession = `-- name: DeleteChallengeSession :execrows
 DELETE FROM oidc_challenge_sessions WHERE hash = $1
 `
 
-func (q *Queries) DeleteChallengeSession(ctx context.Context, hash []byte) error {
-	_, err := q.db.Exec(ctx, deleteChallengeSession, hash)
-	return err
+func (q *Queries) DeleteChallengeSession(ctx context.Context, hash []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteChallengeSession, hash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteExpiredOIDC = `-- name: DeleteExpiredOIDC :exec

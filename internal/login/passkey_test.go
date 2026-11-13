@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/zibyn/polaris/internal/passkey"
@@ -425,5 +426,36 @@ func TestDirectPasskeyBeginRateLimited(t *testing.T) {
 				t.Fatalf("begin from a locked-out IP: %+v", begun)
 			}
 		})
+	}
+}
+
+// One auth_session ends in one authorization code: the same assertion
+// submitted on it twice at once signs the User in once, and the other
+// request is told the auth_session is gone.
+func TestDirectPasskeyLoginOneCode(t *testing.T) {
+	e := start(t)
+	a := passkeytest.New(t)
+	passkeyUser(t, e, a)
+
+	begun := e.challenge(url.Values{"passkey": {"begin"}})
+	// A zero counter, as a synced Passkey keeps, so no counter check
+	// stands between the two submissions.
+	form := url.Values{"auth_session": {begun.AuthSession}, "passkey": {string(a.Assert(begun.Options))}}
+	var wg sync.WaitGroup
+	got := make([]challengeResp, 2)
+	for i := range got {
+		wg.Go(func() { got[i] = e.challenge(form) })
+	}
+	wg.Wait()
+	codes, gone := 0, 0
+	for _, r := range got {
+		if r.Code != "" {
+			codes++
+		} else if r.Error == "invalid_session" {
+			gone++
+		}
+	}
+	if codes != 1 || gone != 1 {
+		t.Fatalf("two submissions of one auth_session: %+v", got)
 	}
 }
