@@ -7,6 +7,8 @@
 - Passkey 断言失败不计入 `2fa:<sub>`(ADR 0036),也不占每次登录 5 次的机会:断言猜不出来,计数挡的是猜码。TOTP 被锁定期间 Passkey 第二步仍可用。
 - 第二步遵守实例的 Passkey 登录开关:关着时不提供 Passkey,只剩 TOTP 和恢复码。Application 允许的登录方式只约束第一因素,不影响第二步提供 Passkey。
 - Passkey 登录本身仍直接满足两步验证,不变。
+- 直连 API:只有 Passkey 时 `next: "passkey"`,TOTP 和 Passkey 都有时 `next: "two_factor"` 加 `methods: ["totp", "passkey"]`;只有 TOTP 或 Passkey 登录关着时仍是 `next: "totp"`,原样不变。Passkey 第二步的断言不通过只作废那次 challenge,`auth_session` 留着,重新 `begin` 即可:与 Passkey 登录不同,第一因素已经过了,作废它只会逼 User 重来一遍,而断言本来就猜不出来。
+- 两步验证开着却没有 TOTP 的 User 提交 `totp`,按输错处理,不再当作「两步验证已关闭」放行。
 
 ## Considered Options
 

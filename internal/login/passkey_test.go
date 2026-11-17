@@ -613,3 +613,124 @@ func TestPasskeySecondStepWhileLocked(t *testing.T) {
 	}
 	e.code(resp)
 }
+
+// directSecondStep signs phone's User in with a code and returns the
+// answer that asks for 两步验证.
+func directSecondStep(t *testing.T, e *env, phone string) challengeResp {
+	t.Helper()
+	if _, err := e.pool.Exec(context.Background(), "UPDATE sends SET sent_at = sent_at - interval '1 minute'"); err != nil {
+		t.Fatal(err)
+	}
+	sent := e.challenge(url.Values{"identifier": {phone}, "altcha": {e.solve()}})
+	return e.challenge(url.Values{"auth_session": {sent.AuthSession}, "code": {e.inbox.take(phone)}})
+}
+
+// A User with a TOTP and a Passkey is asked to choose: next two_factor with
+// methods totp and passkey, and a TOTP code, a 恢复码 or a Passkey each ends
+// the sign-in; the Passkey's amr names the key, not otp (ADR 0037).
+func TestDirectTwoFactorChoice(t *testing.T) {
+	e := start(t)
+	a := passkeytest.New(t)
+	const phone = "+8613800138000"
+	sub := passkeyUser(t, e, a)
+	secret, codes := e.twoFactor(sub)
+
+	choose := func() string {
+		t.Helper()
+		r := directSecondStep(t, e, phone)
+		if r.Status != 403 || r.Error != "insufficient_authorization" || r.Next != "two_factor" ||
+			!slices.Equal(r.Methods, []string{"totp", "passkey"}) || r.AuthSession == "" {
+			t.Fatalf("want next two_factor: %+v", r)
+		}
+		return r.AuthSession
+	}
+
+	if r := e.challenge(url.Values{"auth_session": {choose()}, "totp": {totpAt(secret, 0)}}); r.Status != 200 {
+		t.Fatalf("TOTP: %+v", r)
+	}
+	if r := e.challenge(url.Values{"auth_session": {choose()}, "recovery_code": {codes[0]}}); r.Status != 200 {
+		t.Fatalf("recovery code: %+v", r)
+	}
+
+	as := choose()
+	begun := e.challenge(url.Values{"auth_session": {as}, "passkey": {"begin"}})
+	if begun.Status != 200 || begun.AuthSession != as || begun.Options == nil {
+		t.Fatalf("begin: %+v", begun)
+	}
+	var o struct {
+		PublicKey struct {
+			AllowCredentials []json.RawMessage `json:"allowCredentials"`
+		} `json:"publicKey"`
+	}
+	if err := json.Unmarshal(begun.Options, &o); err != nil || len(o.PublicKey.AllowCredentials) != 1 {
+		t.Fatalf("options name not the User's own Passkey: %s", begun.Options)
+	}
+	a.SignCount = 1
+	done := e.challenge(url.Values{"auth_session": {as}, "passkey": {string(a.Assert(begun.Options))}})
+	if done.Status != 200 {
+		t.Fatalf("passkey: %+v", done)
+	}
+	if claims := e.claims(e.exchange(clientID, "", done.Code).IDToken); !slices.Equal(claims["amr"].([]any), []any{"sms", "hwk", "mfa"}) {
+		t.Fatalf("amr: %v", claims["amr"])
+	}
+
+	// With Passkey login off, only the TOTP is left: next totp as before.
+	setPasskeyLogin(t, e, false)
+	if r := directSecondStep(t, e, phone); r.Next != "totp" || r.Methods != nil {
+		t.Fatalf("Passkey login off: %+v", r)
+	}
+}
+
+// A User whose 两步验证 has only a Passkey is asked for it: next passkey, then
+// begin and the assertion on the same auth_session. A refused assertion is a
+// 400 invalid_request that keeps the auth_session but not its challenge, and
+// counts against nothing; a TOTP code is no way past it.
+func TestDirectPasskeyOnlyTwoFactor(t *testing.T) {
+	e := start(t)
+	a := passkeytest.New(t)
+	const phone = "+8613800138000"
+	sub := passkeyUser(t, e, a)
+	if _, err := e.pool.Exec(context.Background(), "INSERT INTO two_factor (user_id) VALUES ($1)", sub); err != nil {
+		t.Fatal(err)
+	}
+
+	r := directSecondStep(t, e, phone)
+	if r.Status != 403 || r.Next != "passkey" || r.Methods != nil || r.AuthSession == "" {
+		t.Fatalf("want next passkey: %+v", r)
+	}
+	as := r.AuthSession
+	if r := e.challenge(url.Values{"auth_session": {as}, "totp": {"123456"}}); r.Status != 400 || r.Error != "invalid_request" {
+		t.Fatalf("a TOTP code with no TOTP: %+v", r)
+	}
+
+	other := passkeytest.New(t)
+	passkeyUserAt(t, e, other, "phone", "+8613800138001")
+	for range 6 { // more than a login's TOTP tries
+		begun := e.challenge(url.Values{"auth_session": {as}, "passkey": {"begin"}})
+		other.SignCount++
+		refused := e.challenge(url.Values{"auth_session": {as}, "passkey": {string(other.Assert(begun.Options))}})
+		if refused.Status != 400 || refused.Error != "invalid_request" || refused.AuthSession != as {
+			t.Fatalf("another User's Passkey: %+v", refused)
+		}
+		if again := e.challenge(url.Values{"auth_session": {as}, "passkey": {string(other.Assert(begun.Options))}}); again.Error != "invalid_request" || again.Describe == passkey.ErrNoPasskey.Error() {
+			t.Fatalf("the refused challenge was kept: %+v", again)
+		}
+	}
+	var n int
+	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM login_failures WHERE key = $1", identity.TwoFactorLockKey(sub)).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 { // the TOTP code only
+		t.Fatalf("failures counted against 两步验证: %d", n)
+	}
+
+	begun := e.challenge(url.Values{"auth_session": {as}, "passkey": {"begin"}})
+	a.SignCount = 1
+	done := e.challenge(url.Values{"auth_session": {as}, "passkey": {string(a.Assert(begun.Options))}})
+	if done.Status != 200 {
+		t.Fatalf("passkey: %+v", done)
+	}
+	if claims := e.claims(e.exchange(clientID, "", done.Code).IDToken); claims["sub"] != sub || !slices.Equal(claims["amr"].([]any), []any{"sms", "hwk", "mfa"}) {
+		t.Fatalf("id token: %v", claims)
+	}
+}

@@ -183,11 +183,15 @@ func (s *Store) Check(ctx context.Context, sub, totp, recoveryCode string) error
 	return s.CheckTOTP(ctx, sub, totp)
 }
 
-// CheckTOTP accepts a code from the User's confirmed TOTP (ErrOff without
-// one); each code works once.
+// CheckTOTP accepts a code from the User's confirmed TOTP; each code works
+// once. Without one: ErrOff while 两步验证 is off, else a wrong code, so a
+// User whose 两步验证 has only a Passkey is not let past it by any code.
 func (s *Store) CheckTOTP(ctx context.Context, sub, code string) error {
 	t, err := s.q.TOTP(ctx, sub)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && !t.ConfirmedAt.Valid {
+		if on, err := s.On(ctx, sub); err != nil || on {
+			return cmp.Or(err, error(ErrCode))
+		}
 		return ErrOff
 	} else if err != nil {
 		return err

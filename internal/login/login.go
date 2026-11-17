@@ -681,6 +681,22 @@ func (s *Service) needsTOTP(ctx context.Context, sub string, amr []string) (bool
 	return s.twoFactor.On(ctx, sub)
 }
 
+// secondFactors reports which of TOTP and Passkey sub can pass 两步验证 with:
+// a confirmed TOTP, and a Passkey while the instance has Passkey login on
+// (ADR 0037). A 恢复码 goes wherever a TOTP code does.
+func (s *Service) secondFactors(ctx context.Context, sub string) (totp, key bool, err error) {
+	t, err := s.q.TOTP(ctx, sub)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return false, false, err
+	}
+	totp = err == nil && t.ConfirmedAt.Valid
+	_, _, err = s.passkeys.SecondFactorOptions(ctx, sub)
+	if errors.Is(err, passkey.ErrNoPasskeys) || errors.Is(err, passkey.ErrOff) {
+		return totp, false, nil
+	}
+	return totp, err == nil, err
+}
+
 // wrongSecondFactor reports whether err is a wrong TOTP code or 恢复码: one
 // of the tries a pending login has.
 func wrongSecondFactor(err error) bool {
