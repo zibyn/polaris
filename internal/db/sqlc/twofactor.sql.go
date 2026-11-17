@@ -55,7 +55,7 @@ type BeginTOTPParams struct {
 }
 
 // A new TOTP for the User to confirm, replacing one not yet confirmed; none
-// while 两步验证 is on.
+// while one is confirmed.
 func (q *Queries) BeginTOTP(ctx context.Context, arg BeginTOTPParams) (int64, error) {
 	result, err := q.db.Exec(ctx, beginTOTP, arg.UserID, arg.Secret)
 	if err != nil {
@@ -75,7 +75,7 @@ type ConfirmTOTPParams struct {
 	Secret []byte
 }
 
-// Turns 两步验证 on with the step of the code that confirmed it, if the TOTP
+// Confirms the TOTP with the step of the code that confirmed it, if the TOTP
 // is still the one the code was checked against (ADR 0030): no row when it
 // was confirmed, begun again or used meanwhile.
 func (q *Queries) ConfirmTOTP(ctx context.Context, arg ConfirmTOTPParams) (int64, error) {
@@ -95,27 +95,47 @@ func (q *Queries) DeleteRecoveryCodes(ctx context.Context, userID string) error 
 	return err
 }
 
-const deleteTOTP = `-- name: DeleteTOTP :execrows
-DELETE FROM totp_credentials WHERE user_id = $1 AND confirmed_at IS NOT NULL
+const deleteTOTP = `-- name: DeleteTOTP :exec
+DELETE FROM totp_credentials WHERE user_id = $1
+`
+
+func (q *Queries) DeleteTOTP(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, deleteTOTP, userID)
+	return err
+}
+
+const disableTwoFactor = `-- name: DisableTwoFactor :execrows
+DELETE FROM two_factor WHERE user_id = $1
 `
 
 // Turns 两步验证 off; no row when it is not on.
-func (q *Queries) DeleteTOTP(ctx context.Context, userID string) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteTOTP, userID)
+func (q *Queries) DisableTwoFactor(ctx context.Context, userID string) (int64, error) {
+	result, err := q.db.Exec(ctx, disableTwoFactor, userID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const keepTOTPOn = `-- name: KeepTOTPOn :execrows
-UPDATE totp_credentials SET last_step = last_step WHERE user_id = $1 AND confirmed_at IS NOT NULL
+const enableTwoFactor = `-- name: EnableTwoFactor :exec
+INSERT INTO two_factor (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING
+`
+
+// Turns 两步验证 on; a no-op while it is.
+func (q *Queries) EnableTwoFactor(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, enableTwoFactor, userID)
+	return err
+}
+
+const keepTwoFactorOn = `-- name: KeepTwoFactorOn :execrows
+UPDATE two_factor SET enabled_at = enabled_at WHERE user_id = $1
 `
 
 // Holds 两步验证 on for the rest of the transaction: a no-op write that
-// finds it on, so a concurrent DeleteTOTP waits for this one. No row: off.
-func (q *Queries) KeepTOTPOn(ctx context.Context, userID string) (int64, error) {
-	result, err := q.db.Exec(ctx, keepTOTPOn, userID)
+// finds it on, so a concurrent DisableTwoFactor waits for this one. No row:
+// off.
+func (q *Queries) KeepTwoFactorOn(ctx context.Context, userID string) (int64, error) {
+	result, err := q.db.Exec(ctx, keepTwoFactorOn, userID)
 	if err != nil {
 		return 0, err
 	}
@@ -139,9 +159,21 @@ func (q *Queries) TOTP(ctx context.Context, userID string) (TOTPRow, error) {
 	return i, err
 }
 
+const twoFactorOn = `-- name: TwoFactorOn :one
+SELECT enabled_at FROM two_factor WHERE user_id = $1
+`
+
+// When sub turned 两步验证 on; no row while it is off.
+func (q *Queries) TwoFactorOn(ctx context.Context, userID string) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, twoFactorOn, userID)
+	var enabled_at pgtype.Timestamptz
+	err := row.Scan(&enabled_at)
+	return enabled_at, err
+}
+
 const unusedRecoveryCodes = `-- name: UnusedRecoveryCodes :many
 SELECT c.mac FROM recovery_codes c
-JOIN totp_credentials t ON t.user_id = c.user_id AND t.confirmed_at IS NOT NULL
+JOIN two_factor t ON t.user_id = c.user_id
 WHERE c.user_id = $1 AND c.used_at IS NULL
 `
 

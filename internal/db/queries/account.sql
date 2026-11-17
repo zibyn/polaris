@@ -15,7 +15,7 @@ SELECT u.created_at,
        -- The password login setting lets this User use a password.
        (s.password_login = 'on')::boolean AS password_allowed,
        -- When 两步验证 was turned on; null while it is off.
-       (SELECT t.confirmed_at FROM totp_credentials t WHERE t.user_id = u.id) AS two_factor_since,
+       (SELECT t.enabled_at FROM two_factor t WHERE t.user_id = u.id) AS two_factor_since,
        (SELECT count(*) FROM recovery_codes c WHERE c.user_id = u.id AND c.used_at IS NULL) AS recovery_codes_left,
        -- Whether the instance offers Passkey login: the account center hides
        -- its Passkey section and reauthentication way while it does not.
@@ -31,7 +31,7 @@ WHERE u.id = $1;
 -- sub holds a Management API Role, and their second factors.
 SELECT s.admins_need_two_factor, s.passkey_login,
        EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = @sub AND r.api = 'urn:polaris:management-api') AS admin,
-       EXISTS (SELECT 1 FROM totp_credentials t WHERE t.user_id = @sub AND t.confirmed_at IS NOT NULL) AS totp,
+       EXISTS (SELECT 1 FROM two_factor t WHERE t.user_id = @sub) AS two_factor,
        (SELECT count(*) FROM passkeys p WHERE p.user_id = @sub) AS passkeys,
        EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = @sub AND p.id = @passkey_id::text) AS owns_passkey
 FROM settings s;

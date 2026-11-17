@@ -65,7 +65,7 @@ type caller struct {
 	sub         string
 	permissions []string
 	satisfied   bool // 两步验证或 Passkey 已满足
-	totp        bool // a confirmed TOTP, whether or not a Passkey also does
+	twoFactor   bool // 两步验证 on, whether or not a Passkey also satisfies it
 	application bool // an M2M Application calling as itself, not a User
 }
 
@@ -204,7 +204,7 @@ func (s *Service) authorize(api huma.API) func(huma.Context, func(huma.Context))
 		}
 		// An M2M Application's token has its client_id as sub, and it holds
 		// Roles on the API that the User tables know nothing about.
-		call := caller{sub: sub, permissions: c.Permissions, satisfied: twofactor.Satisfied(c.Totp, c.HasPasskey, c.PasskeyLogin), totp: c.Totp}
+		call := caller{sub: sub, permissions: c.Permissions, satisfied: twofactor.Satisfied(c.TwoFactor, c.HasPasskey, c.PasskeyLogin), twoFactor: c.TwoFactor}
 		required, admin := c.TwoFactorRequired, c.Admin
 		if !admin {
 			a, err := s.q.M2MCaller(ctx.Context(), sqlc.M2MCallerParams{ClientID: sub, Api: identity.ManagementAPI})

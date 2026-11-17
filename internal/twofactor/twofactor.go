@@ -51,13 +51,13 @@ func New(pool *pgxpool.Pool, keyring *crypt.Keyring) *Store {
 	return &Store{pool: pool, q: sqlc.New(pool), keyring: keyring}
 }
 
-// On reports whether sub has 两步验证 on: a confirmed TOTP.
+// On reports whether sub has 两步验证 on.
 func (s *Store) On(ctx context.Context, sub string) (bool, error) {
-	t, err := s.q.TOTP(ctx, sub)
+	_, err := s.q.TwoFactorOn(ctx, sub)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
-	return err == nil && t.ConfirmedAt.Valid, err
+	return err == nil, err
 }
 
 func aad(sub string) []byte { return []byte("totp:" + sub) }
@@ -70,8 +70,8 @@ func URI(issuer, account, secret string) string {
 }
 
 // Begin gives the User a new 160-bit TOTP secret, in Base32, to add to an
-// authenticator; it replaces one not yet confirmed. 两步验证 stays off until
-// Confirm.
+// authenticator; it replaces one not yet confirmed, and is refused while one
+// is confirmed. The TOTP counts only after Confirm.
 func (s *Store) Begin(ctx context.Context, sub string) (string, error) {
 	secret := make([]byte, 20)
 	_, _ = rand.Read(secret)
@@ -86,8 +86,8 @@ func (s *Store) Begin(ctx context.Context, sub string) (string, error) {
 	return b32.EncodeToString(secret), err
 }
 
-// Confirm turns 两步验证 on with a code from the TOTP just begun, and
-// returns the User's 恢复码: the only time anyone sees them.
+// Confirm confirms the TOTP just begun with a code from it and turns 两步验证
+// on, returning the User's 恢复码: the only time anyone sees them.
 func (s *Store) Confirm(ctx context.Context, sub, code string) ([]string, error) {
 	var codes []string
 	err := db.Retry(ctx, s.pool, func(tx pgx.Tx) error {
@@ -110,6 +110,9 @@ func (s *Store) Confirm(ctx context.Context, sub, code string) ([]string, error)
 		} else if n == 0 {
 			return db.ErrConflict // read again: on now, or begun again
 		}
+		if err := q.EnableTwoFactor(ctx, sub); err != nil {
+			return err
+		}
 		if codes, err = s.newRecoveryCodes(ctx, q, sub); err != nil {
 			return err
 		}
@@ -123,10 +126,13 @@ func (s *Store) Confirm(ctx context.Context, sub, code string) ([]string, error)
 func (s *Store) Disable(ctx context.Context, sub, event string, by audit.Actor) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if n, err := q.DeleteTOTP(ctx, sub); err != nil {
+		if n, err := q.DisableTwoFactor(ctx, sub); err != nil {
 			return err
 		} else if n == 0 {
 			return notOn(ctx, q, sub)
+		}
+		if err := q.DeleteTOTP(ctx, sub); err != nil {
+			return err
 		}
 		if err := q.DeleteRecoveryCodes(ctx, sub); err != nil {
 			return err
@@ -143,7 +149,7 @@ func (s *Store) RegenerateRecoveryCodes(ctx context.Context, sub string) ([]stri
 	var codes []string
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if n, err := q.KeepTOTPOn(ctx, sub); err != nil {
+		if n, err := q.KeepTwoFactorOn(ctx, sub); err != nil {
 			return err
 		} else if n == 0 {
 			return notOn(ctx, q, sub)
@@ -177,8 +183,8 @@ func (s *Store) Check(ctx context.Context, sub, totp, recoveryCode string) error
 	return s.CheckTOTP(ctx, sub, totp)
 }
 
-// CheckTOTP accepts a code from the User's TOTP, while 两步验证 is on; each
-// code works once.
+// CheckTOTP accepts a code from the User's confirmed TOTP (ErrOff without
+// one); each code works once.
 func (s *Store) CheckTOTP(ctx context.Context, sub, code string) error {
 	t, err := s.q.TOTP(ctx, sub)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && !t.ConfirmedAt.Valid {
@@ -218,10 +224,10 @@ func (s *Store) UseRecoveryCode(ctx context.Context, sub, code string) error {
 }
 
 // Satisfied is 两步验证或 Passkey: what 管理员必须启用两步验证或 Passkey asks of
-// an admin. A confirmed TOTP always counts, a Passkey only while the
-// instance offers Passkey login.
-func Satisfied(totp, hasPasskey, passkeyLogin bool) bool {
-	return totp || passkeyLogin && hasPasskey
+// an admin. 两步验证 on always counts, a Passkey only while the instance
+// offers Passkey login.
+func Satisfied(twoFactor, hasPasskey, passkeyLogin bool) bool {
+	return twoFactor || passkeyLogin && hasPasskey
 }
 
 // NormalizeRecoveryCode is a 恢复码 as kept: lowercase, no dash or spaces.

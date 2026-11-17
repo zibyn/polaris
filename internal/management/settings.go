@@ -65,7 +65,7 @@ func (s *Service) putSettings(ctx context.Context, in *policyBody) (*struct{}, e
 	// Turning the Passkey switch off takes away the requirement's only
 	// satisfaction for an admin whose own is a Passkey: refuse rather than
 	// leave them locked out of the Management API on their next request.
-	if !b.PasskeyLogin && b.AdminsNeedTwoFactor && c.satisfied && !c.totp {
+	if !b.PasskeyLogin && b.AdminsNeedTwoFactor && c.satisfied && !c.twoFactor {
 		return nil, huma.Error422UnprocessableEntity("请先为自己开启两步验证")
 	}
 	// Leaving the Logo out removes it; the transaction deletes its blob.

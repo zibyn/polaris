@@ -319,6 +319,11 @@ type TotpCredential struct {
 	LastStep    int64
 }
 
+type TwoFactor struct {
+	UserID    string
+	EnabledAt pgtype.Timestamptz
+}
+
 type User struct {
 	ID               string
 	CreatedAt        pgtype.Timestamptz

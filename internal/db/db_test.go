@@ -230,6 +230,33 @@ func TestAuditEventsRenamed(t *testing.T) {
 	}
 }
 
+// 两步验证 became its own record (#198): a User with a confirmed TOTP keeps it
+// on, since when the TOTP was confirmed; one only partway through adding a
+// TOTP, or with none, has it off.
+func TestTwoFactorOnCarriedOver(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.Fresh(t)
+	if err := migrate(ctx, pool, migrationsBefore(t, 56)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO users (id) VALUES ('ON'), ('BEGUN'), ('NONE');
+		INSERT INTO totp_credentials (user_id, secret, confirmed_at) VALUES
+		('ON', 'x', '2026-01-02T03:04:05Z'), ('BEGUN', 'y', NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	if err := pool.QueryRow(ctx, `SELECT string_agg(user_id || ' ' || to_char(enabled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS'), ',')
+		FROM two_factor`).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if want := "ON 2026-01-02T03:04:05"; got != want {
+		t.Errorf("on: %s, want %s", got, want)
+	}
+}
+
 // migrationsBefore is the embedded migrations numbered below n.
 func migrationsBefore(t *testing.T, n int64) fs.FS {
 	t.Helper()

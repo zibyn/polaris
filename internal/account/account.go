@@ -897,12 +897,12 @@ func (s *Service) removePasskey(ctx context.Context, in *providerPath) (*struct{
 	}
 	c := callerOf(ctx)
 	// Deleting the last Passkey would lock a Role-holding User out of the
-	// Management API while the switch is on and no TOTP is left.
+	// Management API while the switch is on and 两步验证 is off.
 	// The id must be theirs, so an unknown one is 404 (from Remove), not 409.
 	if f, err := s.q.SecondFactors(ctx, sqlc.SecondFactorsParams{Sub: c.sub, PasskeyID: in.ID}); err != nil {
 		return nil, err
 	} else if f.AdminsNeedTwoFactor && f.Admin && f.OwnsPasskey &&
-		twofactor.Satisfied(f.Totp, true, f.PasskeyLogin) && !twofactor.Satisfied(f.Totp, f.Passkeys > 1, f.PasskeyLogin) {
+		twofactor.Satisfied(f.TwoFactor, true, f.PasskeyLogin) && !twofactor.Satisfied(f.TwoFactor, f.Passkeys > 1, f.PasskeyLogin) {
 		return nil, huma.Error409Conflict("管理员必须启用两步验证或 Passkey,你持有管理员角色,不能删除最后一把 Passkey")
 	}
 	return nil, passkeyErr(s.passkeys.Remove(ctx, c.sub, in.ID, audit.User(c.sub)))
