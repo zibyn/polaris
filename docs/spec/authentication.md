@@ -79,7 +79,7 @@
 - **登录**:第一因素通过后进入两步验证这一步,输入一个 TOTP、用 Passkey 断言、输入发到已添加的手机号或邮箱的验证码,或输入一个恢复码,效果相同。步骤顺序固定为 TOTP → 绑手机号 → 同意协议;TOTP 通过之前不建 Session,也不发授权码,"已通过第一因素"的状态只存在 AuthnSession 的 store(托管页)或 `auth_session`(直连 API)里。
   - **托管页**:输入框标注 `autocomplete="one-time-code"`;可切换到「使用恢复码」;没有 TOTP 的 User(只靠 Passkey 开着)直接看到恢复码输入框,没有「使用验证器」。提交了 TOTP 码却没有 TOTP 时按输错处理,不会放行。User 有 Passkey 且实例开着 Passkey 登录时,另有「使用 Passkey」按钮(只在支持 `PublicKeyCredential` 的浏览器上显示):渲染这一步时生成 challenge 存进 AuthnSession store,断言选项只列这个 User 自己的凭证(`allowCredentials`),要求 UV,不发起自动填充;以 `op=passkey` 提交,断言校验与 Passkey 登录相同,别人的 Passkey 不通过。添加了短信或邮箱因素的 User 另有「发送验证码到 138****0000」(邮箱为 `o***@example.com`)按钮,点了才发(`op=send-2fa`),发码后显示 `autocomplete="one-time-code"` 的输入框(`op=code-2fa`),可「重新获取」或「使用其他方式」;有 TOTP 或 Passkey 时也照样列出。只看对应的 Channel 是否配好,不看登录方式开关:关掉短信验证码登录不影响短信码当第二步,Channel 不可用时不提供这一种。去掉与第一因素同渠道的那种后什么都不剩时,只给恢复码输入框,并提示可以改用别的方式登录。
   - **发码**:沿用登录发码按 Identifier、按 IP 的发送限制与实例每日上限,与登录发码共用同一组计数;不要求 PoW(第一因素已过)。每个码最多试 5 次、5 分钟有效。
-  - **直连 API**:返回 `next: "totp"`,在同一 `auth_session` 里提交 `totp` 或 `recovery_code`,见 [protocol.md](protocol.md#直连认证-api)。
+  - **直连 API**:返回 `next: "totp"`,在同一 `auth_session` 里提交 `totp` 或 `recovery_code`;只有 Passkey 为 `passkey`,只有短信或邮箱为 `sms` / `email`(带 `two_factor=sms|email` 发码再提交 `code`),多种时为 `two_factor` 加 `methods`,见 [protocol.md](protocol.md#直连认证-api)。
   - **输错**:每个待完成的登录最多输错 5 次,第 5 次后本次登录作废(托管页回到第一步,直连 API 的 `auth_session` 失效)。另按 User 锁定,见 [security-compliance.md](security-compliance.md#失败锁定)(ADR 0036)。短信、邮箱验证码输错与 TOTP 一样两者都计入,锁定期间正确的码也被拒绝(ADR 0038)。Passkey 断言失败两者都不计入,TOTP 被锁定期间 Passkey 仍可完成这一步(ADR 0037)。
   - **时钟偏差**:接受前后各一个 30 秒时间步。
 - **已有浏览器 Session**:静默登录不再要求 TOTP,那个 Session 建立时已经输过了。
