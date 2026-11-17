@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -439,14 +440,36 @@ type kindBody struct {
 	}
 }
 
-// errTwoFactorOnly refuses a code or the password to a User with 两步验证 on.
-const errTwoFactorOnly identity.Invalid = "已开启两步验证,请输入验证器中的验证码或恢复码"
+// errTwoFactorOnly refuses the password, or a code to an Identifier not
+// added as a factor, to a User with 两步验证 on.
+const errTwoFactorOnly identity.Invalid = "已开启两步验证,请使用两步验证的方式验证身份"
+
+// factorCodeTo is where a code by kind goes for 两步验证: the phone number
+// or email, added as a factor, while its Channel is configured (ADR 0038).
+func (s *Service) factorCodeTo(ctx context.Context, kind string) (string, error) {
+	sub := callerOf(ctx).sub
+	fs, err := s.twoFactor.SecondFactors(ctx, sub)
+	if err != nil {
+		return "", err
+	}
+	f := twofactor.CodeFactor(kind)
+	if f == "" || !slices.Contains(fs.Usable(), f) {
+		return "", errTwoFactorOnly
+	}
+	return s.twoFactor.CodeTo(ctx, sub, f)
+}
 
 func (s *Service) sendReauthCode(ctx context.Context, in *kindBody) (*struct{}, error) {
-	if on, err := s.twoFactor.On(ctx, callerOf(ctx).sub); err != nil || on {
-		return nil, fail(cmp.Or(err, error(errTwoFactorOnly)))
+	on, err := s.twoFactor.On(ctx, callerOf(ctx).sub)
+	if err != nil {
+		return nil, err
 	}
-	value, err := s.identifier(ctx, in.Body.Kind)
+	var value string
+	if on {
+		value, err = s.factorCodeTo(ctx, in.Body.Kind)
+	} else {
+		value, err = s.identifier(ctx, in.Body.Kind)
+	}
 	if err == nil {
 		err = s.codes.Send(ctx, in.Body.Kind, value, callerOf(ctx).from.IP)
 	}
@@ -458,7 +481,7 @@ type reauthInput struct {
 		Kind         string `json:"kind,omitempty" enum:"phone,email" doc:"Where the code went"`
 		Code         string `json:"code,omitempty"`
 		Password     string `json:"password,omitempty" doc:"Instead of a code"`
-		TOTP         string `json:"totp,omitempty" doc:"A code from the User's TOTP; with 两步验证 on, this or a recovery code is the only way"`
+		TOTP         string `json:"totp,omitempty" doc:"A code from the User's TOTP; with 两步验证 on, this, a recovery code, a Passkey or a code by a phone number or email added as a factor is the only way"`
 		RecoveryCode string `json:"recoveryCode,omitempty" doc:"One of the User's recovery codes, instead of a TOTP code; used up"`
 		Passkey      string `json:"passkey,omitempty" doc:"The assertion response from POST /reauth/passkey; a Passkey has passed 两步验证 already"`
 	}
@@ -487,8 +510,8 @@ func (s *Service) beginPasskeyReauth(ctx context.Context, _ *struct{}) (*passkey
 
 // reauth makes a fresh authentication of this Session, counted toward the
 // same lockouts as logging in; a Passkey is one attempt per challenge, as at
-// login. With 两步验证 on, only a TOTP, recovery code or Passkey does; a
-// Passkey is 两步验证 by itself.
+// login. With 两步验证 on, only a TOTP, recovery code, Passkey or a code by
+// a code factor does; a Passkey is 两步验证 by itself.
 func (s *Service) reauth(ctx context.Context, in *reauthInput) (*struct{}, error) {
 	c := callerOf(ctx)
 	if in.Body.Passkey != "" {
@@ -515,10 +538,6 @@ func (s *Service) reauth(ctx context.Context, in *reauthInput) (*struct{}, error
 		}
 		return nil, s.reauthenticated(ctx, c, []string{"pwd"})
 	}
-	amr := "sms"
-	if in.Body.Kind == "email" {
-		amr = "otp"
-	}
 	value, err := s.identifier(ctx, in.Body.Kind)
 	if err == nil {
 		err = s.ids.Code(ctx, c.from, value, c.sub, func() error { return s.codes.Check(ctx, value, in.Body.Code) })
@@ -526,7 +545,15 @@ func (s *Service) reauth(ctx context.Context, in *reauthInput) (*struct{}, error
 	if err != nil {
 		return nil, fail(err)
 	}
-	return nil, s.reauthenticated(ctx, c, []string{amr})
+	return nil, s.reauthenticated(ctx, c, []string{codeAMR(in.Body.Kind)})
+}
+
+// codeAMR is how a code to an Identifier of kind proves the User (RFC 8176).
+func codeAMR(kind string) string {
+	if kind == "email" {
+		return "otp"
+	}
+	return "sms"
 }
 
 // reauthenticated records a fresh authentication of c's Session, proved as
@@ -538,10 +565,21 @@ func (s *Service) reauthenticated(ctx context.Context, c caller, amr []string) e
 	return s.ids.LoginSucceeded(ctx, c.from, c.sub, amr)
 }
 
-// reauthTwoFactor reauthenticates with a TOTP or recovery code; a wrong one
-// counts toward the IP lockout like a wrong code.
+// reauthTwoFactor reauthenticates with a TOTP, recovery code, or a code sent
+// by a code factor; a wrong one counts toward the IP lockout like a wrong
+// code, and toward 2fa:<sub> as at login.
 func (s *Service) reauthTwoFactor(ctx context.Context, in *reauthInput) error {
 	c := callerOf(ctx)
+	if in.Body.Kind != "" {
+		to, err := s.factorCodeTo(ctx, in.Body.Kind)
+		if err != nil {
+			return err
+		}
+		if err := s.ids.SecondFactor(ctx, c.from, c.sub, "code", func() error { return s.codes.Check(ctx, to, in.Body.Code) }); err != nil {
+			return err
+		}
+		return s.reauthenticated(ctx, c, []string{codeAMR(in.Body.Kind), "mfa"})
+	}
 	if in.Body.TOTP == "" && in.Body.RecoveryCode == "" {
 		return errTwoFactorOnly
 	}

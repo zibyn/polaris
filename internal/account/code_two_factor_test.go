@@ -1,8 +1,13 @@
 package account_test
 
 import (
+	"context"
+	"errors"
+	"slices"
 	"testing"
 	"time"
+
+	"github.com/zibyn/polaris/internal/identity"
 )
 
 // codeFactors is what me says of the User's 短信 and 邮箱 second factors.
@@ -103,5 +108,76 @@ func TestPasskeysDoNotCountWhilePasskeyLoginIsOff(t *testing.T) {
 	e.setPasskeyLogin(false)
 	if c := e.call("DELETE", tok, "/v1/account/passkeys/"+first, nil, nil); c != 409 {
 		t.Errorf("delete one of two Passkeys, Passkey login off: %d, want 409", c)
+	}
+}
+
+// smsOnly is ALICE with 两步验证 on by her phone number alone, in a Session
+// in need of reauthentication.
+func (e *env) smsOnly() string {
+	e.t.Helper()
+	e.user("ALICE", "phone:+8613800138000")
+	e.password("ALICE", "password1")
+	tok := e.signIn("ALICE", 0)
+	if c := e.call("PUT", tok, "/v1/account/2fa/identifiers/phone", nil, nil); c != 204 {
+		e.t.Fatalf("add SMS: %d", c)
+	}
+	if c := e.call("POST", tok, "/v1/account/2fa", nil, nil); c != 200 {
+		e.t.Fatalf("turn on with SMS: %d", c)
+	}
+	if _, err := e.pool.Exec(context.Background(), "UPDATE sessions SET auth_time = now() - interval '1 hour'"); err != nil {
+		e.t.Fatal(err)
+	}
+	return tok
+}
+
+// With 两步验证 on by SMS alone, a code to the phone number reauthenticates
+// as sms + mfa; the email, not added, sends nothing (ADR 0038).
+func TestReauthenticationWithSMSFactor(t *testing.T) {
+	e := start(t)
+	tok := e.smsOnly()
+	if _, err := e.pool.Exec(context.Background(), "INSERT INTO identifiers (user_id, kind, value) VALUES ('ALICE', 'email', 'alice@example.com')"); err != nil {
+		t.Fatal(err)
+	}
+
+	if c := e.call("POST", tok, "/v1/account/reauth/code", map[string]string{"kind": "email"}, nil); c != 422 {
+		t.Errorf("send to the email, not a factor: %d, want 422", c)
+	}
+	if c := e.call("POST", tok, "/v1/account/reauth/code", map[string]string{"kind": "phone"}, nil); c != 204 {
+		t.Fatalf("send to the phone: %d", c)
+	}
+	code := e.inbox.take("+8613800138000")
+	if c := e.call("POST", tok, "/v1/account/reauth", map[string]string{"kind": "phone", "code": "000000"}, nil); c != 422 {
+		t.Errorf("wrong code: %d", c)
+	}
+	if c := e.call("POST", tok, "/v1/account/reauth", map[string]string{"kind": "email", "code": code}, nil); c != 422 {
+		t.Errorf("the code, by the email: %d", c)
+	}
+	if c := e.call("POST", tok, "/v1/account/reauth", map[string]string{"kind": "phone", "code": code}, nil); c != 204 {
+		t.Fatalf("reauth by SMS: %d", c)
+	}
+	var amr []string
+	if err := e.pool.QueryRow(context.Background(), "SELECT amr FROM sessions").Scan(&amr); err != nil ||
+		!slices.Equal(amr, []string{"sms", "mfa"}) {
+		t.Errorf("amr %v: %v", amr, err)
+	}
+	if got := e.logins("login.failed"); !slices.Equal(got, []string{"code"}) {
+		t.Errorf("login.failed: %v", got)
+	}
+}
+
+// Wrong codes at reauthentication count toward 2fa:<sub>: the tenth locks
+// 两步验证, and the second step of a login, from anywhere, is refused too.
+func TestReauthenticationSMSFactorLock(t *testing.T) {
+	e := start(t)
+	tok := e.smsOnly()
+	for i := range 10 {
+		if c := e.call("POST", tok, "/v1/account/reauth", map[string]string{"kind": "phone", "code": "000000"}, nil); c != 422 {
+			t.Fatalf("wrong code %d: %d", i+1, c)
+		}
+	}
+	err := identity.New(e.pool, e.keyring).SecondFactor(context.Background(),
+		identity.Attempt{ClientID: "app", IP: "198.51.100.7"}, "ALICE", "totp", func() error { return nil })
+	if !errors.Is(err, identity.ErrTwoFactorLocked) {
+		t.Errorf("login second step after the lock: %v", err)
 	}
 }

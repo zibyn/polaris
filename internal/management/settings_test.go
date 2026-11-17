@@ -108,6 +108,27 @@ func TestPasskeyMeetsAdminsTwoFactor(t *testing.T) {
 	}
 }
 
+// 两步验证 on by a code to the phone number alone meets 管理员必须启用两步验证或
+// Passkey: only whether 两步验证 is on counts (ADR 0038).
+func TestSMSFactorMeetsAdminsTwoFactor(t *testing.T) {
+	e := start(t)
+	e.user("CAROL", []string{"readonly"}, "phone:+8613800138000")
+	e.twoFactorOn(e.owner)
+	policy := settings{PasswordLogin: "on", DailySendLimit: 1000, AuditRetentionDays: 180, AdminsNeedTwoFactor: true, PasskeyLogin: true}
+	if code := e.call("PUT", e.token(e.owner, nil), "/settings", policy, nil); code != 204 {
+		t.Fatalf("turn on: %d", code)
+	}
+	if _, err := e.pool.Exec(context.Background(), `
+		UPDATE identifiers SET second_factor = true WHERE user_id = 'CAROL';
+		INSERT INTO two_factor (user_id) VALUES ('CAROL');
+		INSERT INTO recovery_codes (user_id, mac) VALUES ('CAROL', 'y')`); err != nil {
+		t.Fatal(err)
+	}
+	if code := e.get(e.token("CAROL", nil), "/me", nil); code != 200 {
+		t.Errorf("CAROL with 两步验证 by SMS alone: %d", code)
+	}
+}
+
 func TestAdminChangesLoginPolicy(t *testing.T) {
 	e := start(t)
 	e.user("RO", []string{"readonly"})

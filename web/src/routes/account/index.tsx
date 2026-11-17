@@ -1689,8 +1689,8 @@ function DeleteAccount({
 }
 
 // Reauth proves the User again with a Passkey, a code to one of their
-// Identifiers, their password, or — with 两步验证 on — a TOTP or recovery
-// code.
+// Identifiers, their password, or — with 两步验证 on — a TOTP, recovery
+// code, or a code to the phone number or email added as a factor.
 function Reauth({
 	me,
 	open,
@@ -1849,7 +1849,7 @@ function Reauth({
 							}
 						/>
 						<div className="flex justify-end gap-2">
-							{twoFactor && me.twoFactor.totp && (
+							{twoFactor && me.twoFactor.totp && !byCode && (
 								<Button
 									type="button"
 									variant="ghost"

@@ -88,8 +88,9 @@ export type ReauthMethod = keyof typeof reauthMethods;
 
 // reauthChoices is the ways of reauthenticating to offer a User: a Passkey
 // when the instance offers Passkey login, they have one and the browser can
-// run the ceremony, then — with 两步验证 on — their TOTP, or a recovery code
-// when they have none, or otherwise the codes to their Identifiers and their
+// run the ceremony, then — with 两步验证 on — their TOTP, the codes to the
+// phone number and email they added as factors, and a recovery code when
+// they have no TOTP; or otherwise the codes to their Identifiers and their
 // password. A Passkey itself passes 两步验证.
 export const reauthChoices = (
 	me: {
@@ -97,18 +98,29 @@ export const reauthChoices = (
 		hasPassword: boolean;
 		passwordAllowed: boolean;
 		passkeyLogin: boolean;
-		twoFactor: { enabled: boolean; totp: boolean };
+		twoFactor: {
+			enabled: boolean;
+			totp: boolean;
+			sms: boolean;
+			email: boolean;
+		};
 	},
 	hasPasskey: boolean,
 	supported: boolean,
 ): ReauthChoice[] => {
 	const passkey: ReauthChoice[] =
 		hasPasskey && me.passkeyLogin && supported ? ["passkey"] : [];
-	if (me.twoFactor.enabled)
-		return [...passkey, me.twoFactor.totp ? "totp" : "recovery"];
 	const codes = me.identifiers
 		.map((i) => i.kind)
 		.filter((k): k is "phone" | "email" => k !== "username");
+	const tf = me.twoFactor;
+	if (tf.enabled)
+		return [
+			...passkey,
+			...(tf.totp ? ["totp" as const] : []),
+			...codes.filter((k) => (k === "phone" ? tf.sms : tf.email)),
+			...(tf.totp ? [] : ["recovery" as const]),
+		];
 	const password: ReauthChoice[] =
 		me.hasPassword && me.passwordAllowed ? ["password"] : [];
 	return [...passkey, ...codes, ...password];
