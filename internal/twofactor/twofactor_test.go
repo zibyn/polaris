@@ -19,6 +19,7 @@ import (
 	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/dbtest"
 	"github.com/zibyn/polaris/internal/db/sqlc"
+	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/twofactor"
 )
 
@@ -150,5 +151,58 @@ func TestSatisfied(t *testing.T) {
 		if got := twofactor.Satisfied(c.totp, c.passkey, c.passkeyLogin); got != c.want {
 			t.Errorf("Satisfied(%v, %v, %v) = %v", c.totp, c.passkey, c.passkeyLogin, got)
 		}
+	}
+}
+
+// Unbinding the phone number, a factor, while the email is removed as the
+// other leaves 两步验证 with one of them, never none: the unbinding finds
+// the email left, then holds its transaction open while the removal, finding
+// the phone number left, goes through; run again, the unbinding is refused
+// (ADR 0038).
+func TestUnbindWhileRemovingTheOtherFactor(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.Fresh(t)
+	if err := db.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	keyring, _ := crypt.NewKeyring(1, map[byte][]byte{1: bytes.Repeat([]byte{7}, 32)})
+	q := sqlc.New(pool)
+	if err := q.CreateUser(ctx, "ALICE"); err != nil {
+		t.Fatal(err)
+	}
+	for kind, value := range map[string]string{"phone": "+8613800138000", "email": "alice@example.com"} {
+		if err := q.AddIdentifier(ctx, sqlc.AddIdentifierParams{UserID: "ALICE", Kind: kind, Value: value}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, "INSERT INTO channels (kind, plugin, config, version) VALUES ($1, 'webhook', '{}', 1)", kind); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := twofactor.New(pool, keyring)
+	for _, kind := range []string{"phone", "email"} {
+		if err := s.AddCode(ctx, "ALICE", kind); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.Enable(ctx, "ALICE"); err != nil {
+		t.Fatal(err)
+	}
+
+	first := true
+	err := identity.New(pool, keyring).RemoveIdentifier(ctx, "ALICE", "phone", func(q *sqlc.Queries) error {
+		err := twofactor.FactorUnbound(ctx, q, "ALICE", "phone", audit.User("ALICE"))
+		if first {
+			first = false
+			if err := s.RemoveCode(ctx, "ALICE", "email"); err != nil {
+				t.Errorf("remove the email meanwhile: %v", err)
+			}
+		}
+		return err
+	})
+	if !errors.Is(err, twofactor.ErrLastFactor) {
+		t.Errorf("unbind the phone number: %v, want ErrLastFactor", err)
+	}
+	if f, err := s.SecondFactors(ctx, "ALICE"); err != nil || !f.On || len(f.Usable()) == 0 {
+		t.Errorf("两步验证 left with no factor: %+v %v", f, err)
 	}
 }

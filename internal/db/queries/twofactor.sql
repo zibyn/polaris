@@ -48,6 +48,10 @@ FROM settings s;
 UPDATE identifiers SET second_factor = @added
 WHERE user_id = @user_id AND kind = @kind AND second_factor <> @added;
 
+-- name: ClearCodeFactors :exec
+-- Removes the User's phone number and email as second factors.
+UPDATE identifiers SET second_factor = false WHERE user_id = $1 AND second_factor;
+
 -- name: SecondFactorIdentifier :one
 -- The User's phone number or email added as a second factor; no row
 -- without.

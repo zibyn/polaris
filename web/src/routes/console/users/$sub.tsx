@@ -480,13 +480,19 @@ function UserPage() {
 											})
 										}
 									>
-										将关闭两步验证，清除用户的验证器和全部恢复码；Passkey
+										将关闭两步验证，清除用户的验证器、全部恢复码和短信、邮箱验证；Passkey
 										保留，已登录的设备不会下线。请先线下核实用户身份。
 									</ConfirmDialog>
 								)
 							}
 						>
 							{u.twoFactor ? "已开启" : "未开启"}
+						</PropRow>
+						<PropRow label="短信验证">
+							{u.smsFactor ? "已添加" : "未添加"}
+						</PropRow>
+						<PropRow label="邮箱验证">
+							{u.emailFactor ? "已添加" : "未添加"}
 						</PropRow>
 					</ItemList>
 				</Section>

@@ -103,7 +103,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 	op(api, http.MethodPost, "disable-user", "users:write", "/users/{sub}/disable", "Disable a User: no logins, every Session ended", s.disableUser, http.StatusConflict)
 	op(api, http.MethodPost, "enable-user", "users:write", "/users/{sub}/enable", "Restore a disabled User", s.enableUser, http.StatusConflict)
 	op(api, http.MethodDelete, "delete-user", "users:write", "/users/{sub}", "Delete a User and all their data", s.deleteUser, http.StatusConflict)
-	op(api, http.MethodDelete, "reset-two-factor", "users:write", "/users/{sub}/2fa", "Reset a User's 两步验证: it goes off with their TOTP and 恢复码; their Passkeys and Sessions stay", s.resetTwoFactor, http.StatusConflict)
+	op(api, http.MethodDelete, "reset-two-factor", "users:write", "/users/{sub}/2fa", "Reset a User's 两步验证: it goes off with their TOTP, 恢复码 and the phone number and email added as factors; their Passkeys and Sessions stay", s.resetTwoFactor, http.StatusConflict)
 	op(api, http.MethodPut, "replace-identifier", "users:write", "/users/{sub}/identifiers/{kind}", "Set a User's Identifier of a kind, replacing theirs", s.replaceIdentifier, http.StatusConflict)
 	// 用户资料: an admin edits the nickname and can only take an avatar down, never upload one.
 	op(api, http.MethodPatch, "set-user-profile", "users:write", "/users/{sub}/profile", "Set or clear the 用户资料 fields given; 400 for one refused", s.setProfile, http.StatusBadRequest)
@@ -274,6 +274,8 @@ type UserDetail struct {
 	HasPassword        bool   `json:"hasPassword"`
 	TwoFactor          bool   `json:"twoFactor" doc:"两步验证 is on"`
 	TwoFactorOrPasskey bool   `json:"twoFactorOrPasskey" doc:"已开启两步验证或仍有至少一把 Passkey"`
+	SMSFactor          bool   `json:"smsFactor" doc:"The User added their phone number as a second factor (短信验证)"`
+	EmailFactor        bool   `json:"emailFactor" doc:"The User added their email as a second factor (邮箱验证)"`
 	Invite             Invite `json:"invite" doc:"The User's 注册邀请: what the console offers 发出 / 重发 / 撤销 on"`
 }
 
@@ -389,6 +391,8 @@ func userDetail(r sqlc.GetUserRow) (UserDetail, error) {
 		HasPassword:        r.HasPassword,
 		TwoFactor:          r.TwoFactor,
 		TwoFactorOrPasskey: twofactor.Satisfied(r.TwoFactor, r.HasPasskey, r.PasskeyLogin),
+		SMSFactor:          r.SmsFactor,
+		EmailFactor:        r.EmailFactor,
 		Invite:             invite(r),
 	}, nil
 }

@@ -269,7 +269,7 @@ func (s *Service) resetTwoFactor(ctx context.Context, in *subPath) (*struct{}, e
 	if err := s.mayManage(ctx, in.Sub); err != nil {
 		return nil, err
 	}
-	err := s.twoFactor.Disable(ctx, in.Sub, "mfa.reset", callerActor(ctx))
+	err := s.twoFactor.Reset(ctx, in.Sub, callerActor(ctx))
 	if errors.Is(err, twofactor.ErrOff) || errors.Is(err, twofactor.ErrNotBegun) {
 		return nil, huma.Error409Conflict("该 User 未开启两步验证")
 	}

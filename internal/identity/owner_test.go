@@ -210,13 +210,13 @@ func TestPasswordIsNoLoginPathWhileOff(t *testing.T) {
 	if _, err := s.pool.Exec(ctx, "UPDATE settings SET password_login = 'off'"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RemoveIdentifier(ctx, sub, "email"); !errors.Is(err, ErrLastLoginPath) {
+	if err := s.RemoveIdentifier(ctx, sub, "email", nil); !errors.Is(err, ErrLastLoginPath) {
 		t.Errorf("remove email with password login off: %v, want ErrLastLoginPath", err)
 	}
 	if _, err := s.pool.Exec(ctx, "UPDATE settings SET password_login = 'on'"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RemoveIdentifier(ctx, sub, "email"); err != nil {
+	if err := s.RemoveIdentifier(ctx, sub, "email", nil); err != nil {
 		t.Errorf("remove email with password login on: %v", err)
 	}
 }

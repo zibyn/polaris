@@ -170,6 +170,7 @@ curl -X DELETE "$ISSUER/v1/management/users/$SUB/invite" -H "Authorization: Bear
 - **对管理员动手**:目标 User 在 Management API 上持有 Role 时,`users:write` 里的写操作(禁用、删除、重置两步验证、替换登录标识、删除 Passkey、解绑外部账号、发出或撤销邀请)还需 `admin-roles:assign`。
 - **改 Management API 自己的定义**:定义、修改或删除 Management API 上的自定义 Role 还需 `admin-roles:assign`;它内置的 API、Permission 与 Role 一律不可改(`409`)。
 - **最后一个所有者**:不能被删除、禁用或降级(`409`)。
+- **两步验证的短信、邮箱因素**:用户详情的 `smsFactor`、`emailFactor` 表示 User 把手机号、邮箱加为了第二因素。`PUT /users/{sub}/identifiers/{kind}` 换号时因素跟到新号码;`DELETE /users/{sub}/2fa` 重置时一并清除这两种因素(Identifier 保留,Passkey 不动)。
 
 「业务 API 的默认 Role」只在 User 创建时授予,不作用于 Application;M2M Application 拿到的 Role 全靠显式分配。
 

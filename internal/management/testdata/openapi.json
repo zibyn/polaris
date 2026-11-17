@@ -1853,6 +1853,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "emailFactor": {
+            "description": "The User added their email as a second factor (邮箱验证)",
+            "type": "boolean"
+          },
           "family_name": {
             "type": "string"
           },
@@ -1919,6 +1923,10 @@
               "null"
             ]
           },
+          "smsFactor": {
+            "description": "The User added their phone number as a second factor (短信验证)",
+            "type": "boolean"
+          },
           "sub": {
             "type": "string"
           },
@@ -1948,6 +1956,8 @@
           "hasPassword",
           "twoFactor",
           "twoFactorOrPasskey",
+          "smsFactor",
+          "emailFactor",
           "invite",
           "sub",
           "createdAt",
@@ -5278,7 +5288,7 @@
             "description": "Internal Server Error"
           }
         },
-        "summary": "Reset a User's 两步验证: it goes off with their TOTP and 恢复码; their Passkeys and Sessions stay"
+        "summary": "Reset a User's 两步验证: it goes off with their TOTP, 恢复码 and the phone number and email added as factors; their Passkeys and Sessions stay"
       }
     },
     "/users/{sub}/avatar": {

@@ -114,7 +114,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 	// Sensitive actions answer 403 until the User has reauthenticated in the last 10 minutes.
 	op(api, http.MethodPost, "send-identifier-code", "/identifiers/{kind}/code", "Send a code to a phone number or email to bind", s.sendIdentifierCode, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodPut, "put-identifier", "/identifiers/{kind}", "Bind a phone number or email with its code, replacing the User's", s.putIdentifier, http.StatusForbidden, http.StatusConflict)
-	op(api, http.MethodDelete, "remove-identifier", "/identifiers/{kind}", "Unbind the User's phone number or email", s.removeIdentifier, http.StatusForbidden)
+	op(api, http.MethodDelete, "remove-identifier", "/identifiers/{kind}", "Unbind the User's phone number or email; 409 when it is 两步验证's last factor", s.removeIdentifier, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodPut, "put-password", "/password", "Set or change the User's password", s.putPassword, http.StatusForbidden)
 	op(api, http.MethodDelete, "delete-account", "/me", "Delete the User's account and all their data, at once", s.deleteAccount, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodPatch, "set-profile", "/profile", "Set or clear the 用户资料 fields given; 400 for one refused", s.setProfile, http.StatusBadRequest)
@@ -610,7 +610,10 @@ func (s *Service) removeIdentifier(ctx context.Context, in *kindPath) (*struct{}
 	if err := fresh(ctx); err != nil {
 		return nil, err
 	}
-	return nil, fail(s.ids.RemoveIdentifier(ctx, callerOf(ctx).sub, in.Kind))
+	sub := callerOf(ctx).sub
+	return nil, twoFactorErr(s.ids.RemoveIdentifier(ctx, sub, in.Kind, func(q *sqlc.Queries) error {
+		return twofactor.FactorUnbound(ctx, q, sub, in.Kind, audit.User(sub))
+	}))
 }
 
 type identifierInput struct {
