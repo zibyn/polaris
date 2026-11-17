@@ -450,11 +450,14 @@ func TestSelfAuditedWrites(t *testing.T) {
 	}
 }
 
-// twoFactorOn gives sub a confirmed TOTP and a 恢复码.
+// twoFactorOn turns sub's 两步验证 on with a confirmed TOTP and a 恢复码.
 func (e *env) twoFactorOn(sub string) {
 	e.t.Helper()
 	ctx := context.Background()
 	if _, err := e.pool.Exec(ctx, `INSERT INTO totp_credentials (user_id, secret, confirmed_at, last_step) VALUES ($1, 'x', now(), 0)`, sub); err != nil {
+		e.t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(ctx, `INSERT INTO two_factor (user_id) VALUES ($1)`, sub); err != nil {
 		e.t.Fatal(err)
 	}
 	if _, err := e.pool.Exec(ctx, `INSERT INTO recovery_codes (user_id, mac) VALUES ($1, 'y')`, sub); err != nil {

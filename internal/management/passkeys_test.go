@@ -87,7 +87,8 @@ func TestResetTwoFactorKeepsPasskeys(t *testing.T) {
 	e.passkey("ALICE", "工作电脑", false)
 
 	if _, err := e.pool.Exec(context.Background(),
-		`INSERT INTO totp_credentials (user_id, secret, confirmed_at) VALUES ('ALICE', '\x01', now())`); err != nil {
+		`INSERT INTO totp_credentials (user_id, secret, confirmed_at) VALUES ('ALICE', '\x01', now());
+		INSERT INTO two_factor (user_id) VALUES ('ALICE')`); err != nil {
 		t.Fatal(err)
 	}
 	if code := e.call("DELETE", owner, "/users/ALICE/2fa", nil, nil); code != 204 {

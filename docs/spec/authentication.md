@@ -66,7 +66,7 @@
 ## 2FA(二期)
 
 - **开启**:User 自愿开启。
-- **管理员必须启用两步验证或 Passkey**:实例设置里的开关(设置组「登录方式」Tab),默认关闭,只对持有 Management API Role 的 User 生效。"满足要求"指有已确认的 TOTP,或至少有一把 Passkey(Passkey 本身每次都要求生物识别或 PIN,已是两步验证)。打开后:
+- **管理员必须启用两步验证或 Passkey**:实例设置里的开关(设置组「登录方式」Tab),默认关闭,只对持有 Management API Role 的 User 生效。"满足要求"指已开启两步验证,或至少有一把 Passkey(Passkey 本身每次都要求生物识别或 PIN,已是两步验证)。打开后:
   - 持有 Role 但既没开两步验证也没有 Passkey 的 User 调用任何 Management API 接口,都返回 403,错误体带 `code: "two_factor_required"`;满足要求后立即恢复,不用等令牌过期。只看代表 User 的令牌,`client_credentials` 的服务账号不受影响。
   - 持有 Role 的 User 不能在账号中心删掉自己最后的满足项:还有 Passkey 时可以关闭两步验证,开了两步验证时可以删除最后一把 Passkey,两者都不剩时动哪个都返回 409;恢复码仍可重新生成。管理员仍可为别人重置两步验证,重置不动 Passkey。
   - 当前管理员自己不满足要求时,保存"打开"会被拒绝(422,「请先为自己开启两步验证」),免得把自己锁在外面。
