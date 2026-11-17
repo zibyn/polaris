@@ -54,8 +54,13 @@ const (
 	// assertion, on this auth_session (ADR 0037).
 	nextPasskey = "passkey"
 	// 两步验证, the User's choice of methods: totp (or recovery_code) or
-	// passkey (ADR 0037).
+	// passkey (ADR 0037), sms or email (ADR 0038).
 	nextTwoFactor = "two_factor"
+	// 两步验证 by a code to the phone number, or the email, the User added,
+	// their only way: two_factor=sms (or email) sends it, then next code
+	// (ADR 0038).
+	nextSMS   = "sms"
+	nextEmail = "email"
 )
 
 // challengeState is what an auth_session carries between requests.
@@ -71,6 +76,9 @@ type challengeState struct {
 	// auth_session: a refused assertion ends it. On the 两步验证 step, the
 	// challenge of the User's own Passkeys: a refused assertion spends it.
 	PasskeyChallenge string `json:"passkey_challenge,omitempty"`
+	// The code factor (sms or email) the 两步验证 step last sent a code by,
+	// which a code submitted on it is checked against (ADR 0038).
+	SecondFactor twofactor.Factor `json:"second_factor,omitempty"`
 }
 
 // challengeError is a draft error response; AuthSession lets the App go on.
@@ -252,13 +260,25 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			if err != nil {
 				return answer{}, err
 			}
-			// shortcut: no SMS or email code here yet, so a User with only those gets
-			// totp (a recovery code goes there); offer them with the direct API (#207).
-			switch u := slices.DeleteFunc(f.Usable(), func(x twofactor.Factor) bool { return x.Kind() != "" }); {
+			// Nothing offered (every factor is the first's channel) leaves
+			// the 恢复码, which totp takes.
+			switch u := f.SecondStep(amr); {
 			case len(u) > 1:
-				return next(nextTwoFactor, "两步验证 is on: send totp or recovery_code, or begin a passkey", nextTOTP, nextPasskey)
+				methods := make([]string, len(u))
+				for i, x := range u {
+					methods[i] = string(x)
+				}
+				description := "两步验证 is on: send totp or recovery_code, or begin a passkey"
+				if slices.ContainsFunc(u, func(x twofactor.Factor) bool { return x.Kind() != "" }) {
+					description = "两步验证 is on: choose one of methods"
+				}
+				return next(nextTwoFactor, description, methods...)
 			case slices.Equal(u, []twofactor.Factor{twofactor.FactorPasskey}):
 				return next(nextPasskey, "两步验证 is on: begin a passkey")
+			case slices.Equal(u, []twofactor.Factor{twofactor.FactorSMS}):
+				return next(nextSMS, "两步验证 is on: send two_factor=sms for a code")
+			case slices.Equal(u, []twofactor.Factor{twofactor.FactorEmail}):
+				return next(nextEmail, "两步验证 is on: send two_factor=email for a code")
 			}
 			return next(nextTOTP, "两步验证 is on: send totp or recovery_code")
 		case stepPhone:
@@ -376,16 +396,31 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			}
 			return signedIn(p.Sub, p.authTime(), withPasskey(p.AMR, in.BackupEligible), p.Method)
 		}
-		totp, recoveryCode := r.PostFormValue("totp"), r.PostFormValue("recovery_code")
-		if totp == "" && recoveryCode == "" {
-			return mistake(identity.Invalid("两步验证 is on: send totp or recovery_code"))
+		// A code by SMS or email goes only when asked (ADR 0038).
+		if f := twofactor.Factor(r.PostFormValue("two_factor")); f != "" {
+			if err := s.sendSecondFactorCode(ctx, p.Sub, p.AMR, f, identity.ClientIP(r)); err != nil {
+				return mistake(err)
+			}
+			st.SecondFactor = f
+			return next(nextCode, "code sent: enter it")
 		}
-		err := s.ids.SecondFactor(ctx, identity.AttemptFrom(r, c.ID), p.Sub, twofactor.CheckMethod(recoveryCode), func() error {
-			return s.twoFactor.Check(ctx, p.Sub, totp, recoveryCode)
-		})
+		totp, recoveryCode, code := r.PostFormValue("totp"), r.PostFormValue("recovery_code"), r.PostFormValue("code")
+		method, second := twofactor.CheckMethod(recoveryCode), string(goidc.AMROneTimePassword)
+		check := func() error { return s.twoFactor.Check(ctx, p.Sub, totp, recoveryCode) }
+		switch f := st.SecondFactor; {
+		case totp != "" || recoveryCode != "":
+		case code == "":
+			return mistake(identity.Invalid("两步验证 is on: send totp or recovery_code"))
+		case f == "":
+			return mistake(identity.Invalid("no code was sent in this auth_session: send two_factor first"))
+		default:
+			method, second = "code", string(codeAMR(f.Kind()))
+			check = func() error { return s.checkSecondFactorCode(ctx, p.Sub, p.AMR, f, code) }
+		}
+		err := s.ids.SecondFactor(ctx, identity.AttemptFrom(r, c.ID), p.Sub, method, check)
 		switch {
 		case err == nil:
-			return signedIn(p.Sub, p.authTime(), withMFA(p.AMR, string(goidc.AMROneTimePassword)), p.Method)
+			return signedIn(p.Sub, p.authTime(), withMFA(p.AMR, second), p.Method)
 		case errors.Is(err, twofactor.ErrOff): // turned off meanwhile: nothing to enter
 			return signedIn(p.Sub, p.authTime(), p.AMR, p.Method)
 		case wrongSecondFactor(err):
