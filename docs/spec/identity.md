@@ -67,9 +67,10 @@ User (sub: 不透明、稳定、永不复用)
 ### 换绑与解绑
 
 - 都要求**近期重新认证**:这个 Session 10 分钟内认证过,只看认证时间。没开两步验证的 User 用自己已绑定的手机号或邮箱收验证码,或者用密码重新认证;有 Passkey 的也可以用它重新认证(断言选项只列自己的凭证)。也可以用自己已绑定的 Provider 重新认证:通用 OIDC 带 `prompt=login` 和 `max_age=0`,并校验 `auth_time`。通用 OAuth2(如 GitHub)两者都不支持,上游记着登录状态时不必再输密码,所以用它重新认证只证明"此刻仍控制这个外部账号",不证明刚刚认证过(ADR 0013)。Google 与 Microsoft 也拿不到 `auth_time`(Google 要用 `claims` 请求参数专门要,Microsoft 的 v2 id_token 里没有这个 claim),两者同样按 OAuth2 的口径:`max_age` 两家文档都没写,`prompt=login` 只有 Microsoft 的文档写了(会要求输密码),Google 的文档没写。
-- 开了两步验证的 User 用 TOTP、恢复码或 Passkey 重新认证,验证码和密码一律拒绝,这样拿到手机号或密码的人做不了敏感操作。只靠 Passkey 开着两步验证(没有 TOTP)的 User 用 Passkey 或恢复码;提交 TOTP 码按输错处理(422,计入锁定)。TOTP 或恢复码成功后这个 Session 的 `amr` 记为 `["otp", "mfa"]`;Passkey 与 Passkey 登录一样,记为 `["hwk", "mfa"]` 或 `["swk", "mfa"]`(见 authentication.md),`auth_time` 同登录一样更新。同一个时间步的码只能用一次,恢复码用过即作废(记审计 `recovery_code.used`);输错计入单个 IP 的失败计数。
+- 开了两步验证的 User 用 TOTP、恢复码、Passkey,或发到已添加为第二因素的手机号、邮箱的验证码(ADR 0038,对应 Channel 要配好)重新认证;密码和发到没添加的 Identifier 的验证码一律拒绝,这样拿到密码的人做不了敏感操作。短信、邮箱验证码成功后 `amr` 记为 `["sms", "mfa"]` 或 `["otp", "mfa"]`,输错与 TOTP 一样计入 `2fa:<sub>`(和登录第二步共用)。只靠 Passkey 开着两步验证(没有 TOTP)的 User 用 Passkey 或恢复码;提交 TOTP 码按输错处理(422,计入锁定)。TOTP 或恢复码成功后这个 Session 的 `amr` 记为 `["otp", "mfa"]`;Passkey 与 Passkey 登录一样,记为 `["hwk", "mfa"]` 或 `["swk", "mfa"]`(见 authentication.md),`auth_time` 同登录一样更新。同一个时间步的码只能用一次,恢复码用过即作废(记审计 `recovery_code.used`);输错计入单个 IP 的失败计数。
 - 新的手机号或邮箱要用验证码验证;旧的不要求。
 - 解绑规则相同,受不变式 1 约束。
+- **两步验证的短信、邮箱因素跟着 Identifier 走**(ADR 0038):更换手机号或邮箱后,因素跟到新号码,不用重新添加,本人在账号中心更换和管理员 `PUT /users/{sub}/identifiers/{kind}` 都一样。解绑一个添加为第二因素的手机号或邮箱时,两步验证开着、解绑后不剩可用因素就返回 409,在 SERIALIZABLE 事务里判断;这个因素本身当前不可用(对应 Channel 没配好)时解绑不改变可用集合,不返回 409(见 authentication.md 最后一个因素);还剩别的因素时连带移除这个因素,记审计 `sms.removed` / `email.removed`。
 - **绑定 External Identity**:只在账号中心,用重定向型 Provider 完成;直连 API 不提供绑定。解绑时触发该 Provider 的解绑回调(如 Apple 吊销令牌)。
 - 换绑后不踢其他 Session。
 
@@ -97,5 +98,5 @@ User 无法自助找回丢失的唯一途径。由持有 `users:write` 的管理
 - **发出 / 重发 / 撤销注册邀请**:`POST` 与 `DELETE /users/{sub}/invite`,都要求 `users:write`,动一个管理员还要求 `admin-roles:assign`(与别的操作一致)。重发即替换,撤销一条本来就没有的邀请不算一次撤销,也不留审计。账号必须有邮箱。用户详情回报这条邀请现在是什么状态(没发出 / 已发出,带失效时刻 / 已接受),管理端据此显示状态并决定给哪几个按钮;接受即删行,所以**已接受**是审计日志里 `invite.accepted` 的回声,撤销过、过期的不等清理任务扫掉那行就算没发出。
 - **禁用**:禁止登录,并终止全部 Session;可以恢复。
 - **删除**:效果等同注销。
-- **替换 Identifier**、**解绑 External Identity**、**重置 2FA**、**下线 Session**。
+- **替换 Identifier**、**解绑 External Identity**、**重置 2FA**、**下线 Session**。重置 2FA 关闭两步验证,清除 TOTP、恢复码和添加为第二因素的手机号、邮箱(Identifier 本身保留),不动 Passkey;本人关闭两步验证不清短信、邮箱因素。
 - **保护规则**:最后一个**可用**「所有者」不能被删除、禁用或降级。只有 active 的 owner 算可用;待激活的 User 可以持有 owner Role,但他拿不到令牌、调不了 Management API,不算数。

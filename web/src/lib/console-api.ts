@@ -41,6 +41,9 @@ export type UserDetail = User &
 		hasPassword: boolean;
 		twoFactor: boolean;
 		twoFactorOrPasskey: boolean;
+		// The phone number, the email, added as a second factor.
+		smsFactor: boolean;
+		emailFactor: boolean;
 		invite: Invite;
 	};
 export type RoleInfo = Role & { apiName: string; builtin: boolean };

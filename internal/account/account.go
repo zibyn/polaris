@@ -113,7 +113,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 	// Sensitive actions answer 403 until the User has reauthenticated in the last 10 minutes.
 	op(api, http.MethodPost, "send-identifier-code", "/identifiers/{kind}/code", "Send a code to a phone number or email to bind", s.sendIdentifierCode, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodPut, "put-identifier", "/identifiers/{kind}", "Bind a phone number or email with its code, replacing the User's", s.putIdentifier, http.StatusForbidden, http.StatusConflict)
-	op(api, http.MethodDelete, "remove-identifier", "/identifiers/{kind}", "Unbind the User's phone number or email", s.removeIdentifier, http.StatusForbidden)
+	op(api, http.MethodDelete, "remove-identifier", "/identifiers/{kind}", "Unbind the User's phone number or email; 409 when it is 两步验证's last factor", s.removeIdentifier, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodPut, "put-password", "/password", "Set or change the User's password", s.putPassword, http.StatusForbidden)
 	op(api, http.MethodDelete, "delete-account", "/me", "Delete the User's account and all their data, at once", s.deleteAccount, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodPatch, "set-profile", "/profile", "Set or clear the 用户资料 fields given; 400 for one refused", s.setProfile, http.StatusBadRequest)
@@ -127,8 +127,10 @@ func (s *Service) Register(mux *http.ServeMux) {
 	op(api, http.MethodDelete, "remove-password", "/password", "Delete the User's password", s.removePassword, http.StatusForbidden)
 	op(api, http.MethodPost, "begin-totp", "/2fa/totp", "Begin turning 两步验证 on: a new TOTP to add to an authenticator, replacing one not yet confirmed", s.beginTOTP, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodPost, "confirm-totp", "/2fa/totp/confirm", "Turn 两步验证 on with a code from the new TOTP; the recovery codes are shown this once", s.confirmTOTP, http.StatusForbidden, http.StatusConflict)
-	op(api, http.MethodPost, "enable-2fa", "/2fa", "Turn 两步验证 on with a Passkey alone, no TOTP; the recovery codes are shown this once. 422 without a Passkey or while Passkey login is off", s.enableTwoFactor, http.StatusForbidden, http.StatusConflict)
-	op(api, http.MethodDelete, "remove-totp", "/2fa/totp", "Remove the TOTP, leaving 两步验证 on by a Passkey; 404 without one, 409 when no Passkey counts", s.removeTOTP, http.StatusForbidden, http.StatusNotFound, http.StatusConflict)
+	op(api, http.MethodPost, "enable-2fa", "/2fa", "Turn 两步验证 on with no TOTP, by a Passkey or the phone number or email added; the recovery codes are shown this once. 422 without a factor that counts (a Passkey only while Passkey login is on)", s.enableTwoFactor, http.StatusForbidden, http.StatusConflict)
+	op(api, http.MethodDelete, "remove-totp", "/2fa/totp", "Remove the TOTP, leaving 两步验证 on by the other factors; 404 without one, 409 when no other counts", s.removeTOTP, http.StatusForbidden, http.StatusNotFound, http.StatusConflict)
+	op(api, http.MethodPut, "add-code-factor", "/2fa/identifiers/{kind}", "Add the User's phone number or email as a second factor, sent a code at the second step; no code now. 422 when it is not bound, or is the User's only way to sign in", s.addCodeFactor, http.StatusForbidden)
+	op(api, http.MethodDelete, "remove-code-factor", "/2fa/identifiers/{kind}", "Remove the User's phone number or email as a second factor; 404 when not added, 409 when 两步验证 would have no factor left", s.removeCodeFactor, http.StatusForbidden, http.StatusNotFound, http.StatusConflict)
 	op(api, http.MethodDelete, "disable-2fa", "/2fa", "Turn 两步验证 off, deleting the TOTP and recovery codes; 409 for an admin while 管理员必须启用两步验证或 Passkey is on and no Passkey is left", s.disableTwoFactor, http.StatusForbidden, http.StatusConflict)
 	// A Provider redirect comes back to the account center with ?bound=<id>,
 	// ?reauthenticated=<id> or ?error=<what to show the User>.
@@ -141,7 +143,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 	op(api, http.MethodPost, "begin-passkey", "/passkeys/options", "Begin adding a Passkey: creation options for the browser or native App", s.beginPasskey, http.StatusForbidden)
 	op(api, http.MethodPost, "add-passkey", "/passkeys", "Finish adding a Passkey with its registration response", s.addPasskey, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodPatch, "rename-passkey", "/passkeys/{id}", "Rename one of the User's Passkeys; no reauthentication needed", s.renamePasskey, http.StatusNotFound)
-	op(api, http.MethodDelete, "remove-passkey", "/passkeys/{id}", "Delete one of the User's Passkeys; 409 for the last one while 两步验证 is on with no TOTP, or while 管理员必须启用两步验证或 Passkey is on, no TOTP is left and the User holds a Role", s.removePasskey, http.StatusForbidden, http.StatusNotFound, http.StatusConflict)
+	op(api, http.MethodDelete, "remove-passkey", "/passkeys/{id}", "Delete one of the User's Passkeys; 409 while 两步验证 is on and would have no factor left (no Passkey counts while Passkey login is off), or for the last one while 管理员必须启用两步验证或 Passkey is on, no TOTP is left and the User holds a Role", s.removePasskey, http.StatusForbidden, http.StatusNotFound, http.StatusConflict)
 }
 
 // registerChangePassword serves /.well-known/change-password, where a
@@ -257,10 +259,15 @@ type TwoFactor struct {
 	EnabledAt         *time.Time `json:"enabledAt,omitempty"`
 	RecoveryCodesLeft int64      `json:"recoveryCodesLeft"`
 	TOTP              bool       `json:"totp" doc:"The User has a TOTP; 两步验证 may be on by a Passkey alone without one"`
+	SMS               bool       `json:"sms" doc:"The User added their phone number as a second factor"`
+	Email             bool       `json:"email" doc:"The User added their email as a second factor"`
+	SMSChannel        bool       `json:"smsChannel" doc:"The SMS Channel is configured: an added phone number counts as a second factor, and is offered, only then"`
+	EmailChannel      bool       `json:"emailChannel" doc:"The email Channel is configured: an added email counts as a second factor, and is offered, only then"`
 }
 
 func twoFactorOf(u sqlc.AccountUserRow) TwoFactor {
-	t := TwoFactor{Enabled: u.TwoFactorSince.Valid, RecoveryCodesLeft: u.RecoveryCodesLeft, TOTP: u.HasTotp}
+	t := TwoFactor{Enabled: u.TwoFactorSince.Valid, RecoveryCodesLeft: u.RecoveryCodesLeft, TOTP: u.HasTotp, SMS: u.SmsFactor, Email: u.EmailFactor,
+		SMSChannel: u.SmsChannel, EmailChannel: u.EmailChannel}
 	if t.Enabled {
 		t.EnabledAt = &u.TwoFactorSince.Time
 	}
@@ -435,14 +442,27 @@ type kindBody struct {
 	}
 }
 
-// errTwoFactorOnly refuses a code or the password to a User with 两步验证 on.
-const errTwoFactorOnly identity.Invalid = "已开启两步验证,请输入验证器中的验证码或恢复码"
+// errTwoFactorOnly refuses the password, or a code to an Identifier not
+// added as a factor, to a User with 两步验证 on.
+const errTwoFactorOnly identity.Invalid = "已开启两步验证,请使用两步验证的方式验证身份"
+
+// factorCodeTo is where a code by kind goes for 两步验证: the phone number
+// or email, added as a factor, while its Channel is configured (ADR 0038).
+func (s *Service) factorCodeTo(ctx context.Context, kind string) (string, error) {
+	return s.twoFactor.OfferedCodeTo(ctx, callerOf(ctx).sub, nil, twofactor.CodeFactor(kind), errTwoFactorOnly)
+}
 
 func (s *Service) sendReauthCode(ctx context.Context, in *kindBody) (*struct{}, error) {
-	if on, err := s.twoFactor.On(ctx, callerOf(ctx).sub); err != nil || on {
-		return nil, fail(cmp.Or(err, error(errTwoFactorOnly)))
+	on, err := s.twoFactor.On(ctx, callerOf(ctx).sub)
+	if err != nil {
+		return nil, err
 	}
-	value, err := s.identifier(ctx, in.Body.Kind)
+	var value string
+	if on {
+		value, err = s.factorCodeTo(ctx, in.Body.Kind)
+	} else {
+		value, err = s.identifier(ctx, in.Body.Kind)
+	}
 	if err == nil {
 		err = s.codes.Send(ctx, in.Body.Kind, value, callerOf(ctx).from.IP)
 	}
@@ -454,7 +474,7 @@ type reauthInput struct {
 		Kind         string `json:"kind,omitempty" enum:"phone,email" doc:"Where the code went"`
 		Code         string `json:"code,omitempty"`
 		Password     string `json:"password,omitempty" doc:"Instead of a code"`
-		TOTP         string `json:"totp,omitempty" doc:"A code from the User's TOTP; with 两步验证 on, this or a recovery code is the only way"`
+		TOTP         string `json:"totp,omitempty" doc:"A code from the User's TOTP; with 两步验证 on, this, a recovery code, a Passkey or a code by a phone number or email added as a factor is the only way"`
 		RecoveryCode string `json:"recoveryCode,omitempty" doc:"One of the User's recovery codes, instead of a TOTP code; used up"`
 		Passkey      string `json:"passkey,omitempty" doc:"The assertion response from POST /reauth/passkey; a Passkey has passed 两步验证 already"`
 	}
@@ -483,8 +503,8 @@ func (s *Service) beginPasskeyReauth(ctx context.Context, _ *struct{}) (*passkey
 
 // reauth makes a fresh authentication of this Session, counted toward the
 // same lockouts as logging in; a Passkey is one attempt per challenge, as at
-// login. With 两步验证 on, only a TOTP, recovery code or Passkey does; a
-// Passkey is 两步验证 by itself.
+// login. With 两步验证 on, only a TOTP, recovery code, Passkey or a code by
+// a code factor does; a Passkey is 两步验证 by itself.
 func (s *Service) reauth(ctx context.Context, in *reauthInput) (*struct{}, error) {
 	c := callerOf(ctx)
 	if in.Body.Passkey != "" {
@@ -511,10 +531,6 @@ func (s *Service) reauth(ctx context.Context, in *reauthInput) (*struct{}, error
 		}
 		return nil, s.reauthenticated(ctx, c, []string{"pwd"})
 	}
-	amr := "sms"
-	if in.Body.Kind == "email" {
-		amr = "otp"
-	}
 	value, err := s.identifier(ctx, in.Body.Kind)
 	if err == nil {
 		err = s.ids.Code(ctx, c.from, value, c.sub, func() error { return s.codes.Check(ctx, value, in.Body.Code) })
@@ -522,7 +538,7 @@ func (s *Service) reauth(ctx context.Context, in *reauthInput) (*struct{}, error
 	if err != nil {
 		return nil, fail(err)
 	}
-	return nil, s.reauthenticated(ctx, c, []string{amr})
+	return nil, s.reauthenticated(ctx, c, []string{twofactor.CodeFactor(in.Body.Kind).AMR()})
 }
 
 // reauthenticated records a fresh authentication of c's Session, proved as
@@ -534,14 +550,25 @@ func (s *Service) reauthenticated(ctx context.Context, c caller, amr []string) e
 	return s.ids.LoginSucceeded(ctx, c.from, c.sub, amr)
 }
 
-// reauthTwoFactor reauthenticates with a TOTP or recovery code; a wrong one
-// counts toward the IP lockout like a wrong code.
+// reauthTwoFactor reauthenticates with a TOTP, recovery code, or a code sent
+// by a code factor; a wrong one counts toward the IP lockout like a wrong
+// code, and toward 2fa:<sub> as at login.
 func (s *Service) reauthTwoFactor(ctx context.Context, in *reauthInput) error {
 	c := callerOf(ctx)
+	if in.Body.Kind != "" {
+		to, err := s.factorCodeTo(ctx, in.Body.Kind)
+		if err != nil {
+			return err
+		}
+		if err := s.ids.SecondFactor(ctx, c.from, c.sub, "code", func() error { return s.codes.Check(ctx, to, in.Body.Code) }); err != nil {
+			return err
+		}
+		return s.reauthenticated(ctx, c, []string{twofactor.CodeFactor(in.Body.Kind).AMR(), "mfa"})
+	}
 	if in.Body.TOTP == "" && in.Body.RecoveryCode == "" {
 		return errTwoFactorOnly
 	}
-	if err := s.ids.SecondFactor(ctx, c.from, c.sub, in.Body.RecoveryCode != "", func() error {
+	if err := s.ids.SecondFactor(ctx, c.from, c.sub, twofactor.CheckMethod(in.Body.RecoveryCode), func() error {
 		return s.twoFactor.Check(ctx, c.sub, in.Body.TOTP, in.Body.RecoveryCode)
 	}); err != nil {
 		return err
@@ -568,7 +595,10 @@ func (s *Service) removeIdentifier(ctx context.Context, in *kindPath) (*struct{}
 	if err := fresh(ctx); err != nil {
 		return nil, err
 	}
-	return nil, fail(s.ids.RemoveIdentifier(ctx, callerOf(ctx).sub, in.Kind))
+	sub := callerOf(ctx).sub
+	return nil, twoFactorErr(s.ids.RemoveIdentifier(ctx, sub, in.Kind, func(q *sqlc.Queries) error {
+		return twofactor.FactorUnbound(ctx, q, sub, in.Kind, audit.User(sub))
+	}))
 }
 
 type identifierInput struct {
@@ -687,16 +717,7 @@ func masked(sub string, ids []sqlc.UserIdentifiersRow) string {
 			if id.Kind != kind {
 				continue
 			}
-			switch v := id.Value; kind {
-			case "phone":
-				v = strings.TrimPrefix(v, "+86")
-				return v[:3] + "****" + v[len(v)-4:]
-			case "email":
-				name, domain, _ := strings.Cut(v, "@")
-				return name[:1] + "***@" + domain
-			default:
-				return v
-			}
+			return identity.Mask(kind, id.Value)
 		}
 	}
 	return sub
@@ -746,6 +767,26 @@ func (s *Service) removeTOTP(ctx context.Context, _ *struct{}) (*struct{}, error
 	return nil, twoFactorErr(err)
 }
 
+// addCodeFactor adds the phone number or email as a second factor; the
+// Identifier is verified already, so no code proves it again (ADR 0038).
+func (s *Service) addCodeFactor(ctx context.Context, in *kindPath) (*struct{}, error) {
+	if err := fresh(ctx); err != nil {
+		return nil, err
+	}
+	return nil, fail(s.twoFactor.AddCode(ctx, callerOf(ctx).sub, in.Kind))
+}
+
+func (s *Service) removeCodeFactor(ctx context.Context, in *kindPath) (*struct{}, error) {
+	if err := fresh(ctx); err != nil {
+		return nil, err
+	}
+	err := s.twoFactor.RemoveCode(ctx, callerOf(ctx).sub, in.Kind)
+	if errors.Is(err, twofactor.ErrNotAdded) {
+		return nil, huma.Error404NotFound(err.Error())
+	}
+	return nil, twoFactorErr(err)
+}
+
 // disableTwoFactor turns 两步验证 off; the User's other Sessions stay.
 func (s *Service) disableTwoFactor(ctx context.Context, _ *struct{}) (*struct{}, error) {
 	if err := fresh(ctx); err != nil {
@@ -775,7 +816,7 @@ func (s *Service) regenerateRecoveryCodes(ctx context.Context, _ *struct{}) (*re
 // twoFactorErr is 409 for 两步验证 already on, or for removing its last
 // factor.
 func twoFactorErr(err error) error {
-	if errors.Is(err, twofactor.ErrOn) || errors.Is(err, twofactor.ErrLastTOTP) {
+	if errors.Is(err, twofactor.ErrOn) || errors.Is(err, twofactor.ErrLastTOTP) || errors.Is(err, twofactor.ErrLastFactor) {
 		return huma.Error409Conflict(err.Error())
 	}
 	return fail(err)

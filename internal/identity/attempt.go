@@ -90,17 +90,14 @@ func (s *Store) Code(ctx context.Context, a Attempt, identifier, pendingSub stri
 	return s.loginFailed(ctx, a, u.UserID, "code", err)
 }
 
-// SecondFactor runs check, of sub's TOTP code or, if recovery, 恢复码, from
-// a.IP: refused while that IP, then sub's 两步验证, is locked out; a wrong
-// one, or any tried while sub is locked, counts toward both lockouts and is
-// audited as login.failed.
-func (s *Store) SecondFactor(ctx context.Context, a Attempt, sub string, recovery bool, check func() error) error {
+// SecondFactor runs check, of something sub typed for 两步验证 by method
+// (totp, recovery_code, or code for one sent by SMS or email), from a.IP:
+// refused while that IP, then sub's 两步验证, is locked out; a wrong one, or
+// any tried while sub is locked, counts toward both lockouts and is audited
+// as login.failed.
+func (s *Store) SecondFactor(ctx context.Context, a Attempt, sub, method string, check func() error) error {
 	if a.ClientID == "" {
 		return errNoClientID
-	}
-	method := "totp"
-	if recovery {
-		method = "recovery_code"
 	}
 	return s.loginFailed(ctx, a, sub, method, s.FromIP(ctx, a.IP, func() error { return s.twoFactor(ctx, a, sub, check) }))
 }

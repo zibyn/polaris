@@ -431,7 +431,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		// 待激活: nothing else before the User sets their own password —
 		// except 注销, which is open to them too.
 		return s.render(w, r, as, c, loginPage{})
-	case awaitingTwoFactor && op != "totp" && op != "passkey":
+	case awaitingTwoFactor && !slices.Contains([]string{"totp", "passkey", "send-2fa", "code-2fa"}, op):
 		return s.render(w, r, as, c, loginPage{}) // nothing else before 两步验证
 	}
 	switch op {
@@ -462,18 +462,35 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		// the password, so the terms come next as they always would.
 		return s.complete(w, r, as, c, "", pending, pl.authTime(), pl.AMR, pl.Method)
 
-	case "totp":
+	case "send-2fa":
+		// A code for 两步验证 goes only when the User asks for it (ADR 0038).
 		if !awaitingTwoFactor {
 			break
 		}
-		form.Recovery = r.PostFormValue("recovery_code") != ""
+		f := twofactor.Factor(r.PostFormValue("factor"))
+		if err := s.sendSecondFactorCode(ctx, pending, pl.AMR, f, identity.ClientIP(r)); err != nil {
+			return fail(err)
+		}
+		return s.render(w, r, as, c, loginPage{CodeFactor: string(f)})
+
+	case "totp", "code-2fa":
+		if !awaitingTwoFactor {
+			break
+		}
+		recoveryCode := r.PostFormValue("recovery_code")
+		form.Recovery = recoveryCode != ""
+		method, amrValue := twofactor.CheckMethod(recoveryCode), string(goidc.AMROneTimePassword)
+		check := func() error { return s.twoFactor.Check(ctx, pending, r.PostFormValue("totp"), recoveryCode) }
+		if op == "code-2fa" {
+			f := twofactor.Factor(r.PostFormValue("factor"))
+			form.CodeFactor, method, amrValue = string(f), "code", f.AMR()
+			check = func() error { return s.checkSecondFactorCode(ctx, pending, pl.AMR, f, r.PostFormValue("code")) }
+		}
 		amr := pl.AMR
-		err := s.ids.SecondFactor(ctx, identity.AttemptFrom(r, c.ID), pending, form.Recovery, func() error {
-			return s.twoFactor.Check(ctx, pending, r.PostFormValue("totp"), r.PostFormValue("recovery_code"))
-		})
+		err := s.ids.SecondFactor(ctx, identity.AttemptFrom(r, c.ID), pending, method, check)
 		switch {
 		case err == nil:
-			amr = withMFA(amr)
+			amr = withMFA(amr, amrValue)
 		case errors.Is(err, twofactor.ErrOff): // turned off meanwhile: nothing to enter
 		case wrongSecondFactor(err):
 			if pl.missed() {
@@ -576,7 +593,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		if err != nil {
 			return fail(err)
 		}
-		return s.login(w, r, as, c, sub, []string{string(codeAMR(kind))}, identity.CodeMethod(kind), terms.TermsVersion)
+		return s.login(w, r, as, c, sub, []string{twofactor.CodeFactor(kind).AMR()}, identity.CodeMethod(kind), terms.TermsVersion)
 
 	case "password":
 		if pending != "" {
@@ -681,27 +698,18 @@ func (s *Service) needsTwoFactor(ctx context.Context, sub string, amr []string) 
 	return s.twoFactor.On(ctx, sub)
 }
 
-// secondFactors reports which of TOTP and Passkey sub can pass 两步验证 with:
-// a confirmed TOTP, and a Passkey while the instance has Passkey login on
-// (ADR 0037). A 恢复码 goes wherever a TOTP code does.
-func (s *Service) secondFactors(ctx context.Context, sub string) (totp, key bool, err error) {
-	if totp, err = s.twoFactor.HasTOTP(ctx, sub); err != nil {
-		return false, false, err
-	}
-	key, err = s.q.PasskeySecondFactor(ctx, sub)
-	return totp, key, err
-}
-
-// wrongSecondFactor reports whether err is a wrong TOTP code or 恢复码: one
-// of the tries a pending login has.
+// wrongSecondFactor reports whether err is a wrong TOTP code, 恢复码 or code
+// sent for 两步验证: one of the tries a pending login has.
 func wrongSecondFactor(err error) bool {
-	return errors.Is(err, twofactor.ErrCode) || errors.Is(err, twofactor.ErrRecoveryCode)
+	return errors.Is(err, twofactor.ErrCode) || errors.Is(err, twofactor.ErrRecoveryCode) || errors.Is(err, identity.ErrWrongCode)
 }
 
-// withMFA is amr after a TOTP code or a 恢复码: the first factor, otp, mfa.
-func withMFA(amr []string) []string {
-	if !slices.Contains(amr, string(goidc.AMROneTimePassword)) {
-		amr = append(amr, string(goidc.AMROneTimePassword))
+// withMFA is amr after a code typed for 两步验证 proved it as second (otp for
+// a TOTP code, a 恢复码 or an email code, sms for an SMS code): the first
+// factor, second unless the first said so already, mfa.
+func withMFA(amr []string, second string) []string {
+	if !slices.Contains(amr, second) {
+		amr = append(amr, second)
 	}
 	return append(amr, amrMFA)
 }
@@ -847,14 +855,6 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request, ls *goidc.Logou
 }
 
 type logoutPage struct{ Action, Name string }
-
-// codeAMR is how a code to an Identifier of kind proves the User (RFC 8176).
-func codeAMR(kind string) goidc.AMR {
-	if kind == "email" {
-		return goidc.AMROneTimePassword
-	}
-	return goidc.AMRSMS
-}
 
 type grantTypeKey struct{}
 
@@ -1013,6 +1013,13 @@ type loginPage struct {
 	// on the Recovery form. HasTOTP: they have one; without, their 两步验证 is
 	// on by a Passkey alone, so the Recovery form is all there is to type into.
 	TwoFactor, Recovery, HasTOTP bool
+	// Codes: the code factors the 两步验证 step offers, each a button that
+	// sends one; CodeFactor: the one just sent, whose code the step takes.
+	// Excluded: every factor the User has was left out of this login (the
+	// first factor's own channel), so only a 恢复码 is left.
+	Codes      []codeFactor
+	CodeFactor string
+	Excluded   bool
 	// SetPassword: a 待激活 User must replace the admin's initial password
 	// before anything else happens (ADR 0016).
 	SetPassword bool
@@ -1134,12 +1141,17 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 	// The 两步验证 step carries options naming the User's own Passkeys, if
 	// they have any and Passkey login is on (ADR 0037).
 	if pl := pendingOf(as); p.TwoFactor && pl != nil {
-		has, err := s.twoFactor.HasTOTP(ctx, pl.Sub)
+		f, err := s.twoFactor.SecondFactors(ctx, pl.Sub)
 		if err != nil {
 			return goidc.StatusFailure, err
 		}
-		p.HasTOTP = has
-		p.Recovery = p.Recovery || !has
+		offered := f.SecondStep(pl.AMR)
+		p.HasTOTP = slices.Contains(offered, twofactor.FactorTOTP)
+		p.Recovery = p.Recovery || !p.HasTOTP
+		p.Excluded = f.Excluded(pl.AMR)
+		if p.Codes, err = s.codeFactors(ctx, pl.Sub, offered); err != nil {
+			return goidc.StatusFailure, err
+		}
 		options, challenge, err := s.passkeys.SecondFactorOptions(ctx, pl.Sub)
 		switch {
 		case err == nil:

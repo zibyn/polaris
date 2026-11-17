@@ -42,7 +42,11 @@ when (val step = auth.verifyCode(sent.session, code)) {
     auth.verifyTotp(step.session, totp)          // 或 auth.verifyRecoveryCode(step.session, 恢复码)
   is SignInStep.PasskeyRequired ->               // 两步验证用 Passkey;断言被拒抛 invalid_request,原 session 可再调
     auth.verifyPasskey(step.session)             // 或 auth.verifyRecoveryCode(step.session, 恢复码)
-  is SignInStep.TwoFactorChoice -> …             // TOTP 与 Passkey 都有:让 User 选 verifyTotp / verifyPasskey / verifyRecoveryCode
+  is SignInStep.TwoFactorCodeRequired -> {       // 两步验证用已添加的手机号(step.method == SMS)或邮箱(EMAIL)收码
+    val sent = auth.sendTwoFactorCode(step.session, step.method)   // 点了才发,不算 PoW;超频抛 invalid_request,原 session 可再调
+    auth.verifyCode(sent.session, code)          // 或 auth.verifyRecoveryCode(step.session, 恢复码)
+  }
+  is SignInStep.TwoFactorChoice -> …             // 有多种方式:让 User 在 step.methods(TOTP、PASSKEY、SMS、EMAIL,按此顺序)里选,再按对应的那一步走
   is SignInStep.CodeSent -> Unit                 // 不会出现
 }
 ```
@@ -94,7 +98,7 @@ if (!auth.passkeysAvailable()) { /* 大陆无 GMS 的机型:隐藏 Passkey 入�
 when (auth.signInWithPasskey(terms.version)) {        // 结果同验证码登录,含 next
   SignInStep.SignedIn -> …
   is SignInStep.PhoneRequired -> …
-  is SignInStep.TotpRequired, is SignInStep.PasskeyRequired, is SignInStep.TwoFactorChoice -> …
+  is SignInStep.TotpRequired, is SignInStep.PasskeyRequired, is SignInStep.TwoFactorCodeRequired, is SignInStep.TwoFactorChoice -> …
   is SignInStep.CodeSent -> Unit
 }
 ```

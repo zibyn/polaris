@@ -19,6 +19,13 @@ SELECT u.created_at,
        (SELECT count(*) FROM recovery_codes c WHERE c.user_id = u.id AND c.used_at IS NULL) AS recovery_codes_left,
        -- A confirmed TOTP: optional once 两步验证 can be on by a Passkey alone.
        EXISTS (SELECT 1 FROM totp_credentials c WHERE c.user_id = u.id AND c.confirmed_at IS NOT NULL) AS has_totp,
+       -- The phone number and email added as second factors (ADR 0038).
+       EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = u.id AND i.kind = 'phone' AND i.second_factor) AS sms_factor,
+       EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = u.id AND i.kind = 'email' AND i.second_factor) AS email_factor,
+       -- Their Channels are configured: only then do those factors count, and
+       -- get offered (twofactor.Factors).
+       EXISTS (SELECT 1 FROM channels ch WHERE ch.kind = 'phone') AS sms_channel,
+       EXISTS (SELECT 1 FROM channels ch WHERE ch.kind = 'email') AS email_channel,
        -- Whether the instance offers Passkey login: the account center hides
        -- its Passkey section and reauthentication way while it does not.
        s.passkey_login,

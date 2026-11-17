@@ -39,7 +39,7 @@ const (
 const (
 	ErrPasswordLocked Invalid = "密码错误次数过多，请 15 分钟后重试或使用验证码登录"
 	ErrIPLocked       Invalid = "失败次数过多，请 1 小时后重试"
-	// ErrTwoFactorLocked is a User's TOTP and 恢复码 locked (ADR 0036).
+	// ErrTwoFactorLocked is a User's 两步验证 locked (ADR 0036, 0038).
 	ErrTwoFactorLocked Invalid = "两步验证错误次数过多，请 15 分钟后重试"
 	// ErrWrongCode is otp's; FromIP counts it.
 	ErrWrongCode Invalid = "验证码错误或已失效"
@@ -85,9 +85,10 @@ func counted(err error) bool {
 // turned off.
 func TwoFactorLockKey(sub string) string { return "2fa:" + sub }
 
-// twoFactor runs check, of sub's TOTP code or 恢复码: refused while sub's
-// 两步验证 is locked out; the tenth wrong one in a row within a day locks
-// it, audited with a; a right one starts the count over.
+// twoFactor runs check, of sub's TOTP code, 恢复码 or a code sent for
+// 两步验证 (ADR 0038): refused while sub's 两步验证 is locked out; the tenth
+// wrong one in a row within a day locks it, audited with a; a right one
+// starts the count over.
 func (s *Store) twoFactor(ctx context.Context, a Attempt, sub string, check func() error) error {
 	key := TwoFactorLockKey(sub)
 	if locked, err := s.lockedOut(ctx, key); err != nil {
@@ -98,7 +99,7 @@ func (s *Store) twoFactor(ctx context.Context, a Attempt, sub string, check func
 	switch err := check(); err {
 	case nil:
 		return s.q.ClearLoginFailures(ctx, key)
-	case ErrWrongTOTP, ErrWrongRecoveryCode: //nolint:errorlint // never wrapped
+	case ErrWrongTOTP, ErrWrongRecoveryCode, ErrWrongCode: //nolint:errorlint // never wrapped
 		locked, dbErr := s.failed(ctx, key, twoFactorTries, twoFactorWindow, twoFactorLock, func(until time.Time) sqlc.AuditParams {
 			return sqlc.AuditParams{
 				Event: "login.two_factor_locked", Sub: pgtype.Text{String: sub, Valid: true}, Detail: a.detail(map[string]any{"until": until}),

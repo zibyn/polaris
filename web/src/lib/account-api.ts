@@ -46,6 +46,12 @@ export type Me = ProfileClaims & {
 		recoveryCodesLeft: number;
 		// Has a TOTP; 两步验证 can be on by a Passkey alone without one.
 		totp: boolean;
+		// Added the phone number, the email, as a second factor (ADR 0038).
+		sms: boolean;
+		email: boolean;
+		// Their Channels are configured: only then do they count, and get offered.
+		smsChannel: boolean;
+		emailChannel: boolean;
 	};
 	externalIdentities: ExternalIdentity[];
 	// The enabled Providers, to bind.

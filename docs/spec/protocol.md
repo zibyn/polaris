@@ -39,7 +39,7 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
   - Passkey:见下面一节。
 - **Application 指定的登录方式**:按 `client_id` 执行,与托管页同一处判断(见 [authentication.md](authentication.md#按-application-指定登录方式))。用了这个 Application 不允许的方式返回 `403 login_method_not_allowed`,在发码、验密码、`passkey=begin`、向上游换码之前就拒绝;它指定的方式在实例里都没开时,新的登录一律返回 `403 no_login_method`。都不带 `auth_session`,两个都是非标准错误码。
 - **未开放注册**:实例关闭开放注册时,发码请求的目标不属于任何 User,或 Provider 客户端令牌对应的 External Identity 没有绑定过,返回 `400 registration_closed`(非标准错误码),`error_description` 为"本实例未开放注册";不发验证码。错误码集合只新增,不改名(ADR 0010、ADR 0021)。
-- **多步认证**:用草案中的 `auth_session` 串联各步。`403 insufficient_authorization` 多带一个非标准字段 `next`,指明下一步:`code`(输入刚发出的验证码)、`password`(账号待激活:在同一 `auth_session` 里提交新的 `password`)、`phone`(先绑定手机号)、`totp`(开了两步验证:在同一 `auth_session` 里提交 `totp` 或 `recovery_code`;先于 `phone`)、`passkey`(开了两步验证,只有 Passkey 没有 TOTP:在同一 `auth_session` 里走 Passkey 的两轮 begin/finish,见[下面](#直连认证-api-的-passkey-第二步))、`two_factor`(开了两步验证,TOTP 和 Passkey 都有:另带非标准字段 `methods`,目前为 `["totp", "passkey"]`,由 User 选一种;`totp` 表示提交 `totp` 或 `recovery_code`)。只有 TOTP、或实例关了 Passkey 登录时仍是 `totp`,响应不变(ADR 0037)。`next: "password"` 排在所有步之前,连带两步验证;那一步提交的密码不带 PoW——密码本身就是证明。待激活的 User 也可以带 `delete` 注销账号。`totp` / `recovery_code` 输错时返回 `400 invalid_request` 并带回原 `auth_session`;第 5 次输错后返回 `invalid_session`,须从头登录。以后只新增取值,不改名、不删除;客户端遇到不认识的取值按失败处理。(ADR 0010)
+- **多步认证**:用草案中的 `auth_session` 串联各步。`403 insufficient_authorization` 多带一个非标准字段 `next`,指明下一步:`code`(输入刚发出的验证码)、`password`(账号待激活:在同一 `auth_session` 里提交新的 `password`)、`phone`(先绑定手机号)、`totp`(开了两步验证:在同一 `auth_session` 里提交 `totp` 或 `recovery_code`;先于 `phone`)、`passkey`(开了两步验证,只有 Passkey 没有 TOTP:在同一 `auth_session` 里走 Passkey 的两轮 begin/finish,见[下面](#直连认证-api-的-passkey-第二步))、`sms` / `email`(开了两步验证,只剩已添加的手机号或邮箱这一种:先发码,见[下面](#直连认证-api-的短信邮箱第二步))、`two_factor`(开了两步验证,有多种方式:另带非标准字段 `methods`,取值为 `totp`、`passkey`、`sms`、`email`,按这个顺序列出 User 这次能用的,由 User 选一种;`totp` 表示提交 `totp` 或 `recovery_code`)。只有 TOTP、或实例关了 Passkey 登录时仍是 `totp`,响应不变(ADR 0037);能用的都与第一因素同渠道被去掉时也是 `totp`,只剩恢复码可用,`error_description` 提示改用别的方式登录(ADR 0038)。`next: "password"` 排在所有步之前,连带两步验证;那一步提交的密码不带 PoW——密码本身就是证明。待激活的 User 也可以带 `delete` 注销账号。`totp` / `recovery_code` 输错时返回 `400 invalid_request` 并带回原 `auth_session`;第 5 次输错后返回 `invalid_session`,须从头登录。以后只新增取值,不改名、不删除;客户端遇到不认识的取值按失败处理。(ADR 0010)
 - **每个请求必须携带**:
   - 所同意的协议版本号,见 [security-compliance.md](security-compliance.md#协议同意);
   - 发码请求和密码登录请求还要附带 PoW 解答。`next: "password"` 那一步的改密请求不带:它是同一次登录已经在进行的下一步,密码本身就是证明。取 Passkey challenge(`passkey=begin`)不带 PoW:它不发码也不验密码,只按 IP 限流兜底(ADR 0014)。
@@ -63,6 +63,15 @@ Web / RP ──(OIDC: /authorize + 托管登录页)──┘
 2. 带 `auth_session` 和 `passkey=<AuthenticationResponseJSON>` 再请求一次:通过后 `amr` 为 `[第一因素, "hwk"/"swk", "mfa"]`,照常返回授权码或下一个 `next`(如 `phone`)。
 
 断言不通过(别人的 Passkey、签名错、缺 UV、计数器回退)返回 `400 invalid_request` 并带回原 `auth_session`:第一因素仍然有效,但这次 challenge 作废,须重新 `begin`。Passkey 断言失败不计入每次登录 5 次的机会,也不计入 `2fa:<sub>` 锁定;TOTP 被锁定期间 Passkey 第二步仍可用。`next: "passkey"` 时也可以提交 `recovery_code`;只有 Passkey 的 User 提交 `totp` 一律按输错处理。
+
+### 直连认证 API 的短信、邮箱第二步
+
+`next` 为 `sms` / `email`,或为 `two_factor` 且 User 选了其中一种时(ADR 0038):
+
+1. 在同一 `auth_session` 上带 `two_factor=sms`(或 `email`),发码到 User 添加的手机号(或邮箱),返回 `403 insufficient_authorization`、`next: "code"`,`auth_session` 不变。进入这一步时不自动发码。不要 PoW,沿用登录发码的发送限制、共用计数;超频返回现有的 `400 invalid_request`(如「发送过于频繁」)并带回 `auth_session`。这次登录不提供的方式(没添加、Channel 不可用、与第一因素同渠道)同样 `400 invalid_request`,不发码。
+2. 带 `auth_session` 和 `code` 再请求一次:通过后 `amr` 为 `[第一因素, "sms"/"otp", "mfa"]`(不重复),照常返回授权码或下一个 `next`(如 `phone`)。没发过码就提交 `code` 返回 `400 invalid_request`。
+
+输错与 TOTP 一致:`400 invalid_request` 带回 `auth_session`,计入每次登录 5 次与 `2fa:<sub>` 锁定,第 5 次后返回 `invalid_session`。同一 `auth_session` 上也可以改提交 `totp`、`recovery_code` 或走 Passkey。
 
 允许的 origin = issuer 的 origin,加上所有 Application 的 `android_apps` 签名指纹换算出的 `android:apk-key-hash:<base64url>`;每次校验时现查,未登记的指纹被拒。过期的 challenge 由每小时一次的清理任务删除。
 

@@ -30,6 +30,7 @@ import (
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/twofactor"
 )
 
 const (
@@ -52,9 +53,9 @@ const (
 	// (docs/spec/consoles.md#设置); the Passkeys Users added are kept and
 	// work again once it is on.
 	ErrOff identity.Invalid = "Passkey 登录已关闭"
-	// ErrLastPasskey is deleting the last Passkey of a User whose
-	// 两步验证 is on by Passkey alone.
-	ErrLastPasskey identity.Invalid = "这是你唯一的两步验证方式，请先添加验证器或关闭两步验证"
+	// ErrLastPasskey is deleting a Passkey of a User whose 两步验证 would
+	// have no factor left.
+	ErrLastPasskey identity.Invalid = "这是你唯一的两步验证方式,请先添加其他方式或关闭两步验证"
 )
 
 // amrMFA marks an authentication that passed 两步验证 (RFC 8176).
@@ -484,21 +485,29 @@ func (s *Store) Rename(ctx context.Context, sub, id, name string, by audit.Actor
 	return err
 }
 
-// Remove deletes one of the User's Passkeys: ErrLastPasskey for the
-// last one while 两步验证 is on with no TOTP, whoever asks.
+// Remove deletes one of the User's Passkeys: ErrLastPasskey, whoever asks,
+// when it is their last and the Passkeys are 两步验证's Last
+// (twofactor.Factors.Last): with Passkey login off, they never are.
 func (s *Store) Remove(ctx context.Context, sub, id string, by audit.Actor) error {
 	// SERIALIZABLE: 两步验证 going on by this Passkey, or the TOTP going,
 	// meanwhile is refused here or there (twofactor), not both let through.
 	return db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if last, err := q.LastSecondFactor(ctx, sqlc.LastSecondFactorParams{Sub: sub, ID: id}); err != nil || last {
-			return cmp.Or(err, error(ErrLastPasskey))
+		before, err := twofactor.SecondFactors(ctx, q, sub)
+		if err != nil {
+			return err
 		}
 		n, err := q.DeletePasskey(ctx, sqlc.DeletePasskeyParams{ByID: by.ID, ByType: by.Type, ID: id, UserID: sub})
-		if err == nil && n == 0 {
-			err = ErrGone
+		if err != nil || n == 0 {
+			return cmp.Or(err, error(ErrGone))
 		}
-		return err
+		if !before.Last(twofactor.FactorPasskey) {
+			return nil
+		}
+		if after, err := twofactor.SecondFactors(ctx, q, sub); err != nil || !after.Passkey {
+			return cmp.Or(err, error(ErrLastPasskey))
+		}
+		return nil
 	})
 }
 

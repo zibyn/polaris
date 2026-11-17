@@ -102,7 +102,7 @@ func TestEveryCheckWantsAClientID(t *testing.T) {
 	if err := s.Code(ctx, Attempt{IP: "192.0.2.1"}, "+8613800138000", "", check); err == nil {
 		t.Error("Code with no ClientID")
 	}
-	if err := s.SecondFactor(ctx, Attempt{IP: "192.0.2.1"}, sub, false, check); err == nil {
+	if err := s.SecondFactor(ctx, Attempt{IP: "192.0.2.1"}, sub, "totp", check); err == nil {
 		t.Error("SecondFactor with no ClientID")
 	}
 	if ran {
@@ -151,10 +151,10 @@ func TestSecondFactorAuditsTheMethod(t *testing.T) {
 	ctx := context.Background()
 	sub := owner(t, s)
 	a := Attempt{ClientID: "rp", IP: "192.0.2.1"}
-	if err := s.SecondFactor(ctx, a, sub, false, func() error { return ErrWrongTOTP }); !errors.Is(err, ErrWrongTOTP) {
+	if err := s.SecondFactor(ctx, a, sub, "totp", func() error { return ErrWrongTOTP }); !errors.Is(err, ErrWrongTOTP) {
 		t.Fatal(err)
 	}
-	if err := s.SecondFactor(ctx, a, sub, true, func() error { return ErrWrongRecoveryCode }); !errors.Is(err, ErrWrongRecoveryCode) {
+	if err := s.SecondFactor(ctx, a, sub, "recovery_code", func() error { return ErrWrongRecoveryCode }); !errors.Is(err, ErrWrongRecoveryCode) {
 		t.Fatal(err)
 	}
 	if got := failedLogins(t, s, sub); !slices.Equal(got, []string{"totp/rp", "recovery_code/rp"}) {

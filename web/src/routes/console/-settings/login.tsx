@@ -142,7 +142,7 @@ function Switches({ current, editable, sms }: SectionProps & { sms: boolean }) {
 					current={current}
 					editable={editable}
 					label="管理员必须启用两步验证或 Passkey"
-					help="开启后，未启用两步验证且没有 Passkey 的管理员无法使用管理端。"
+					help="开启后，未启用两步验证且没有 Passkey 的管理员无法使用管理端。只用短信或邮箱验证开启两步验证也算满足，建议管理员使用验证器或 Passkey。"
 					checked={current.adminsNeedTwoFactor}
 					patch={(on) => ({ adminsNeedTwoFactor: on })}
 				/>

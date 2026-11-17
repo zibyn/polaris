@@ -40,6 +40,10 @@ export const eventGroups: [string, [string, string][]][] = [
 			["recovery_codes.regenerated", "重新生成恢复码"],
 			["totp.added", "添加验证器"],
 			["totp.removed", "移除验证器"],
+			["sms.added", "添加短信验证"],
+			["sms.removed", "移除短信验证"],
+			["email.added", "添加邮箱验证"],
+			["email.removed", "移除邮箱验证"],
 			["recovery_code.used", "使用恢复码"],
 			["session.ended", "下线会话"],
 			["roles.assigned", "设置角色"],
@@ -244,6 +248,14 @@ export function describe(
 			return { parts: ["为", ...user, " 添加了验证器"] };
 		case "totp.removed":
 			return { parts: ["移除了", ...user, " 的验证器"] };
+		case "sms.added":
+			return { parts: ["为", ...user, " 添加了短信验证"] };
+		case "sms.removed":
+			return { parts: ["移除了", ...user, " 的短信验证"] };
+		case "email.added":
+			return { parts: ["为", ...user, " 添加了邮箱验证"] };
+		case "email.removed":
+			return { parts: ["移除了", ...user, " 的邮箱验证"] };
 		case "recovery_code.used":
 			return { parts: [...user, " 用了一个恢复码"] };
 		case "session.ended":

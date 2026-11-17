@@ -241,6 +241,20 @@ var (
 	emailRE = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 )
 
+// Mask is a stored Identifier of kind as shown without giving it away:
+// 138****8000, a***@example.com; a username as it is.
+func Mask(kind, value string) string {
+	switch kind {
+	case "phone":
+		v := strings.TrimPrefix(value, "+86")
+		return v[:3] + "****" + v[len(v)-4:]
+	case "email":
+		name, domain, _ := strings.Cut(value, "@")
+		return name[:1] + "***@" + domain
+	}
+	return value
+}
+
 // ParseIdentifier reads what a person typed as a phone number (+86 only,
 // stored E.164) or an email (stored lowercase).
 func ParseIdentifier(s string) (kind, value string, err error) {

@@ -88,8 +88,9 @@ export type ReauthMethod = keyof typeof reauthMethods;
 
 // reauthChoices is the ways of reauthenticating to offer a User: a Passkey
 // when the instance offers Passkey login, they have one and the browser can
-// run the ceremony, then — with 两步验证 on — their TOTP, or a recovery code
-// when they have none, or otherwise the codes to their Identifiers and their
+// run the ceremony, then — with 两步验证 on — their TOTP, the codes to the
+// phone number and email they added as factors, and a recovery code when
+// they have no TOTP; or otherwise the codes to their Identifiers and their
 // password. A Passkey itself passes 两步验证.
 export const reauthChoices = (
 	me: {
@@ -97,18 +98,24 @@ export const reauthChoices = (
 		hasPassword: boolean;
 		passwordAllowed: boolean;
 		passkeyLogin: boolean;
-		twoFactor: { enabled: boolean; totp: boolean };
+		twoFactor: CodeFactors & { enabled: boolean; totp: boolean };
 	},
 	hasPasskey: boolean,
 	supported: boolean,
 ): ReauthChoice[] => {
 	const passkey: ReauthChoice[] =
 		hasPasskey && me.passkeyLogin && supported ? ["passkey"] : [];
-	if (me.twoFactor.enabled)
-		return [...passkey, me.twoFactor.totp ? "totp" : "recovery"];
 	const codes = me.identifiers
 		.map((i) => i.kind)
 		.filter((k): k is "phone" | "email" => k !== "username");
+	const tf = me.twoFactor;
+	if (tf.enabled)
+		return [
+			...passkey,
+			...(tf.totp ? ["totp" as const] : []),
+			...codes.filter((k) => codeFactor(tf, k)),
+			...(tf.totp ? [] : ["recovery" as const]),
+		];
 	const password: ReauthChoice[] =
 		me.hasPassword && me.passwordAllowed ? ["password"] : [];
 	return [...passkey, ...codes, ...password];
@@ -183,48 +190,97 @@ export const providerReturn = (
 	return null;
 };
 
+// CodeFactors is what /me says of the phone number and email as factors.
+type CodeFactors = {
+	sms: boolean;
+	email: boolean;
+	smsChannel: boolean;
+	emailChannel: boolean;
+};
+
+// codeFactor is whether the phone number or email counts as a factor: added,
+// its Channel configured (twofactor.Factors).
+export const codeFactor = (tf: CodeFactors, kind: "phone" | "email") =>
+	kind === "phone" ? tf.sms && tf.smsChannel : tf.email && tf.emailChannel;
+
 type TwoFactorState = {
 	passkeyLogin: boolean;
-	twoFactor: { enabled: boolean; totp: boolean };
+	twoFactor: CodeFactors & { enabled: boolean; totp: boolean };
 };
+
+// otherFactors names the factors besides the TOTP that 两步验证 can be on
+// by (twofactor.Factors.Usable): a Passkey while the instance offers Passkey
+// login, the phone number and email added while their Channels are configured.
+export const otherFactors = (me: TwoFactorState, passkeys: number) =>
+	[
+		passkeys > 0 && me.passkeyLogin && "Passkey",
+		codeFactor(me.twoFactor, "phone") && "短信",
+		codeFactor(me.twoFactor, "email") && "邮箱",
+	].filter((f): f is string => !!f);
 
 // TwoFactorAction is a button of the account center's 两步验证 row.
 export type TwoFactorAction =
-	| "enable-passkey"
+	| "enable"
 	| "enable-totp"
 	| "add-totp"
 	| "remove-totp"
 	| "regenerate"
 	| "disable";
 
-// twoFactorActions is what the 两步验证 row offers. Off: turning it on with
-// a Passkey, while the User has one and the instance offers Passkey login,
-// or with a TOTP. On: adding a TOTP, or removing it while a Passkey is left
-// to pass 两步验证 with; new recovery codes; turning it off.
+// twoFactorActions is what the 两步验证 row offers. Off: turning it on by
+// the other factors (otherFactors), while there are any, or with a TOTP. On:
+// adding a TOTP, or removing it while another factor is left to pass
+// 两步验证 with; new recovery codes; turning it off.
 export const twoFactorActions = (
 	me: TwoFactorState,
 	passkeys: number,
 ): TwoFactorAction[] => {
-	const passkey = passkeys > 0 && me.passkeyLogin;
+	const other = otherFactors(me, passkeys).length > 0;
 	if (!me.twoFactor.enabled)
-		return passkey ? ["enable-passkey", "enable-totp"] : ["enable-totp"];
+		return other ? ["enable", "enable-totp"] : ["enable-totp"];
 	const totp: TwoFactorAction[] = !me.twoFactor.totp
 		? ["add-totp"]
-		: passkey
+		: other
 			? ["remove-totp"]
 			: [];
 	return [...totp, "regenerate", "disable"];
 };
 
+// lastCodeFactorNote is why the User's phone number or email can't be
+// removed as a factor, or undefined: 两步验证 is on and it is all it has. One
+// that counts for nothing, its Channel gone, goes changing nothing.
+// Same words as the server's 409 (twofactor.ErrLastFactor).
+export const lastCodeFactorNote = (
+	me: TwoFactorState,
+	passkeys: number,
+	kind: "phone" | "email",
+): string | undefined => {
+	if (
+		me.twoFactor.enabled &&
+		!me.twoFactor.totp &&
+		codeFactor(me.twoFactor, kind) &&
+		otherFactors(me, passkeys).length === 1
+	)
+		return "这是你唯一的两步验证方式,请先添加其他方式或关闭两步验证";
+};
+
 // lastPasskeyNote is why the User's Passkey can't be deleted, or undefined:
-// it is their last, and 两步验证 is on with no TOTP. Same words as the
-// server's 409 (passkey.ErrLastPasskey).
+// it is their last, and 两步验证 is on with no TOTP, phone number or email.
+// With Passkey login off it is no factor, and deleting it changes nothing.
+// Same words as the server's 409 (passkey.ErrLastPasskey).
 export const lastPasskeyNote = (
 	me: TwoFactorState,
 	passkeys: number,
 ): string | undefined => {
-	if (me.twoFactor.enabled && !me.twoFactor.totp && passkeys === 1)
-		return "这是你唯一的两步验证方式，请先添加验证器或关闭两步验证";
+	if (
+		me.passkeyLogin &&
+		me.twoFactor.enabled &&
+		!me.twoFactor.totp &&
+		!codeFactor(me.twoFactor, "phone") &&
+		!codeFactor(me.twoFactor, "email") &&
+		passkeys === 1
+	)
+		return "这是你唯一的两步验证方式,请先添加其他方式或关闭两步验证";
 };
 
 // recoveryCodesText is the file the recovery codes download as.

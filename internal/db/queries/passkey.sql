@@ -51,14 +51,6 @@ WITH renamed AS (
 INSERT INTO audit_log (event, sub, detail)
 SELECT 'passkey.renamed', renamed.user_id, jsonb_build_object('by', @by_id::text, 'byType', NULLIF(@by_type::text, ''), 'name', @name::text) FROM renamed;
 
--- name: LastSecondFactor :one
--- Whether the Passkey id is sub's last, and with 两步验证 on and no TOTP
--- all it has besides the recovery codes.
-SELECT (EXISTS (SELECT 1 FROM two_factor t WHERE t.user_id = @sub)
-   AND NOT EXISTS (SELECT 1 FROM totp_credentials c WHERE c.user_id = @sub AND c.confirmed_at IS NOT NULL)
-   AND (SELECT count(*) FROM passkeys p WHERE p.user_id = @sub) = 1
-   AND EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = @sub AND p.id = @id::text))::boolean AS last;
-
 -- name: DeletePasskey :execrows
 -- Audited as passkey.removed. No row when the Passkey is not the User's.
 WITH gone AS (

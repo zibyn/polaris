@@ -48,8 +48,10 @@ import {
 	avatarProblem,
 	bindSchema,
 	deleteSchema,
+	lastCodeFactorNote,
 	lastPasskeyNote,
 	nicknameSchema,
+	otherFactors,
 	passkeyNameSchema,
 	passwordSchema,
 	providerReturn,
@@ -1066,17 +1068,19 @@ function TwoFactor({ me, guard }: { me: Me; guard: Guard }) {
 		onError: failed("关闭两步验证失败"),
 	});
 	const { enabled, recoveryCodesLeft, totp } = me.twoFactor;
+	const others = otherFactors(me, passkeys);
 	const buttons: Record<
 		TwoFactorAction,
 		{ label: string; pending: boolean; run: () => void }
 	> = {
-		"enable-passkey": {
-			label: "用 Passkey 开启",
+		enable: {
+			label:
+				others.join() === "Passkey" ? "用 Passkey 开启" : "用已添加的方式开启",
 			pending: enable.isPending,
 			run: () => enable.mutate(),
 		},
 		"enable-totp": {
-			label: passkeys > 0 && me.passkeyLogin ? "用验证器开启" : "开启",
+			label: others.length > 0 ? "用验证器开启" : "开启",
 			pending: begin.isPending,
 			run: () => begin.mutate(),
 		},
@@ -1109,12 +1113,12 @@ function TwoFactor({ me, guard }: { me: Me; guard: Guard }) {
 					enabled
 						? [
 								totp && "验证器",
-								passkeys > 0 && me.passkeyLogin && "Passkey",
+								...others,
 								`剩余 ${recoveryCodesLeft} 个恢复码`,
 							]
 								.filter(Boolean)
 								.join(" · ")
-						: "开启后，验证码或密码登录还需验证器中的 6 位数字或 Passkey"
+						: "开启后，验证码或密码登录还需验证器、Passkey 或另一渠道的验证码"
 				}
 				actions={twoFactorActions(me, passkeys).map((a) => (
 					<Button
@@ -1160,7 +1164,91 @@ function TwoFactor({ me, guard }: { me: Me; guard: Guard }) {
 				action="移除验证器"
 				onConfirm={() => removeTOTP.mutate()}
 			>
-				验证器中的条目将失效，两步验证仍开着，用 Passkey 或恢复码完成。
+				{`验证器中的条目将失效，两步验证仍开着，用${others.join("、")}或恢复码完成。`}
+			</ConfirmDialog>
+			{me.identifiers.map(
+				(id) =>
+					id.kind !== "username" && (
+						<CodeFactor
+							key={id.kind}
+							kind={id.kind}
+							value={id.value}
+							me={me}
+							passkeys={passkeys}
+							guard={guard}
+						/>
+					),
+			)}
+		</>
+	);
+}
+
+// CodeFactor adds the User's phone number or email as a second factor, or
+// removes it (ADR 0038). Adding sends no code: the Identifier is verified.
+function CodeFactor({
+	kind,
+	value,
+	me,
+	passkeys,
+	guard,
+}: {
+	kind: "phone" | "email";
+	value: string;
+	me: Me;
+	passkeys: number;
+	guard: Guard;
+}) {
+	const queryClient = useQueryClient();
+	const [adding, setAdding] = useState(false);
+	const [blocked, setBlocked] = useState<string>();
+	const added = kind === "phone" ? me.twoFactor.sms : me.twoFactor.email;
+	const name = kind === "phone" ? "短信验证" : "邮箱验证";
+	const change = useMutation({
+		mutationFn: () =>
+			api(`/2fa/identifiers/${kind}`, { method: added ? "DELETE" : "PUT" }),
+		onSuccess: () => queryClient.invalidateQueries(meQuery),
+		onError: failed(added ? `移除${name}失败` : `添加${name}失败`),
+	});
+	const run = () => {
+		if (!added) return setAdding(true);
+		const note = lastCodeFactorNote(me, passkeys, kind);
+		if (note) return setBlocked(note);
+		change.mutate();
+	};
+	return (
+		<>
+			<PropRow
+				label={name}
+				hint={`验证码发到 ${value}`}
+				actions={
+					<Button
+						variant="ghost"
+						size="sm"
+						disabled={change.isPending}
+						onClick={() => guard(run)}
+					>
+						{added ? "移除" : "添加"}
+					</Button>
+				}
+			>
+				{added ? "已添加" : <Muted>未添加</Muted>}
+			</PropRow>
+			<ConfirmDialog
+				open={adding}
+				onOpenChange={setAdding}
+				title={`添加${name}？`}
+				action={`添加${name}`}
+				destructive={false}
+				onConfirm={() => change.mutate()}
+			>
+				{`两步验证时可以把验证码发到 ${value}。短信和邮件验证码比验证器、Passkey 更容易被截获，建议同时添加验证器或 Passkey。用${kind === "phone" ? "短信" : "邮箱"}验证码登录时，第二步不提供这一种。`}
+			</ConfirmDialog>
+			<ConfirmDialog
+				open={blocked !== undefined}
+				onOpenChange={(open) => !open && setBlocked(undefined)}
+				title={`不能移除${name}`}
+			>
+				{blocked}
 			</ConfirmDialog>
 		</>
 	);
@@ -1601,8 +1689,8 @@ function DeleteAccount({
 }
 
 // Reauth proves the User again with a Passkey, a code to one of their
-// Identifiers, their password, or — with 两步验证 on — a TOTP or recovery
-// code.
+// Identifiers, their password, or — with 两步验证 on — a TOTP, recovery
+// code, or a code to the phone number or email added as a factor.
 function Reauth({
 	me,
 	open,
@@ -1761,7 +1849,7 @@ function Reauth({
 							}
 						/>
 						<div className="flex justify-end gap-2">
-							{twoFactor && me.twoFactor.totp && (
+							{twoFactor && me.twoFactor.totp && !byCode && (
 								<Button
 									type="button"
 									variant="ghost"

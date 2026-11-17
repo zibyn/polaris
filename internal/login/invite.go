@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/zibyn/polaris/internal/identity"
+	"github.com/zibyn/polaris/internal/twofactor"
 )
 
 type inviteForm struct {
@@ -62,7 +63,7 @@ func (s *Service) acceptInvite(w http.ResponseWriter, r *http.Request) {
 	// and 同意协议 come first, as they do for every other first factor. With
 	// anything left, the account center's own sign-in runs it — the password
 	// they just set is what they use.
-	amr := []string{string(codeAMR("email"))}
+	amr := []string{twofactor.FactorEmail.AMR()}
 	what, err := s.nextStep(r.Context(), sub, amr, false)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
