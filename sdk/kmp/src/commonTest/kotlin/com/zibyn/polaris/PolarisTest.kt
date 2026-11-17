@@ -202,9 +202,79 @@ class PolarisTest {
     val auth = server.auth(FakePasskeys(response = "assertion"))
 
     val step = assertIs<SignInStep.TwoFactorChoice>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
+    assertEquals(listOf(TwoFactorMethod.TOTP, TwoFactorMethod.PASSKEY), step.methods)
     assertEquals(SignInStep.SignedIn, auth.verifyPasskey(step.session))
     assertEquals(SignInStep.SignedIn, auth.verifyTotp(step.session, "123456"))
     assertEquals(SignInStep.SignedIn, auth.verifyRecoveryCode(step.session, "abcd-efgh"))
+  }
+
+  // A code to the phone number the User added (ADR 0038): not sent until
+  // asked, on the same auth_session; a send limit hit and a wrong code both
+  // throw invalid_request and keep the session, as a sign-in code does.
+  @Test
+  fun smsSecondStepSendsWhenAskedThenTakesTheCode() = runTest {
+    server.handlers["/v1/auth/challenge"] = { form ->
+      when {
+        form["username"] == "alice" -> json(insufficient("s1", "sms"), HttpStatusCode.Forbidden)
+        form["auth_session"] != "s1" -> error("unexpected $form")
+        form["two_factor"] == "sms" && server.calls("/v1/auth/challenge") > 2 ->
+          json("""{"error":"invalid_request","error_description":"发送过于频繁","auth_session":"s1"}""", HttpStatusCode.BadRequest)
+        form["two_factor"] == "sms" -> json(insufficient("s1", "code"), HttpStatusCode.Forbidden)
+        form["code"] == "000000" -> json("""{"error":"invalid_request","error_description":"验证码错误","auth_session":"s1"}""", HttpStatusCode.BadRequest)
+        form["code"] == "123456" -> json("""{"authorization_code":"c1"}""")
+        else -> error("unexpected $form")
+      }
+    }
+    val auth = server.auth()
+
+    val step = assertIs<SignInStep.TwoFactorCodeRequired>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
+    assertEquals(TwoFactorMethod.SMS, step.method)
+    assertEquals(1, server.calls("/v1/auth/challenge"))
+    val sent = auth.sendTwoFactorCode(step.session, step.method)
+    val limited = assertFailsWith<PolarisException> { auth.sendTwoFactorCode(step.session, step.method) }
+    assertEquals("invalid_request", limited.error)
+    assertEquals("发送过于频繁", limited.description)
+    val wrong = assertFailsWith<PolarisException> { auth.verifyCode(sent.session, "000000") }
+    assertEquals("invalid_request", wrong.error)
+    assertEquals(SignInStep.SignedIn, auth.verifyCode(sent.session, "123456"))
+    assertEquals(1, server.calls("/altcha/challenge")) // the password step's; sending needs no PoW
+  }
+
+  @Test
+  fun emailSecondStepSendsToTheEmail() = runTest {
+    server.handlers["/v1/auth/challenge"] = { form ->
+      when {
+        form["username"] == "alice" -> json(insufficient("s1", "email"), HttpStatusCode.Forbidden)
+        form["auth_session"] == "s1" && form["two_factor"] == "email" -> json(insufficient("s1", "code"), HttpStatusCode.Forbidden)
+        form["auth_session"] == "s1" && form["code"] == "123456" -> json("""{"authorization_code":"c1"}""")
+        else -> error("unexpected $form")
+      }
+    }
+    val auth = server.auth()
+
+    val step = assertIs<SignInStep.TwoFactorCodeRequired>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
+    assertEquals(TwoFactorMethod.EMAIL, step.method)
+    assertEquals(SignInStep.SignedIn, auth.verifyCode(auth.sendTwoFactorCode(step.session, step.method).session, "123456"))
+  }
+
+  // TOTP and SMS: either one, on the same auth_session.
+  @Test
+  fun twoFactorChoiceOfTotpAndSms() = runTest {
+    server.handlers["/v1/auth/challenge"] = { form ->
+      when {
+        form["username"] == "alice" -> json("""{"error":"insufficient_authorization","auth_session":"s1","next":"two_factor","methods":["totp","sms"]}""", HttpStatusCode.Forbidden)
+        form["auth_session"] != "s1" -> error("unexpected $form")
+        form["two_factor"] == "sms" -> json(insufficient("s1", "code"), HttpStatusCode.Forbidden)
+        form["code"] == "111111" || form["totp"] == "222222" -> json("""{"authorization_code":"c1"}""")
+        else -> error("unexpected $form")
+      }
+    }
+    val auth = server.auth()
+
+    val step = assertIs<SignInStep.TwoFactorChoice>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
+    assertEquals(listOf(TwoFactorMethod.TOTP, TwoFactorMethod.SMS), step.methods)
+    assertEquals(SignInStep.SignedIn, auth.verifyCode(auth.sendTwoFactorCode(step.session, TwoFactorMethod.SMS).session, "111111"))
+    assertEquals(SignInStep.SignedIn, auth.verifyTotp(step.session, "222222"))
   }
 
   // methods narrows two_factor to what this SDK knows; nothing known fails.
@@ -220,6 +290,10 @@ class PolarisTest {
     assertIs<SignInStep.TotpRequired>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
     methods = """"passkey","later""""
     assertIs<SignInStep.PasskeyRequired>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
+    methods = """"later","email""""
+    assertEquals(TwoFactorMethod.EMAIL, assertIs<SignInStep.TwoFactorCodeRequired>(auth.signInWithPassword("alice", "pw", "")).method)
+    methods = """"totp","passkey","sms","email","later""""
+    assertEquals(TwoFactorMethod.entries, assertIs<SignInStep.TwoFactorChoice>(auth.signInWithPassword("alice", "pw", "")).methods)
     methods = """"later""""
     assertEquals(PolarisException.UNSUPPORTED_STEP, assertFailsWith<PolarisException> { auth.signInWithPassword("alice", "pw", "") }.error)
   }

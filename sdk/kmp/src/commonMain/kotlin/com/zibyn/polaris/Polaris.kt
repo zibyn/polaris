@@ -158,8 +158,29 @@ public sealed interface SignInStep {
   public class TotpRequired(public val session: AuthSession) : SignInStep
   /** The User does 两步验证 with a Passkey: [Polaris.verifyPasskey], or a 恢复码 ([Polaris.verifyRecoveryCode]). */
   public class PasskeyRequired(public val session: AuthSession) : SignInStep
-  /** The User has both TOTP and a Passkey for 两步验证: let them pick [Polaris.verifyTotp], [Polaris.verifyPasskey] or [Polaris.verifyRecoveryCode]. */
-  public class TwoFactorChoice(public val session: AuthSession) : SignInStep
+  /**
+   * The User does 两步验证 with a code to the phone number ([TwoFactorMethod.SMS]) or email
+   * ([TwoFactorMethod.EMAIL]) they added. Nothing is sent yet: [Polaris.sendTwoFactorCode],
+   * then [Polaris.verifyCode]; or a 恢复码 ([Polaris.verifyRecoveryCode]).
+   */
+  public class TwoFactorCodeRequired(public val session: AuthSession, public val method: TwoFactorMethod) : SignInStep
+  /**
+   * The User has more than one way to do 两步验证: let them pick among [methods], in the
+   * server's order, then go on as for that one's step; [Polaris.verifyRecoveryCode] works too.
+   */
+  public class TwoFactorChoice(public val session: AuthSession, public val methods: List<TwoFactorMethod>) : SignInStep
+}
+
+/** A way to do 两步验证, as the direct auth API names it. */
+public enum class TwoFactorMethod(internal val wire: String) {
+  /** [Polaris.verifyTotp]. */
+  TOTP("totp"),
+  /** [Polaris.verifyPasskey]. */
+  PASSKEY("passkey"),
+  /** [Polaris.sendTwoFactorCode], then [Polaris.verifyCode]. */
+  SMS("sms"),
+  /** [Polaris.sendTwoFactorCode], then [Polaris.verifyCode]. */
+  EMAIL("email"),
 }
 
 /**
@@ -243,6 +264,17 @@ public class Polaris(
       append("altcha", altcha)
     } as? SignInStep.CodeSent ?: throw PolarisException("unexpected_response", "sending a code signed in")
   }
+
+  /**
+   * Sends the 两步验证 code to the User's phone number or email, after
+   * [SignInStep.TwoFactorCodeRequired] or [SignInStep.TwoFactorChoice]; enter it
+   * with [verifyCode]. No proof of work. A send limit hit throws
+   * `invalid_request` and keeps [session].
+   */
+  @Throws(Exception::class)
+  public suspend fun sendTwoFactorCode(session: AuthSession, method: TwoFactorMethod): SignInStep.CodeSent =
+    challenge(session, session.termsVersion) { append("two_factor", method.wire) } as? SignInStep.CodeSent
+      ?: throw PolarisException("unexpected_response", "sending a 两步验证 code did not ask for it")
 
   @Throws(Exception::class)
   public suspend fun verifyCode(session: AuthSession, code: String): SignInStep =
@@ -428,16 +460,17 @@ public class Polaris(
         return when (e.next) {
           "code" -> SignInStep.CodeSent(next)
           "phone" -> SignInStep.PhoneRequired(next)
-          "totp" -> SignInStep.TotpRequired(next)
-          "passkey" -> SignInStep.PasskeyRequired(next)
-          // methods values this SDK does not know are ignored (docs/sdk-behavior.md).
-          "two_factor" -> when {
-            "totp" in e.methods && "passkey" in e.methods -> SignInStep.TwoFactorChoice(next)
-            "totp" in e.methods -> SignInStep.TotpRequired(next)
-            "passkey" in e.methods -> SignInStep.PasskeyRequired(next)
-            else -> throw PolarisException(PolarisException.UNSUPPORTED_STEP, "no 两步验证 method this SDK version supports: ${e.methods}")
+          "two_factor" -> {
+            // methods values this SDK does not know are ignored (docs/sdk-behavior.md).
+            val known = e.methods.mapNotNull { m -> TwoFactorMethod.entries.find { it.wire == m } }.distinct()
+            when (known.size) {
+              0 -> throw PolarisException(PolarisException.UNSUPPORTED_STEP, "no 两步验证 method this SDK version supports: ${e.methods}")
+              1 -> twoFactorStep(next, known.single())
+              else -> SignInStep.TwoFactorChoice(next, known)
+            }
           }
-          else -> throw PolarisException(PolarisException.UNSUPPORTED_STEP, "next step not supported by this SDK version: ${e.next}")
+          else -> TwoFactorMethod.entries.find { it.wire == e.next }?.let { twoFactorStep(next, it) }
+            ?: throw PolarisException(PolarisException.UNSUPPORTED_STEP, "next step not supported by this SDK version: ${e.next}")
         }
       }
       throw errorOf(r, body)
@@ -450,6 +483,12 @@ public class Polaris(
     }
     mutex.withLock { if (onAccount) account = t else save(t) }
     return SignInStep.SignedIn
+  }
+
+  private fun twoFactorStep(session: AuthSession, method: TwoFactorMethod): SignInStep = when (method) {
+    TwoFactorMethod.TOTP -> SignInStep.TotpRequired(session)
+    TwoFactorMethod.PASSKEY -> SignInStep.PasskeyRequired(session)
+    TwoFactorMethod.SMS, TwoFactorMethod.EMAIL -> SignInStep.TwoFactorCodeRequired(session, method)
   }
 
   /** The current tokens, or null when signed out. The access token may have expired: use [accessToken] to call APIs. */
