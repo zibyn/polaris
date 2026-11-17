@@ -261,10 +261,13 @@ type TwoFactor struct {
 	TOTP              bool       `json:"totp" doc:"The User has a TOTP; 两步验证 may be on by a Passkey alone without one"`
 	SMS               bool       `json:"sms" doc:"The User added their phone number as a second factor"`
 	Email             bool       `json:"email" doc:"The User added their email as a second factor"`
+	SMSChannel        bool       `json:"smsChannel" doc:"The SMS Channel is configured: an added phone number counts as a second factor, and is offered, only then"`
+	EmailChannel      bool       `json:"emailChannel" doc:"The email Channel is configured: an added email counts as a second factor, and is offered, only then"`
 }
 
 func twoFactorOf(u sqlc.AccountUserRow) TwoFactor {
-	t := TwoFactor{Enabled: u.TwoFactorSince.Valid, RecoveryCodesLeft: u.RecoveryCodesLeft, TOTP: u.HasTotp, SMS: u.SmsFactor, Email: u.EmailFactor}
+	t := TwoFactor{Enabled: u.TwoFactorSince.Valid, RecoveryCodesLeft: u.RecoveryCodesLeft, TOTP: u.HasTotp, SMS: u.SmsFactor, Email: u.EmailFactor,
+		SMSChannel: u.SmsChannel, EmailChannel: u.EmailChannel}
 	if t.Enabled {
 		t.EnabledAt = &u.TwoFactorSince.Time
 	}

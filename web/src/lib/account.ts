@@ -98,12 +98,7 @@ export const reauthChoices = (
 		hasPassword: boolean;
 		passwordAllowed: boolean;
 		passkeyLogin: boolean;
-		twoFactor: {
-			enabled: boolean;
-			totp: boolean;
-			sms: boolean;
-			email: boolean;
-		};
+		twoFactor: CodeFactors & { enabled: boolean; totp: boolean };
 	},
 	hasPasskey: boolean,
 	supported: boolean,
@@ -118,7 +113,7 @@ export const reauthChoices = (
 		return [
 			...passkey,
 			...(tf.totp ? ["totp" as const] : []),
-			...codes.filter((k) => (k === "phone" ? tf.sms : tf.email)),
+			...codes.filter((k) => codeFactor(tf, k)),
 			...(tf.totp ? [] : ["recovery" as const]),
 		];
 	const password: ReauthChoice[] =
@@ -195,19 +190,32 @@ export const providerReturn = (
 	return null;
 };
 
+// CodeFactors is what /me says of the phone number and email as factors.
+type CodeFactors = {
+	sms: boolean;
+	email: boolean;
+	smsChannel: boolean;
+	emailChannel: boolean;
+};
+
+// codeFactor is whether the phone number or email counts as a factor: added,
+// its Channel configured (twofactor.Factors).
+export const codeFactor = (tf: CodeFactors, kind: "phone" | "email") =>
+	kind === "phone" ? tf.sms && tf.smsChannel : tf.email && tf.emailChannel;
+
 type TwoFactorState = {
 	passkeyLogin: boolean;
-	twoFactor: { enabled: boolean; totp: boolean; sms: boolean; email: boolean };
+	twoFactor: CodeFactors & { enabled: boolean; totp: boolean };
 };
 
 // otherFactors names the factors besides the TOTP that 两步验证 can be on
 // by (twofactor.Factors.Usable): a Passkey while the instance offers Passkey
-// login, the phone number and email added.
+// login, the phone number and email added while their Channels are configured.
 export const otherFactors = (me: TwoFactorState, passkeys: number) =>
 	[
 		passkeys > 0 && me.passkeyLogin && "Passkey",
-		me.twoFactor.sms && "短信",
-		me.twoFactor.email && "邮箱",
+		codeFactor(me.twoFactor, "phone") && "短信",
+		codeFactor(me.twoFactor, "email") && "邮箱",
 	].filter((f): f is string => !!f);
 
 // TwoFactorAction is a button of the account center's 两步验证 row.
@@ -239,15 +247,18 @@ export const twoFactorActions = (
 };
 
 // lastCodeFactorNote is why the User's phone number or email can't be
-// removed as a factor, or undefined: 两步验证 is on and it is all it has.
+// removed as a factor, or undefined: 两步验证 is on and it is all it has. One
+// that counts for nothing, its Channel gone, goes changing nothing.
 // Same words as the server's 409 (twofactor.ErrLastFactor).
 export const lastCodeFactorNote = (
 	me: TwoFactorState,
 	passkeys: number,
+	kind: "phone" | "email",
 ): string | undefined => {
 	if (
 		me.twoFactor.enabled &&
 		!me.twoFactor.totp &&
+		codeFactor(me.twoFactor, kind) &&
 		otherFactors(me, passkeys).length === 1
 	)
 		return "这是你唯一的两步验证方式,请先添加其他方式或关闭两步验证";
@@ -265,8 +276,8 @@ export const lastPasskeyNote = (
 		me.passkeyLogin &&
 		me.twoFactor.enabled &&
 		!me.twoFactor.totp &&
-		!me.twoFactor.sms &&
-		!me.twoFactor.email &&
+		!codeFactor(me.twoFactor, "phone") &&
+		!codeFactor(me.twoFactor, "email") &&
 		passkeys === 1
 	)
 		return "这是你唯一的两步验证方式,请先添加其他方式或关闭两步验证";

@@ -150,6 +150,15 @@ test("recovery codes download as a text file, one per line", () => {
 	);
 });
 
+// factors is a User with none added, the Channels configured.
+const factors = {
+	totp: false,
+	sms: false,
+	email: false,
+	smsChannel: true,
+	emailChannel: true,
+};
+
 // meUser is the part of the Account API's /me the reauthentication choices
 // come from.
 const meUser = (over: Partial<Parameters<typeof reauthChoices>[0]> = {}) => ({
@@ -157,7 +166,7 @@ const meUser = (over: Partial<Parameters<typeof reauthChoices>[0]> = {}) => ({
 	hasPassword: false,
 	passwordAllowed: false,
 	passkeyLogin: true,
-	twoFactor: { enabled: false, totp: false, sms: false, email: false },
+	twoFactor: { ...factors, enabled: false },
 	...over,
 });
 
@@ -174,7 +183,7 @@ test("reauthentication offers a Passkey only to a User who has one", () => {
 
 test("with 两步验证 on, a Passkey joins the TOTP as a way to reauthenticate", () => {
 	const twoFactor = {
-		twoFactor: { enabled: true, totp: true, sms: false, email: false },
+		twoFactor: { ...factors, enabled: true, totp: true },
 	};
 	assert.deepEqual(reauthChoices(meUser(twoFactor), false, true), ["totp"]);
 	assert.deepEqual(reauthChoices(meUser(twoFactor), true, true), [
@@ -220,7 +229,7 @@ test("an avatar is a JPEG, PNG or WebP of at most 5 MB", () => {
 
 test("with 两步验证 on by a Passkey alone, a recovery code joins the Passkey", () => {
 	const twoFactor = {
-		twoFactor: { enabled: true, totp: false, sms: false, email: false },
+		twoFactor: { ...factors, enabled: true },
 	};
 	assert.deepEqual(reauthChoices(meUser(twoFactor), true, true), [
 		"passkey",
@@ -231,12 +240,18 @@ test("with 两步验证 on by a Passkey alone, a recovery code joins the Passkey
 test("with 两步验证 on, a code goes only to a phone number or email added as a factor", () => {
 	const me = meUser({
 		identifiers: [{ kind: "phone" }, { kind: "email" }],
-		twoFactor: { enabled: true, totp: false, sms: true, email: false },
+		twoFactor: { ...factors, enabled: true, sms: true },
 	});
 	assert.deepEqual(reauthChoices(me, false, true), ["phone", "recovery"]);
 	const both = meUser({
 		identifiers: [{ kind: "phone" }, { kind: "email" }],
-		twoFactor: { enabled: true, totp: true, sms: true, email: true },
+		twoFactor: {
+			...factors,
+			enabled: true,
+			totp: true,
+			sms: true,
+			email: true,
+		},
 	});
 	assert.deepEqual(reauthChoices(both, true, true), [
 		"passkey",
@@ -245,8 +260,6 @@ test("with 两步验证 on, a code goes only to a phone number or email added as
 		"email",
 	]);
 });
-
-const factors = { totp: false, sms: false, email: false };
 
 test("两步验证 turns on with a Passkey only while one counts", () => {
 	const off = {
@@ -293,13 +306,16 @@ test("the one factor of 两步验证 left can't be removed (409)", () => {
 		passkeyLogin: true,
 		twoFactor: { ...factors, enabled: true, ...over },
 	});
-	assert.match(lastCodeFactorNote(me({ sms: true }), 0) ?? "", /唯一/);
+	assert.match(lastCodeFactorNote(me({ sms: true }), 0, "phone") ?? "", /唯一/);
 	assert.equal(
-		lastCodeFactorNote(me({ sms: true, email: true }), 0),
+		lastCodeFactorNote(me({ sms: true, email: true }), 0, "phone"),
 		undefined,
 	);
-	assert.equal(lastCodeFactorNote(me({ sms: true }), 1), undefined);
-	assert.equal(lastCodeFactorNote(me({ sms: true, totp: true }), 0), undefined);
+	assert.equal(lastCodeFactorNote(me({ sms: true }), 1, "phone"), undefined);
+	assert.equal(
+		lastCodeFactorNote(me({ sms: true, totp: true }), 0, "phone"),
+		undefined,
+	);
 	assert.equal(lastPasskeyNote(me({ email: true }), 1), undefined);
 });
 
@@ -337,4 +353,28 @@ test("the last Passkey of 两步验证 without a TOTP can't be deleted (409)", (
 	assert.equal(lastPasskeyNote(me(true, false), 2), undefined);
 	assert.equal(lastPasskeyNote(me(true, true), 1), undefined);
 	assert.equal(lastPasskeyNote(me(false, false), 1), undefined);
+});
+
+test("a phone number or email added while its Channel is gone counts for nothing", () => {
+	const me = {
+		identifiers: [{ kind: "phone" }, { kind: "email" }],
+		hasPassword: true,
+		passwordAllowed: true,
+		passkeyLogin: true,
+		twoFactor: {
+			...factors,
+			enabled: true,
+			sms: true,
+			email: true,
+			smsChannel: false,
+		},
+	};
+	assert.deepEqual(otherFactors(me, 0), ["邮箱"]);
+	// The phone number goes as it changes nothing; the email is all that's left.
+	assert.equal(lastCodeFactorNote(me, 0, "phone"), undefined);
+	assert.match(lastCodeFactorNote(me, 0, "email") ?? "", /唯一/);
+	assert.deepEqual(reauthChoices(me, false, true), ["email", "recovery"]);
+	// With the email Channel gone too, the last Passkey is all 两步验证 has.
+	const none = { ...me, twoFactor: { ...me.twoFactor, emailChannel: false } };
+	assert.match(lastPasskeyNote(none, 1) ?? "", /唯一/);
 });

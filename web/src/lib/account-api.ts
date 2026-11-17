@@ -49,6 +49,9 @@ export type Me = ProfileClaims & {
 		// Added the phone number, the email, as a second factor (ADR 0038).
 		sms: boolean;
 		email: boolean;
+		// Their Channels are configured: only then do they count, and get offered.
+		smsChannel: boolean;
+		emailChannel: boolean;
 	};
 	externalIdentities: ExternalIdentity[];
 	// The enabled Providers, to bind.

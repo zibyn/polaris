@@ -127,6 +127,16 @@ func TestRemovingAnUnusableFactor(t *testing.T) {
 	if _, err := e.pool.Exec(context.Background(), "DELETE FROM channels WHERE kind = 'phone'"); err != nil {
 		t.Fatal(err)
 	}
+	// me says so, for the account center not to hold the removal back.
+	var me struct {
+		TwoFactor struct {
+			SMSChannel   bool `json:"smsChannel"`
+			EmailChannel bool `json:"emailChannel"`
+		} `json:"twoFactor"`
+	}
+	if c := e.call("GET", tok, "/v1/account/me", nil, &me); c != 200 || me.TwoFactor.SMSChannel || !me.TwoFactor.EmailChannel {
+		t.Errorf("me with the phone Channel gone: %d %+v", c, me.TwoFactor)
+	}
 	if c := e.call("DELETE", tok, "/v1/account/2fa/identifiers/phone", nil, nil); c != 204 {
 		t.Errorf("remove SMS, its Channel gone: %d, want 204", c)
 	}

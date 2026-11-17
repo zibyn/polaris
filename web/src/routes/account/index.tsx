@@ -1211,7 +1211,7 @@ function CodeFactor({
 	});
 	const run = () => {
 		if (!added) return setAdding(true);
-		const note = lastCodeFactorNote(me, passkeys);
+		const note = lastCodeFactorNote(me, passkeys, kind);
 		if (note) return setBlocked(note);
 		change.mutate();
 	};
