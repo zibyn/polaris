@@ -4,6 +4,7 @@ import {
 	avatarProblem,
 	bindSchema,
 	deleteSchema,
+	lastPasskeyNote,
 	nicknameSchema,
 	passwordSchema,
 	providerReturn,
@@ -11,6 +12,7 @@ import {
 	reauthSchema,
 	recoveryCodesText,
 	totpSchema,
+	twoFactorActions,
 } from "./account.ts";
 
 // fieldErrors is what a form shows under each field.
@@ -153,7 +155,7 @@ const meUser = (over: Partial<Parameters<typeof reauthChoices>[0]> = {}) => ({
 	hasPassword: false,
 	passwordAllowed: false,
 	passkeyLogin: true,
-	twoFactor: { enabled: false },
+	twoFactor: { enabled: false, totp: false },
 	...over,
 });
 
@@ -169,7 +171,7 @@ test("reauthentication offers a Passkey only to a User who has one", () => {
 });
 
 test("with 两步验证 on, a Passkey joins the TOTP as a way to reauthenticate", () => {
-	const twoFactor = { twoFactor: { enabled: true } };
+	const twoFactor = { twoFactor: { enabled: true, totp: true } };
 	assert.deepEqual(reauthChoices(meUser(twoFactor), false, true), ["totp"]);
 	assert.deepEqual(reauthChoices(meUser(twoFactor), true, true), [
 		"passkey",
@@ -210,4 +212,53 @@ test("an avatar is a JPEG, PNG or WebP of at most 5 MB", () => {
 		avatarProblem({ type: "image/jpeg", size: (5 << 20) + 1 }),
 		"头像不能超过 5 MB",
 	);
+});
+
+test("with 两步验证 on by a Passkey alone, a recovery code joins the Passkey", () => {
+	const twoFactor = { twoFactor: { enabled: true, totp: false } };
+	assert.deepEqual(reauthChoices(meUser(twoFactor), true, true), [
+		"passkey",
+		"recovery",
+	]);
+});
+
+test("两步验证 turns on with a Passkey only while one counts", () => {
+	const off = {
+		passkeyLogin: true,
+		twoFactor: { enabled: false, totp: false },
+	};
+	assert.deepEqual(twoFactorActions(off, 1), ["enable-passkey", "enable-totp"]);
+	assert.deepEqual(twoFactorActions(off, 0), ["enable-totp"]);
+	assert.deepEqual(twoFactorActions({ ...off, passkeyLogin: false }, 1), [
+		"enable-totp",
+	]);
+});
+
+test("with 两步验证 on, the TOTP is added, or removed while a Passkey is left", () => {
+	const on = (totp: boolean) => ({
+		passkeyLogin: true,
+		twoFactor: { enabled: true, totp },
+	});
+	assert.deepEqual(twoFactorActions(on(false), 1), [
+		"add-totp",
+		"regenerate",
+		"disable",
+	]);
+	assert.deepEqual(twoFactorActions(on(true), 1), [
+		"remove-totp",
+		"regenerate",
+		"disable",
+	]);
+	assert.deepEqual(twoFactorActions(on(true), 0), ["regenerate", "disable"]);
+});
+
+test("the last Passkey of 两步验证 without a TOTP can't be deleted (409)", () => {
+	const me = (enabled: boolean, totp: boolean) => ({
+		passkeyLogin: true,
+		twoFactor: { enabled, totp },
+	});
+	assert.match(lastPasskeyNote(me(true, false), 1) ?? "", /先添加验证器/);
+	assert.equal(lastPasskeyNote(me(true, false), 2), undefined);
+	assert.equal(lastPasskeyNote(me(true, true), 1), undefined);
+	assert.equal(lastPasskeyNote(me(false, false), 1), undefined);
 });

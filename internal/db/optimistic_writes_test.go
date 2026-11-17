@@ -109,7 +109,8 @@ func TestOptimisticWritesRefuseStaleReads(t *testing.T) {
 			return q.ConfirmTOTP(ctx, sqlc.ConfirmTOTPParams{UserID: "ALICE", Step: 6, Secret: []byte("s1")})
 		}, 0},
 		{"kept on while off", func() (int64, error) { return q.KeepTwoFactorOn(ctx, "ALICE") }, 0},
-		{"turned on", func() (int64, error) { return 1, q.EnableTwoFactor(ctx, "ALICE") }, 1},
+		{"turned on", func() (int64, error) { return q.EnableTwoFactor(ctx, "ALICE") }, 1},
+		{"turned on again", func() (int64, error) { return q.EnableTwoFactor(ctx, "ALICE") }, 0},
 		{"kept on while on", func() (int64, error) { return q.KeepTwoFactorOn(ctx, "ALICE") }, 1},
 		{"turned off", func() (int64, error) { return q.DisableTwoFactor(ctx, "ALICE") }, 1},
 		{"kept on once off", func() (int64, error) { return q.KeepTwoFactorOn(ctx, "ALICE") }, 0},

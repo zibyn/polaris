@@ -480,16 +480,13 @@ function UserPage() {
 											})
 										}
 									>
-										将清除用户的验证器和全部恢复码，已登录的设备不会下线。请先线下核实用户身份。
+										将关闭两步验证，清除用户的验证器和全部恢复码；Passkey
+										保留，已登录的设备不会下线。请先线下核实用户身份。
 									</ConfirmDialog>
 								)
 							}
 						>
-							{u.twoFactor
-								? "已开启"
-								: u.twoFactorOrPasskey
-									? "由 Passkey 满足"
-									: "未开启"}
+							{u.twoFactor ? "已开启" : "未开启"}
 						</PropRow>
 					</ItemList>
 				</Section>

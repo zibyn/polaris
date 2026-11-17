@@ -86,6 +86,19 @@ func (q *Queries) ConfirmTOTP(ctx context.Context, arg ConfirmTOTPParams) (int64
 	return result.RowsAffected(), nil
 }
 
+const deleteConfirmedTOTP = `-- name: DeleteConfirmedTOTP :execrows
+DELETE FROM totp_credentials WHERE user_id = $1 AND confirmed_at IS NOT NULL
+`
+
+// Removes the User's TOTP, leaving 两步验证 on; no row without one.
+func (q *Queries) DeleteConfirmedTOTP(ctx context.Context, userID string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteConfirmedTOTP, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteRecoveryCodes = `-- name: DeleteRecoveryCodes :exec
 DELETE FROM recovery_codes WHERE user_id = $1
 `
@@ -117,14 +130,17 @@ func (q *Queries) DisableTwoFactor(ctx context.Context, userID string) (int64, e
 	return result.RowsAffected(), nil
 }
 
-const enableTwoFactor = `-- name: EnableTwoFactor :exec
+const enableTwoFactor = `-- name: EnableTwoFactor :execrows
 INSERT INTO two_factor (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING
 `
 
-// Turns 两步验证 on; a no-op while it is.
-func (q *Queries) EnableTwoFactor(ctx context.Context, userID string) error {
-	_, err := q.db.Exec(ctx, enableTwoFactor, userID)
-	return err
+// Turns 两步验证 on; no row while it is on already.
+func (q *Queries) EnableTwoFactor(ctx context.Context, userID string) (int64, error) {
+	result, err := q.db.Exec(ctx, enableTwoFactor, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const keepTwoFactorOn = `-- name: KeepTwoFactorOn :execrows
@@ -140,6 +156,19 @@ func (q *Queries) KeepTwoFactorOn(ctx context.Context, userID string) (int64, er
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const passkeySecondFactor = `-- name: PasskeySecondFactor :one
+SELECT (EXISTS (SELECT 1 FROM passkeys WHERE user_id = $1) AND (SELECT passkey_login FROM settings))::boolean AS usable
+`
+
+// Whether sub has a Passkey 两步验证 can take: one at all, while the
+// instance offers Passkey login (ADR 0037).
+func (q *Queries) PasskeySecondFactor(ctx context.Context, userID string) (bool, error) {
+	row := q.db.QueryRow(ctx, passkeySecondFactor, userID)
+	var usable bool
+	err := row.Scan(&usable)
+	return usable, err
 }
 
 const tOTP = `-- name: TOTP :one

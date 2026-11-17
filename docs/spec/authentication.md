@@ -65,7 +65,8 @@
 
 ## 2FA(二期)
 
-- **开启**:User 自愿开启。
+- **开启**:User 自愿开启,在账号中心用验证器(扫码并输入一个码确认 TOTP)开启,或者已有 Passkey 时只用 Passkey 开启,不必绑 TOTP;实例关着 Passkey 登录时不能只用 Passkey 开启。开着之后 TOTP 可以单独添加;有 Passkey(且 Passkey 登录开着)时也可以单独移除,移除后两步验证仍开着,没有可用的 Passkey 时移除返回 409。单独加、减 TOTP 不重新生成恢复码,分别记审计 `totp.added`、`totp.removed`;开启记 `mfa.enabled` 只在真正从关到开时写一次。
+- **只靠 Passkey 开着时**:删除最后一把 Passkey 一律返回 409(本人在账号中心删、管理员在控制台删都一样),提示先绑 TOTP 或先关闭两步验证;管理员要解除就用「重置两步验证」。重置清除 TOTP 和恢复码、关闭两步验证,不动 Passkey。实例之后关掉 Passkey 登录是允许的:这些 User 的第二步只剩恢复码,托管页直接给恢复码输入框(ADR 0037)。
 - **管理员必须启用两步验证或 Passkey**:实例设置里的开关(设置组「登录方式」Tab),默认关闭,只对持有 Management API Role 的 User 生效。"满足要求"指已开启两步验证,或至少有一把 Passkey(Passkey 本身每次都要求生物识别或 PIN,已是两步验证)。打开后:
   - 持有 Role 但既没开两步验证也没有 Passkey 的 User 调用任何 Management API 接口,都返回 403,错误体带 `code: "two_factor_required"`;满足要求后立即恢复,不用等令牌过期。只看代表 User 的令牌,`client_credentials` 的服务账号不受影响。
   - 持有 Role 的 User 不能在账号中心删掉自己最后的满足项:还有 Passkey 时可以关闭两步验证,开了两步验证时可以删除最后一把 Passkey,两者都不剩时动哪个都返回 409;恢复码仍可重新生成。管理员仍可为别人重置两步验证,重置不动 Passkey。
@@ -73,9 +74,9 @@
   - Passkey 开关关掉后 Passkey 不再算满足项;只剩 Passkey 的管理员保存"关闭"会被拒绝(422,同一句提示;同一次保存里把这个要求也关掉就放行),理由同上。
 - **生效范围**:开启后,除 Passkey 外,任何第一因素登录都要再过一次第二因素:TOTP、Passkey 或恢复码之一(ADR 0037)。不把短信或邮箱验证码当第二因素。
 - **TOTP 参数**:`otpauth://` 固定 SHA1 / 6 位 / 30 秒,同时显示可复制的 Base32 密钥。
-- **恢复码**:开启时生成 10 个一次性恢复码,只显示一次,可以重新生成。
+- **恢复码**:开启时(用验证器或只用 Passkey)生成 10 个一次性恢复码,只显示一次,可以重新生成。
 - **登录**:第一因素通过后进入两步验证这一步,输入一个 TOTP、用 Passkey 断言或输入一个恢复码,三者效果相同。步骤顺序固定为 TOTP → 绑手机号 → 同意协议;TOTP 通过之前不建 Session,也不发授权码,"已通过第一因素"的状态只存在 AuthnSession 的 store(托管页)或 `auth_session`(直连 API)里。
-  - **托管页**:输入框标注 `autocomplete="one-time-code"`;可切换到「使用恢复码」。User 有 Passkey 且实例开着 Passkey 登录时,另有「使用 Passkey」按钮(只在支持 `PublicKeyCredential` 的浏览器上显示):渲染这一步时生成 challenge 存进 AuthnSession store,断言选项只列这个 User 自己的凭证(`allowCredentials`),要求 UV,不发起自动填充;以 `op=passkey` 提交,断言校验与 Passkey 登录相同,别人的 Passkey 不通过。
+  - **托管页**:输入框标注 `autocomplete="one-time-code"`;可切换到「使用恢复码」;没有 TOTP 的 User(只靠 Passkey 开着)直接看到恢复码输入框,没有「使用验证器」。提交了 TOTP 码却没有 TOTP 时按输错处理,不会放行。User 有 Passkey 且实例开着 Passkey 登录时,另有「使用 Passkey」按钮(只在支持 `PublicKeyCredential` 的浏览器上显示):渲染这一步时生成 challenge 存进 AuthnSession store,断言选项只列这个 User 自己的凭证(`allowCredentials`),要求 UV,不发起自动填充;以 `op=passkey` 提交,断言校验与 Passkey 登录相同,别人的 Passkey 不通过。
   - **直连 API**:返回 `next: "totp"`,在同一 `auth_session` 里提交 `totp` 或 `recovery_code`,见 [protocol.md](protocol.md#直连认证-api)。
   - **输错**:每个待完成的登录最多输错 5 次,第 5 次后本次登录作废(托管页回到第一步,直连 API 的 `auth_session` 失效)。另按 User 锁定,见 [security-compliance.md](security-compliance.md#失败锁定)(ADR 0036)。Passkey 断言失败两者都不计入,TOTP 被锁定期间 Passkey 仍可完成这一步(ADR 0037)。
   - **时钟偏差**:接受前后各一个 30 秒时间步。

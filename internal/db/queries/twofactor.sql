@@ -23,9 +23,18 @@ WHERE user_id = @user_id AND confirmed_at IS NULL AND secret = @secret AND last_
 -- When sub turned 两步验证 on; no row while it is off.
 SELECT enabled_at FROM two_factor WHERE user_id = $1;
 
--- name: EnableTwoFactor :exec
--- Turns 两步验证 on; a no-op while it is.
+-- name: EnableTwoFactor :execrows
+-- Turns 两步验证 on; no row while it is on already.
 INSERT INTO two_factor (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING;
+
+-- name: PasskeySecondFactor :one
+-- Whether sub has a Passkey 两步验证 can take: one at all, while the
+-- instance offers Passkey login (ADR 0037).
+SELECT (EXISTS (SELECT 1 FROM passkeys WHERE user_id = $1) AND (SELECT passkey_login FROM settings))::boolean AS usable;
+
+-- name: DeleteConfirmedTOTP :execrows
+-- Removes the User's TOTP, leaving 两步验证 on; no row without one.
+DELETE FROM totp_credentials WHERE user_id = $1 AND confirmed_at IS NOT NULL;
 
 -- name: KeepTwoFactorOn :execrows
 -- Holds 两步验证 on for the rest of the transaction: a no-op write that

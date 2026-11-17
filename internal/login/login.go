@@ -1015,8 +1015,9 @@ type loginPage struct {
 	Client, Action, Error string
 	Terms                 sqlc.TermsRow
 	// TOTP: a User past the first factor must enter a TOTP code, or a 恢复码
-	// on the Recovery form.
-	TOTP, Recovery bool
+	// on the Recovery form. NoTOTP: their 两步验证 is on by a Passkey alone,
+	// so the Recovery form is all there is to type into.
+	TOTP, Recovery, NoTOTP bool
 	// SetPassword: a 待激活 User must replace the admin's initial password
 	// before anything else happens (ADR 0016).
 	SetPassword bool
@@ -1138,6 +1139,12 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 	// The 两步验证 step carries options naming the User's own Passkeys, if
 	// they have any and Passkey login is on (ADR 0037).
 	if pl := pendingOf(as); p.TOTP && pl != nil {
+		t, err := s.q.TOTP(ctx, pl.Sub)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return goidc.StatusFailure, err
+		}
+		p.NoTOTP = err != nil || !t.ConfirmedAt.Valid
+		p.Recovery = p.Recovery || p.NoTOTP
 		options, challenge, err := s.passkeys.SecondFactorOptions(ctx, pl.Sub)
 		switch {
 		case err == nil:

@@ -67,7 +67,7 @@ User (sub: 不透明、稳定、永不复用)
 ### 换绑与解绑
 
 - 都要求**近期重新认证**:这个 Session 10 分钟内认证过,只看认证时间。没开两步验证的 User 用自己已绑定的手机号或邮箱收验证码,或者用密码重新认证;有 Passkey 的也可以用它重新认证(断言选项只列自己的凭证)。也可以用自己已绑定的 Provider 重新认证:通用 OIDC 带 `prompt=login` 和 `max_age=0`,并校验 `auth_time`。通用 OAuth2(如 GitHub)两者都不支持,上游记着登录状态时不必再输密码,所以用它重新认证只证明"此刻仍控制这个外部账号",不证明刚刚认证过(ADR 0013)。Google 与 Microsoft 也拿不到 `auth_time`(Google 要用 `claims` 请求参数专门要,Microsoft 的 v2 id_token 里没有这个 claim),两者同样按 OAuth2 的口径:`max_age` 两家文档都没写,`prompt=login` 只有 Microsoft 的文档写了(会要求输密码),Google 的文档没写。
-- 开了两步验证的 User 用 TOTP、恢复码或 Passkey 重新认证,验证码和密码一律拒绝,这样拿到手机号或密码的人做不了敏感操作。TOTP 或恢复码成功后这个 Session 的 `amr` 记为 `["otp", "mfa"]`;Passkey 与 Passkey 登录一样,记为 `["hwk", "mfa"]` 或 `["swk", "mfa"]`(见 authentication.md),`auth_time` 同登录一样更新。同一个时间步的码只能用一次,恢复码用过即作废(记审计 `recovery_code.used`);输错计入单个 IP 的失败计数。
+- 开了两步验证的 User 用 TOTP、恢复码或 Passkey 重新认证,验证码和密码一律拒绝,这样拿到手机号或密码的人做不了敏感操作。只靠 Passkey 开着两步验证(没有 TOTP)的 User 用 Passkey 或恢复码;提交 TOTP 码按输错处理(422,计入锁定)。TOTP 或恢复码成功后这个 Session 的 `amr` 记为 `["otp", "mfa"]`;Passkey 与 Passkey 登录一样,记为 `["hwk", "mfa"]` 或 `["swk", "mfa"]`(见 authentication.md),`auth_time` 同登录一样更新。同一个时间步的码只能用一次,恢复码用过即作废(记审计 `recovery_code.used`);输错计入单个 IP 的失败计数。
 - 新的手机号或邮箱要用验证码验证;旧的不要求。
 - 解绑规则相同,受不变式 1 约束。
 - **绑定 External Identity**:只在账号中心,用重定向型 Provider 完成;直连 API 不提供绑定。解绑时触发该 Provider 的解绑回调(如 Apple 吊销令牌)。

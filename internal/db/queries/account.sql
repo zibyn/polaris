@@ -17,6 +17,8 @@ SELECT u.created_at,
        -- When 两步验证 was turned on; null while it is off.
        (SELECT t.enabled_at FROM two_factor t WHERE t.user_id = u.id) AS two_factor_since,
        (SELECT count(*) FROM recovery_codes c WHERE c.user_id = u.id AND c.used_at IS NULL) AS recovery_codes_left,
+       -- A confirmed TOTP: optional once 两步验证 can be on by a Passkey alone.
+       EXISTS (SELECT 1 FROM totp_credentials c WHERE c.user_id = u.id AND c.confirmed_at IS NOT NULL) AS has_totp,
        -- Whether the instance offers Passkey login: the account center hides
        -- its Passkey section and reauthentication way while it does not.
        s.passkey_login,

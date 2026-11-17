@@ -29,9 +29,15 @@ import (
 )
 
 const (
-	ErrOn           identity.Invalid = "两步验证已开启"
-	ErrOff          identity.Invalid = "两步验证未开启"
-	ErrNotBegun     identity.Invalid = "请先扫码添加验证器"
+	ErrOn       identity.Invalid = "两步验证已开启"
+	ErrOff      identity.Invalid = "两步验证未开启"
+	ErrNotBegun identity.Invalid = "请先扫码添加验证器"
+	// ErrNoPasskey is 两步验证 by a Passkey alone, from a User with none
+	// that counts.
+	ErrNoPasskey identity.Invalid = "请先添加 Passkey,或开启 Passkey 登录"
+	// ErrLastFactor is removing the TOTP that is all 两步验证 has besides
+	// the recovery codes.
+	ErrLastFactor   identity.Invalid = "验证器是你唯一的两步验证方式,请先添加 Passkey 或关闭两步验证"
 	ErrCode                          = identity.ErrWrongTOTP
 	ErrRecoveryCode                  = identity.ErrWrongRecoveryCode
 )
@@ -86,8 +92,52 @@ func (s *Store) Begin(ctx context.Context, sub string) (string, error) {
 	return b32.EncodeToString(secret), err
 }
 
-// Confirm confirms the TOTP just begun with a code from it and turns 两步验证
-// on, returning the User's 恢复码: the only time anyone sees them.
+// Enable turns 两步验证 on with a Passkey alone, returning the User's 恢复码:
+// the only time anyone sees them. ErrNoPasskey unless the User has a Passkey
+// and the instance offers Passkey login (ADR 0037).
+func (s *Store) Enable(ctx context.Context, sub string) ([]string, error) {
+	var codes []string
+	// SERIALIZABLE: the last Passkey going meanwhile is refused here or
+	// there (passkey.Remove), not both let through.
+	err := db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		if ok, err := q.PasskeySecondFactor(ctx, sub); err != nil || !ok {
+			return cmp.Or(err, error(ErrNoPasskey))
+		}
+		if n, err := q.EnableTwoFactor(ctx, sub); err != nil || n == 0 {
+			return cmp.Or(err, error(ErrOn))
+		}
+		var err error
+		if codes, err = s.newRecoveryCodes(ctx, q, sub); err != nil {
+			return err
+		}
+		return writeAudit(ctx, q, "mfa.enabled", sub, audit.User(sub))
+	})
+	return codes, err
+}
+
+// RemoveTOTP removes the User's TOTP, leaving 两步验证 on by their Passkey:
+// ErrLastFactor without one that counts.
+func (s *Store) RemoveTOTP(ctx context.Context, sub string) error {
+	return db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		if ok, err := q.PasskeySecondFactor(ctx, sub); err != nil {
+			return err
+		} else if !ok {
+			if t, err := q.TOTP(ctx, sub); err == nil && t.ConfirmedAt.Valid {
+				return ErrLastFactor
+			}
+		}
+		if n, err := q.DeleteConfirmedTOTP(ctx, sub); err != nil || n == 0 {
+			return cmp.Or(err, error(ErrNotBegun))
+		}
+		return writeAudit(ctx, q, "totp.removed", sub, audit.User(sub))
+	})
+}
+
+// Confirm confirms the TOTP just begun with a code from it. With 两步验证
+// off it turns it on, returning the User's 恢复码: the only time anyone sees
+// them. With it on by a Passkey, the TOTP joins it and the 恢复码 stay.
 func (s *Store) Confirm(ctx context.Context, sub, code string) ([]string, error) {
 	var codes []string
 	err := db.Retry(ctx, s.pool, func(tx pgx.Tx) error {
@@ -110,8 +160,10 @@ func (s *Store) Confirm(ctx context.Context, sub, code string) ([]string, error)
 		} else if n == 0 {
 			return db.ErrConflict // read again: on now, or begun again
 		}
-		if err := q.EnableTwoFactor(ctx, sub); err != nil {
+		if n, err := q.EnableTwoFactor(ctx, sub); err != nil {
 			return err
+		} else if n == 0 {
+			return writeAudit(ctx, q, "totp.added", sub, audit.User(sub))
 		}
 		if codes, err = s.newRecoveryCodes(ctx, q, sub); err != nil {
 			return err

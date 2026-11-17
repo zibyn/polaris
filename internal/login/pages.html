@@ -253,7 +253,7 @@ addEventListener("DOMContentLoaded", () => {
     <input name="recovery_code" autocomplete="off" autocapitalize="none" spellcheck="false" required autofocus>
   </label>
   <button>{{t "登录"}}</button>
-  <a href="{{.Action}}">{{t "使用验证器"}}</a>
+  {{if not .NoTOTP}}<a href="{{.Action}}">{{t "使用验证器"}}</a>{{end}}
   {{else}}
   <p>{{t "输入验证器 App 中的 6 位验证码。"}}</p>
   <label>{{t "验证码"}}

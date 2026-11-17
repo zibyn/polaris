@@ -127,6 +127,8 @@ func (s *Service) Register(mux *http.ServeMux) {
 	op(api, http.MethodDelete, "remove-password", "/password", "Delete the User's password", s.removePassword, http.StatusForbidden)
 	op(api, http.MethodPost, "begin-totp", "/2fa/totp", "Begin turning 两步验证 on: a new TOTP to add to an authenticator, replacing one not yet confirmed", s.beginTOTP, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodPost, "confirm-totp", "/2fa/totp/confirm", "Turn 两步验证 on with a code from the new TOTP; the recovery codes are shown this once", s.confirmTOTP, http.StatusForbidden, http.StatusConflict)
+	op(api, http.MethodPost, "enable-2fa", "/2fa", "Turn 两步验证 on with a Passkey alone, no TOTP; the recovery codes are shown this once. 422 without a Passkey or while Passkey login is off", s.enableTwoFactor, http.StatusForbidden, http.StatusConflict)
+	op(api, http.MethodDelete, "remove-totp", "/2fa/totp", "Remove the TOTP, leaving 两步验证 on by a Passkey; 409 when no Passkey counts", s.removeTOTP, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodDelete, "disable-2fa", "/2fa", "Turn 两步验证 off, deleting the TOTP and recovery codes; 409 for an admin while 管理员必须启用两步验证或 Passkey is on and no Passkey is left", s.disableTwoFactor, http.StatusForbidden, http.StatusConflict)
 	// A Provider redirect comes back to the account center with ?bound=<id>,
 	// ?reauthenticated=<id> or ?error=<what to show the User>.
@@ -139,7 +141,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 	op(api, http.MethodPost, "begin-passkey", "/passkeys/options", "Begin adding a Passkey: creation options for the browser or native App", s.beginPasskey, http.StatusForbidden)
 	op(api, http.MethodPost, "add-passkey", "/passkeys", "Finish adding a Passkey with its registration response", s.addPasskey, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodPatch, "rename-passkey", "/passkeys/{id}", "Rename one of the User's Passkeys; no reauthentication needed", s.renamePasskey, http.StatusNotFound)
-	op(api, http.MethodDelete, "remove-passkey", "/passkeys/{id}", "Delete one of the User's Passkeys; 409 for the last one while 管理员必须启用两步验证或 Passkey is on, no TOTP is left and the User holds a Role", s.removePasskey, http.StatusForbidden, http.StatusNotFound, http.StatusConflict)
+	op(api, http.MethodDelete, "remove-passkey", "/passkeys/{id}", "Delete one of the User's Passkeys; 409 for the last one while 两步验证 is on with no TOTP, or while 管理员必须启用两步验证或 Passkey is on, no TOTP is left and the User holds a Role", s.removePasskey, http.StatusForbidden, http.StatusNotFound, http.StatusConflict)
 }
 
 // registerChangePassword serves /.well-known/change-password, where a
@@ -254,10 +256,11 @@ type TwoFactor struct {
 	Enabled           bool       `json:"enabled"`
 	EnabledAt         *time.Time `json:"enabledAt,omitempty"`
 	RecoveryCodesLeft int64      `json:"recoveryCodesLeft"`
+	TOTP              bool       `json:"totp" doc:"The User has a TOTP; 两步验证 may be on by a Passkey alone without one"`
 }
 
 func twoFactorOf(u sqlc.AccountUserRow) TwoFactor {
-	t := TwoFactor{Enabled: u.TwoFactorSince.Valid, RecoveryCodesLeft: u.RecoveryCodesLeft}
+	t := TwoFactor{Enabled: u.TwoFactorSince.Valid, RecoveryCodesLeft: u.RecoveryCodesLeft, TOTP: u.HasTotp}
 	if t.Enabled {
 		t.EnabledAt = &u.TwoFactorSince.Time
 	}
@@ -721,6 +724,24 @@ func (s *Service) confirmTOTP(ctx context.Context, in *confirmTOTPInput) (*recov
 	return out, twoFactorErr(err)
 }
 
+// enableTwoFactor turns 两步验证 on by the User's Passkey (ADR 0037).
+func (s *Service) enableTwoFactor(ctx context.Context, _ *struct{}) (*recoveryCodesOutput, error) {
+	if err := fresh(ctx); err != nil {
+		return nil, err
+	}
+	out := &recoveryCodesOutput{}
+	var err error
+	out.Body.RecoveryCodes, err = s.twoFactor.Enable(ctx, callerOf(ctx).sub)
+	return out, twoFactorErr(err)
+}
+
+func (s *Service) removeTOTP(ctx context.Context, _ *struct{}) (*struct{}, error) {
+	if err := fresh(ctx); err != nil {
+		return nil, err
+	}
+	return nil, twoFactorErr(s.twoFactor.RemoveTOTP(ctx, callerOf(ctx).sub))
+}
+
 // disableTwoFactor turns 两步验证 off; the User's other Sessions stay.
 func (s *Service) disableTwoFactor(ctx context.Context, _ *struct{}) (*struct{}, error) {
 	if err := fresh(ctx); err != nil {
@@ -747,9 +768,10 @@ func (s *Service) regenerateRecoveryCodes(ctx context.Context, _ *struct{}) (*re
 	return out, twoFactorErr(err)
 }
 
-// twoFactorErr is 409 for 两步验证 already on.
+// twoFactorErr is 409 for 两步验证 already on, or for removing its last
+// factor.
 func twoFactorErr(err error) error {
-	if errors.Is(err, twofactor.ErrOn) {
+	if errors.Is(err, twofactor.ErrOn) || errors.Is(err, twofactor.ErrLastFactor) {
 		return huma.Error409Conflict(err.Error())
 	}
 	return fail(err)
@@ -808,6 +830,9 @@ func (s *Service) directDelete(w http.ResponseWriter, r *http.Request) {
 func passkeyErr(err error) error {
 	if errors.Is(err, passkey.ErrGone) {
 		return huma.Error404NotFound("没有这把 Passkey")
+	}
+	if errors.Is(err, passkey.ErrLastSecondFactor) {
+		return huma.Error409Conflict(err.Error())
 	}
 	return fail(err)
 }

@@ -44,5 +44,8 @@ func (s *Service) removePasskey(ctx context.Context, in *struct {
 	if errors.Is(err, passkey.ErrGone) {
 		return nil, huma.Error404NotFound("no such Passkey")
 	}
+	if errors.Is(err, passkey.ErrLastSecondFactor) {
+		return nil, huma.Error409Conflict("该用户只靠 Passkey 开着两步验证,不能删除最后一把 Passkey;请先重置两步验证")
+	}
 	return nil, err
 }

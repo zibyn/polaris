@@ -5,6 +5,7 @@ package passkey
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -25,6 +26,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zibyn/polaris/internal/audit"
+	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/oidc/goidc"
@@ -50,6 +52,9 @@ const (
 	// (docs/spec/consoles.md#设置); the Passkeys Users added are kept and
 	// work again once it is on.
 	ErrOff identity.Invalid = "Passkey 登录已关闭"
+	// ErrLastSecondFactor is deleting the last Passkey of a User whose
+	// 两步验证 is on by Passkey alone.
+	ErrLastSecondFactor identity.Invalid = "这是你唯一的两步验证方式,请先添加验证器或关闭两步验证"
 )
 
 // amrMFA marks an authentication that passed 两步验证 (RFC 8176).
@@ -77,6 +82,7 @@ const challengeTTL = 5 * time.Minute
 // Store is the Passkey module: the account center (and, later, login and
 // the Management API) go through these operations.
 type Store struct {
+	pool   *pgxpool.Pool
 	q      *sqlc.Queries
 	issuer string
 	wa     *webauthn.WebAuthn
@@ -107,7 +113,7 @@ func New(pool *pgxpool.Pool, issuer string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{q: sqlc.New(pool), issuer: issuer, wa: wa}, nil
+	return &Store{pool: pool, q: sqlc.New(pool), issuer: issuer, wa: wa}, nil
 }
 
 // Enabled reports whether the instance offers Passkey login.
@@ -478,13 +484,22 @@ func (s *Store) Rename(ctx context.Context, sub, id, name string, by audit.Actor
 	return err
 }
 
-// Remove deletes one of the User's Passkeys.
+// Remove deletes one of the User's Passkeys: ErrLastSecondFactor for the
+// last one while 两步验证 is on with no TOTP, whoever asks.
 func (s *Store) Remove(ctx context.Context, sub, id string, by audit.Actor) error {
-	n, err := s.q.DeletePasskey(ctx, sqlc.DeletePasskeyParams{ByID: by.ID, ByType: by.Type, ID: id, UserID: sub})
-	if err == nil && n == 0 {
-		err = ErrGone
-	}
-	return err
+	// SERIALIZABLE: 两步验证 going on by this Passkey, or the TOTP going,
+	// meanwhile is refused here or there (twofactor), not both let through.
+	return db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		if last, err := q.LastSecondFactor(ctx, sqlc.LastSecondFactorParams{Sub: sub, ID: id}); err != nil || last {
+			return cmp.Or(err, error(ErrLastSecondFactor))
+		}
+		n, err := q.DeletePasskey(ctx, sqlc.DeletePasskeyParams{ByID: by.ID, ByType: by.Type, ID: id, UserID: sub})
+		if err == nil && n == 0 {
+			err = ErrGone
+		}
+		return err
+	})
 }
 
 // RegisterWellKnown serves /.well-known/passkey-endpoints, where password

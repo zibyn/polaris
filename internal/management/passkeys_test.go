@@ -112,6 +112,37 @@ func TestResetTwoFactorKeepsPasskeys(t *testing.T) {
 	}
 }
 
+// While 两步验证 is on by a Passkey alone, an admin can't delete the User's
+// last Passkey either; resetting 两步验证 turns it off and keeps the
+// Passkey, which then goes like any other.
+func TestAdminKeepsPasskeyOnlyTwoFactor(t *testing.T) {
+	e := start(t)
+	e.user("ALICE", nil, "email:alice@example.com")
+	owner := e.token(e.owner, nil)
+	last := e.passkey("ALICE", "手机", true)
+	if _, err := e.pool.Exec(context.Background(), `INSERT INTO two_factor (user_id) VALUES ('ALICE')`); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := e.call("DELETE", owner, "/users/ALICE/passkeys/"+last, nil, nil); code != 409 {
+		t.Fatalf("delete the last: %d, want 409", code)
+	}
+	if code := e.call("DELETE", owner, "/users/ALICE/2fa", nil, nil); code != 204 {
+		t.Fatalf("reset: %d", code)
+	}
+	var detail struct{ TwoFactor bool }
+	if code := e.get(owner, "/users/ALICE", &detail); code != 200 || detail.TwoFactor {
+		t.Fatalf("after reset: %d %+v", code, detail)
+	}
+	var list struct{ Passkeys []struct{ ID string } }
+	if code := e.get(owner, "/users/ALICE/passkeys", &list); code != 200 || len(list.Passkeys) != 1 {
+		t.Fatalf("Passkey kept: %d %+v", code, list)
+	}
+	if code := e.call("DELETE", owner, "/users/ALICE/passkeys/"+last, nil, nil); code != 204 {
+		t.Errorf("delete after reset: %d", code)
+	}
+}
+
 // The association files serve password autofill too, so the Passkey switch
 // leaves them alone (docs/spec/authentication.md「密码管理器适配」).
 func TestAssociationFilesSurviveThePasskeySwitch(t *testing.T) {
