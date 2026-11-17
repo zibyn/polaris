@@ -199,6 +199,59 @@ addEventListener("DOMContentLoaded", () => {
   <a href="/authorize/abc?recovery">使用恢复码</a>
   
 </form>
+<p class="or" hidden>或</p>
+<button type="button" id="passkey-login" hidden>使用 Passkey</button>
+<form method="post" action="/authorize/abc" id="passkey-form" hidden>
+  <input type="hidden" name="op" value="passkey">
+  <input type="hidden" name="passkey">
+</form>
+<script type="application/json" id="passkey-options">{"publicKey":{"challenge":"x"}}</script>
+<script src="/login/passkey.js" defer></script>
+<script>
+
+
+
+
+
+
+
+const options = JSON.parse(document.getElementById("passkey-options").textContent).publicKey;
+const get = mediation => navigator.credentials.get({
+  mediation,
+  publicKey: {
+    rpId: options.rpId,
+    challenge: polaris.b64url.decode(options.challenge),
+    allowCredentials: options.allowCredentials?.map(c => ({...c, id: polaris.b64url.decode(c.id)})),
+    userVerification: options.userVerification,
+    timeout: options.timeout,
+  },
+});
+const post = cred => {
+  const form = document.getElementById("passkey-form");
+  form.passkey.value = JSON.stringify({
+    id: cred.id,
+    rawId: polaris.b64url.encode(cred.rawId),
+    type: cred.type,
+    response: {
+      clientDataJSON: polaris.b64url.encode(cred.response.clientDataJSON),
+      authenticatorData: polaris.b64url.encode(cred.response.authenticatorData),
+      signature: polaris.b64url.encode(cred.response.signature),
+      userHandle: cred.response.userHandle ? polaris.b64url.encode(cred.response.userHandle) : undefined,
+    },
+  });
+  form.submit();
+};
+addEventListener("DOMContentLoaded", () => {
+  const button = document.getElementById("passkey-login");
+  if (window.PublicKeyCredential) { 
+    button.hidden = button.previousElementSibling.hidden = false; 
+    button.onclick = () => get("optional").then(post, () => {});
+  }
+  if (!options.allowCredentials) try { 
+    get("conditional").then(post, () => {});
+  } catch {}
+});
+</script>
 
 </main>
 </div>

@@ -131,7 +131,7 @@ func TestNextStep(t *testing.T) {
 				terms(t)
 				return sub, []string{"pwd"}
 			},
-			want: stepTOTP,
+			want: stepTwoFactor,
 		},
 		{
 			name: "mfa in amr clears 两步验证",
@@ -202,7 +202,7 @@ func TestNextStep(t *testing.T) {
 	}
 
 	names := map[step]string{
-		stepDone: "done", stepSetPassword: "setPassword", stepTOTP: "totp",
+		stepDone: "done", stepSetPassword: "setPassword", stepTwoFactor: "totp",
 		stepPhone: "phone", stepConsent: "consent",
 	}
 	for _, tc := range tests {

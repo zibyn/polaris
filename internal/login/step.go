@@ -15,7 +15,7 @@ type step int
 const (
 	stepDone step = iota
 	stepSetPassword
-	stepTOTP
+	stepTwoFactor
 	stepPhone
 	stepConsent
 )
@@ -34,12 +34,12 @@ func (s *Service) nextStep(ctx context.Context, sub string, amr []string, alread
 		if pending {
 			return stepSetPassword, nil
 		}
-		totp, err := s.needsTOTP(ctx, sub, amr)
+		totp, err := s.needsTwoFactor(ctx, sub, amr)
 		if err != nil {
 			return stepDone, err
 		}
 		if totp {
-			return stepTOTP, nil
+			return stepTwoFactor, nil
 		}
 	}
 	consent, err := s.q.NeedsConsent(ctx, sub)
@@ -69,16 +69,17 @@ type pendingLogin struct {
 	Method   string   `json:"method,omitempty"` // the login method (ADR 0027)
 	// Session: the browser Session the User already had (hosted page only).
 	Session string `json:"session,omitempty"`
-	// TOTP: waiting for a TOTP code or a 恢复码, with Failures mistakes so far.
-	TOTP     bool `json:"totp,omitempty"`
-	Failures int  `json:"failures,omitempty"`
+	// TwoFactor: waiting for 两步验证 (a TOTP code, a 恢复码 or a Passkey),
+	// with Failures mistakes so far. Kept as "totp" in sessions already stored.
+	TwoFactor bool `json:"totp,omitempty"`
+	Failures  int  `json:"failures,omitempty"`
 	// Password: 待激活, waiting for the User to replace the initial password
 	// an admin set. Nothing else happens until they do (ADR 0016).
 	Password bool `json:"password,omitempty"`
 }
 
 func newPending(sub string, authTime time.Time, amr []string, method string, what step) *pendingLogin {
-	return &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, Method: method, TOTP: what == stepTOTP, Password: what == stepSetPassword}
+	return &pendingLogin{Sub: sub, AuthTime: authTime.Unix(), AMR: amr, Method: method, TwoFactor: what == stepTwoFactor, Password: what == stepSetPassword}
 }
 
 func (p *pendingLogin) authTime() time.Time { return time.Unix(p.AuthTime, 0) }

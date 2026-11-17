@@ -26,6 +26,8 @@ const spec: Record<string, [string, string][]> = {
 		["mfa.disabled", "关闭两步验证"],
 		["mfa.reset", "重置两步验证"],
 		["recovery_codes.regenerated", "重新生成恢复码"],
+		["totp.added", "添加验证器"],
+		["totp.removed", "移除验证器"],
 		["recovery_code.used", "使用恢复码"],
 		["session.ended", "下线会话"],
 		["roles.assigned", "设置角色"],
@@ -209,6 +211,8 @@ test("every event reads as a sentence", () => {
 			"重新生成了用户 a@x.com 的恢复码",
 		],
 		[{ event: "recovery_code.used", ...alice }, "用户 a@x.com 用了一个恢复码"],
+		[{ event: "totp.added", ...alice }, "为用户 a@x.com 添加了验证器"],
+		[{ event: "totp.removed", ...alice }, "移除了用户 a@x.com 的验证器"],
 		[
 			{ event: "session.ended", ...alice, detail: { session: "S1" } },
 			"下线了用户 a@x.com 的一个会话",

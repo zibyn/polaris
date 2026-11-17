@@ -108,10 +108,13 @@ func TestOptimisticWritesRefuseStaleReads(t *testing.T) {
 		{"TOTP confirmed again", func() (int64, error) {
 			return q.ConfirmTOTP(ctx, sqlc.ConfirmTOTPParams{UserID: "ALICE", Step: 6, Secret: []byte("s1")})
 		}, 0},
-		{"kept on while on", func() (int64, error) { return q.KeepTOTPOn(ctx, "ALICE") }, 1},
-		{"turned off", func() (int64, error) { return q.DeleteTOTP(ctx, "ALICE") }, 1},
-		{"kept on once off", func() (int64, error) { return q.KeepTOTPOn(ctx, "ALICE") }, 0},
-		{"turned off again", func() (int64, error) { return q.DeleteTOTP(ctx, "ALICE") }, 0},
+		{"kept on while off", func() (int64, error) { return q.KeepTwoFactorOn(ctx, "ALICE") }, 0},
+		{"turned on", func() (int64, error) { return q.EnableTwoFactor(ctx, "ALICE") }, 1},
+		{"turned on again", func() (int64, error) { return q.EnableTwoFactor(ctx, "ALICE") }, 0},
+		{"kept on while on", func() (int64, error) { return q.KeepTwoFactorOn(ctx, "ALICE") }, 1},
+		{"turned off", func() (int64, error) { return q.DisableTwoFactor(ctx, "ALICE") }, 1},
+		{"kept on once off", func() (int64, error) { return q.KeepTwoFactorOn(ctx, "ALICE") }, 0},
+		{"turned off again", func() (int64, error) { return q.DisableTwoFactor(ctx, "ALICE") }, 0},
 	} {
 		if n, err := w.run(); err != nil || n != w.want {
 			t.Errorf("%s: %d rows, %v; want %d", w.name, n, err, w.want)

@@ -44,6 +44,8 @@ export type Me = ProfileClaims & {
 		enabled: boolean;
 		enabledAt?: string;
 		recoveryCodesLeft: number;
+		// Has a TOTP; 两步验证 can be on by a Passkey alone without one.
+		totp: boolean;
 	};
 	externalIdentities: ExternalIdentity[];
 	// The enabled Providers, to bind.

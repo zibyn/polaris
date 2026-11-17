@@ -156,6 +156,10 @@ public sealed interface SignInStep {
   public class PhoneRequired(public val session: AuthSession) : SignInStep
   /** The User has 两步验证 on: ask for a code from their authenticator ([Polaris.verifyTotp]) or a 恢复码 ([Polaris.verifyRecoveryCode]). */
   public class TotpRequired(public val session: AuthSession) : SignInStep
+  /** The User does 两步验证 with a Passkey: [Polaris.verifyPasskey], or a 恢复码 ([Polaris.verifyRecoveryCode]). */
+  public class PasskeyRequired(public val session: AuthSession) : SignInStep
+  /** The User has both TOTP and a Passkey for 两步验证: let them pick [Polaris.verifyTotp], [Polaris.verifyPasskey] or [Polaris.verifyRecoveryCode]. */
+  public class TwoFactorChoice(public val session: AuthSession) : SignInStep
 }
 
 /**
@@ -253,6 +257,26 @@ public class Polaris(
   @Throws(Exception::class)
   public suspend fun verifyRecoveryCode(session: AuthSession, code: String): SignInStep =
     challenge(session, session.termsVersion) { append("recovery_code", code) }
+
+  /**
+   * Does 两步验证 with a Passkey through the system sheet, after
+   * [SignInStep.PasskeyRequired] or [SignInStep.TwoFactorChoice]. A rejected
+   * assertion throws `invalid_request` but keeps [session]: call this again.
+   * Dismissing the sheet throws [PolarisException.PASSKEY_CANCELLED].
+   */
+  @Throws(Exception::class)
+  public suspend fun verifyPasskey(session: AuthSession): SignInStep {
+    val prompt = systemPasskeys()
+    val begin = http.submitForm("$issuer/v1/auth/challenge", Parameters.build {
+      append("client_id", clientId(session.account))
+      append("terms_version", session.termsVersion)
+      append("auth_session", session.id)
+      append("passkey", "begin")
+    })
+    val assertion = prompt.get(decode<PasskeyBeginResponse>(begin).options.underPublicKey())
+      ?: throw PolarisException(PolarisException.PASSKEY_CANCELLED)
+    return challenge(session, session.termsVersion) { append("passkey", assertion) }
+  }
 
   /** Signs in with an Identifier (username, phone number or email) and its password. */
   @Throws(Exception::class)
@@ -405,6 +429,14 @@ public class Polaris(
           "code" -> SignInStep.CodeSent(next)
           "phone" -> SignInStep.PhoneRequired(next)
           "totp" -> SignInStep.TotpRequired(next)
+          "passkey" -> SignInStep.PasskeyRequired(next)
+          // methods values this SDK does not know are ignored (docs/sdk-behavior.md).
+          "two_factor" -> when {
+            "totp" in e.methods && "passkey" in e.methods -> SignInStep.TwoFactorChoice(next)
+            "totp" in e.methods -> SignInStep.TotpRequired(next)
+            "passkey" in e.methods -> SignInStep.PasskeyRequired(next)
+            else -> throw PolarisException(PolarisException.UNSUPPORTED_STEP, "no 两步验证 method this SDK version supports: ${e.methods}")
+          }
           else -> throw PolarisException(PolarisException.UNSUPPORTED_STEP, "next step not supported by this SDK version: ${e.next}")
         }
       }
@@ -655,6 +687,7 @@ private fun newVerifier(): String = base64Url.encode(Uuid.random().toByteArray()
   @SerialName("error_description") val description: String? = null,
   @SerialName("auth_session") val authSession: String? = null,
   val next: String? = null,
+  val methods: List<String> = emptyList(),
   // The Account API's (Huma's).
   val title: String? = null,
   val detail: String? = null,

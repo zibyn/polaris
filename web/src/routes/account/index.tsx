@@ -48,6 +48,7 @@ import {
 	avatarProblem,
 	bindSchema,
 	deleteSchema,
+	lastPasskeyNote,
 	nicknameSchema,
 	passkeyNameSchema,
 	passwordSchema,
@@ -58,7 +59,9 @@ import {
 	reauthMethods,
 	reauthSchema,
 	recoveryCodesText,
+	type TwoFactorAction,
 	totpSchema,
+	twoFactorActions,
 } from "#/lib/account";
 import {
 	type AccountBrand,
@@ -849,7 +852,7 @@ function Security({ me, guard }: { me: Me; guard: Guard }) {
 						{me.hasPassword ? "已设置" : <Muted>未设置</Muted>}
 					</PropRow>
 				)}
-				{me.passkeyLogin && <Passkeys guard={guard} />}
+				{me.passkeyLogin && <Passkeys me={me} guard={guard} />}
 				<TwoFactor me={me} guard={guard} />
 			</ItemList>
 			{editing && <SetPassword onClose={() => setEditing(false)} />}
@@ -859,7 +862,7 @@ function Security({ me, guard }: { me: Me; guard: Guard }) {
 
 // Passkeys lists the User's Passkeys and adds one through the browser's
 // system dialog; renaming is anyone's business, deleting a guarded one.
-function Passkeys({ guard }: { guard: Guard }) {
+function Passkeys({ me, guard }: { me: Me; guard: Guard }) {
 	const queryClient = useQueryClient();
 	const { passkeys } = useSuspenseQuery(passkeysQuery).data;
 	const [renaming, setRenaming] = useState<Passkey | null>(null);
@@ -886,6 +889,7 @@ function Passkeys({ guard }: { guard: Guard }) {
 		onSuccess: () => queryClient.invalidateQueries(passkeysQuery),
 		onError: failed("删除 Passkey 失败"),
 	});
+	const lastNote = lastPasskeyNote(me, passkeys.length);
 	return (
 		<>
 			{passkeys.map((p, i) => (
@@ -934,18 +938,28 @@ function Passkeys({ guard }: { guard: Guard }) {
 			{renaming && (
 				<RenamePasskey passkey={renaming} onClose={() => setRenaming(null)} />
 			)}
-			<ConfirmDialog
-				open={deleting !== null}
-				onOpenChange={(open) => !open && setDeleting(null)}
-				title="删除 Passkey？"
-				action="删除"
-				onConfirm={() => {
-					if (deleting) remove.mutate(deleting.id);
-					setDeleting(null);
-				}}
-			>
-				删除后无法再用该 Passkey 登录。此操作无法撤销。
-			</ConfirmDialog>
+			{lastNote ? (
+				<ConfirmDialog
+					open={deleting !== null}
+					onOpenChange={(open) => !open && setDeleting(null)}
+					title="不能删除这把 Passkey"
+				>
+					{lastNote}
+				</ConfirmDialog>
+			) : (
+				<ConfirmDialog
+					open={deleting !== null}
+					onOpenChange={(open) => !open && setDeleting(null)}
+					title="删除 Passkey？"
+					action="删除"
+					onConfirm={() => {
+						if (deleting) remove.mutate(deleting.id);
+						setDeleting(null);
+					}}
+				>
+					删除后无法再用该 Passkey 登录。此操作无法撤销。
+				</ConfirmDialog>
+			)}
 		</>
 	);
 }
@@ -1007,14 +1021,33 @@ function RenamePasskey({
 	);
 }
 
-// TwoFactor turns 两步验证 on and off and replaces the recovery codes.
+// TwoFactor turns 两步验证 on (with a Passkey or a TOTP) and off, adds or
+// removes the TOTP, and replaces the recovery codes.
 function TwoFactor({ me, guard }: { me: Me; guard: Guard }) {
 	const queryClient = useQueryClient();
 	const [codes, setCodes] = useState<string[] | null>(null);
 	const [disabling, setDisabling] = useState(false);
+	const [removingTOTP, setRemovingTOTP] = useState(false);
+	const passkeys = useSuspenseQuery(passkeysQuery).data.passkeys.length;
 	const begin = useMutation({
 		mutationFn: () => api<TOTPSetup>("/2fa/totp", { method: "POST" }),
+		onError: failed(
+			me.twoFactor.enabled ? "添加验证器失败" : "开启两步验证失败",
+		),
+	});
+	const enable = useMutation({
+		mutationFn: () =>
+			api<{ recoveryCodes: string[] }>("/2fa", { method: "POST" }),
+		onSuccess: async (r) => {
+			setCodes(r.recoveryCodes);
+			await queryClient.invalidateQueries(meQuery);
+		},
 		onError: failed("开启两步验证失败"),
+	});
+	const removeTOTP = useMutation({
+		mutationFn: () => api("/2fa/totp", { method: "DELETE" }),
+		onSuccess: () => queryClient.invalidateQueries(meQuery),
+		onError: failed("移除验证器失败"),
 	});
 	const regenerate = useMutation({
 		mutationFn: () =>
@@ -1032,57 +1065,81 @@ function TwoFactor({ me, guard }: { me: Me; guard: Guard }) {
 		onSuccess: () => queryClient.invalidateQueries(meQuery),
 		onError: failed("关闭两步验证失败"),
 	});
-	const { enabled, recoveryCodesLeft } = me.twoFactor;
+	const { enabled, recoveryCodesLeft, totp } = me.twoFactor;
+	const buttons: Record<
+		TwoFactorAction,
+		{ label: string; pending: boolean; run: () => void }
+	> = {
+		"enable-passkey": {
+			label: "用 Passkey 开启",
+			pending: enable.isPending,
+			run: () => enable.mutate(),
+		},
+		"enable-totp": {
+			label: passkeys > 0 && me.passkeyLogin ? "用验证器开启" : "开启",
+			pending: begin.isPending,
+			run: () => begin.mutate(),
+		},
+		"add-totp": {
+			label: "添加验证器",
+			pending: begin.isPending,
+			run: () => begin.mutate(),
+		},
+		"remove-totp": {
+			label: "移除验证器",
+			pending: removeTOTP.isPending,
+			run: () => setRemovingTOTP(true),
+		},
+		regenerate: {
+			label: "重新生成恢复码",
+			pending: regenerate.isPending,
+			run: () => regenerate.mutate(),
+		},
+		disable: {
+			label: "关闭",
+			pending: disable.isPending,
+			run: () => setDisabling(true),
+		},
+	};
 	return (
 		<>
 			<PropRow
 				label="两步验证"
 				hint={
 					enabled
-						? `剩余 ${recoveryCodesLeft} 个恢复码`
-						: "开启后，验证码或密码登录需额外输入验证器中的 6 位数字"
+						? [
+								totp && "验证器",
+								passkeys > 0 && me.passkeyLogin && "Passkey",
+								`剩余 ${recoveryCodesLeft} 个恢复码`,
+							]
+								.filter(Boolean)
+								.join(" · ")
+						: "开启后，验证码或密码登录还需验证器中的 6 位数字或 Passkey"
 				}
-				actions={
-					enabled ? (
-						<>
-							<Button
-								variant="ghost"
-								size="sm"
-								disabled={regenerate.isPending}
-								onClick={() => guard(() => regenerate.mutate())}
-							>
-								重新生成恢复码
-							</Button>
-							<Button
-								variant="ghost"
-								size="sm"
-								disabled={disable.isPending}
-								onClick={() => guard(() => setDisabling(true))}
-							>
-								关闭
-							</Button>
-						</>
-					) : (
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={begin.isPending}
-							onClick={() => guard(() => begin.mutate())}
-						>
-							开启
-						</Button>
-					)
-				}
+				actions={twoFactorActions(me, passkeys).map((a) => (
+					<Button
+						key={a}
+						variant="ghost"
+						size="sm"
+						disabled={buttons[a].pending}
+						onClick={() => guard(buttons[a].run)}
+					>
+						{buttons[a].label}
+					</Button>
+				))}
 			>
 				{enabled ? "已开启" : <Muted>未开启</Muted>}
 			</PropRow>
 			{begin.data && (
 				<EnableTwoFactor
 					setup={begin.data}
+					adding={enabled}
 					onClose={() => begin.reset()}
 					onEnabled={(codes) => {
 						begin.reset();
-						setCodes(codes);
+						// Added to 两步验证 already on: the recovery codes stay.
+						if (codes.length > 0) setCodes(codes);
+						else saved();
 					}}
 				/>
 			)}
@@ -1094,7 +1151,16 @@ function TwoFactor({ me, guard }: { me: Me; guard: Guard }) {
 				action="关闭两步验证"
 				onConfirm={() => disable.mutate()}
 			>
-				验证器中的条目和所有恢复码将失效，其他设备不会下线。
+				验证器中的条目和所有恢复码将失效，Passkey 保留，其他设备不会下线。
+			</ConfirmDialog>
+			<ConfirmDialog
+				open={removingTOTP}
+				onOpenChange={setRemovingTOTP}
+				title="移除验证器？"
+				action="移除验证器"
+				onConfirm={() => removeTOTP.mutate()}
+			>
+				验证器中的条目将失效，两步验证仍开着，用 Passkey 或恢复码完成。
 			</ConfirmDialog>
 		</>
 	);
@@ -1104,10 +1170,13 @@ function TwoFactor({ me, guard }: { me: Me; guard: Guard }) {
 // copying the key, and turns 两步验证 on with one of its codes.
 function EnableTwoFactor({
 	setup,
+	adding,
 	onClose,
 	onEnabled,
 }: {
 	setup: TOTPSetup;
+	// 两步验证 is on already (by a Passkey): the TOTP joins it.
+	adding: boolean;
 	onClose: () => void;
 	onEnabled: (recoveryCodes: string[]) => void;
 }) {
@@ -1132,7 +1201,7 @@ function EnableTwoFactor({
 	return (
 		<Dialog open onOpenChange={(open) => !open && onClose()}>
 			<DialogContent>
-				<DialogTitle>开启两步验证</DialogTitle>
+				<DialogTitle>{adding ? "添加验证器" : "开启两步验证"}</DialogTitle>
 				<DialogDescription>
 					用验证器 App 扫描二维码，或复制密钥手动添加。
 				</DialogDescription>
@@ -1168,7 +1237,7 @@ function EnableTwoFactor({
 					<FormError error={confirm.error} />
 					<div className="flex justify-end">
 						<Button type="submit" disabled={confirm.isPending}>
-							确认开启
+							{adding ? "确认添加" : "确认开启"}
 						</Button>
 					</div>
 				</form>
@@ -1692,7 +1761,7 @@ function Reauth({
 							}
 						/>
 						<div className="flex justify-end gap-2">
-							{twoFactor && (
+							{twoFactor && me.twoFactor.totp && (
 								<Button
 									type="button"
 									variant="ghost"

@@ -143,6 +143,87 @@ class PolarisTest {
     assertTrue(steps.drop(1).all { it["auth_session"] == "s1" })
   }
 
+  // Passkey as the second step (ADR 0037): begin and the assertion both go on
+  // the first step's auth_session; a rejected assertion keeps that session,
+  // so the User just tries again.
+  @Test
+  fun passkeyCompletesTwoFactorOnTheSameSession() = runTest {
+    server.handlers["/v1/auth/challenge"] = { form ->
+      when {
+        form["username"] == "alice" -> json(insufficient("s1", "passkey"), HttpStatusCode.Forbidden)
+        form["auth_session"] != "s1" -> error("unexpected $form")
+        form["passkey"] == "begin" -> json("""{"auth_session":"s1","options":{"publicKey":{"challenge":"ch","allowCredentials":[{"id":"c1"}]}}}""")
+        form["passkey"] == "assertion" -> json("""{"authorization_code":"c1"}""")
+        form["passkey"] == "other" -> json("""{"error":"invalid_request","error_description":"Passkey 验证未通过","auth_session":"s1"}""", HttpStatusCode.BadRequest)
+        else -> error("unexpected $form")
+      }
+    }
+    val sheet = FakePasskeys(response = "assertion")
+    val auth = server.auth(sheet)
+
+    val step = assertIs<SignInStep.PasskeyRequired>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
+    assertEquals(SignInStep.SignedIn, auth.verifyPasskey(step.session))
+    assertEquals("""{"challenge":"ch","allowCredentials":[{"id":"c1"}]}""", sheet.given.single())
+    assertEquals(0, server.forms.count { it.first == "/v1/auth/challenge" && it.second["client_id"] != "app" })
+
+    val rejected = server.auth(FakePasskeys(response = "other"))
+    assertEquals("invalid_request", assertFailsWith<PolarisException> { rejected.verifyPasskey(step.session) }.error)
+    assertEquals(PolarisException.PASSKEY_CANCELLED, assertFailsWith<PolarisException> { server.auth(FakePasskeys(response = null)).verifyPasskey(step.session) }.error)
+  }
+
+  // 两步验证 by a Passkey alone still takes a 恢复码, on the same auth_session.
+  @Test
+  fun recoveryCodeCompletesPasskeyRequired() = runTest {
+    server.handlers["/v1/auth/challenge"] = { form ->
+      when {
+        form["username"] == "alice" -> json(insufficient("s1", "passkey"), HttpStatusCode.Forbidden)
+        form["auth_session"] == "s1" && form["recovery_code"] == "abcd-efgh" -> json("""{"authorization_code":"c1"}""")
+        else -> error("unexpected $form")
+      }
+    }
+    val auth = server.auth()
+
+    val step = assertIs<SignInStep.PasskeyRequired>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
+    assertEquals(SignInStep.SignedIn, auth.verifyRecoveryCode(step.session, "abcd-efgh"))
+  }
+
+  // TOTP and Passkey both on: either completes it, and so does a 恢复码.
+  @Test
+  fun twoFactorChoiceTakesEitherMethod() = runTest {
+    server.handlers["/v1/auth/challenge"] = { form ->
+      when {
+        form["username"] == "alice" -> json("""{"error":"insufficient_authorization","auth_session":"s1","next":"two_factor","methods":["totp","passkey","later"]}""", HttpStatusCode.Forbidden)
+        form["passkey"] == "begin" -> json("""{"auth_session":"s1","options":{"publicKey":{"challenge":"ch"}}}""")
+        form["passkey"] == "assertion" || form["totp"] == "123456" || form["recovery_code"] == "abcd-efgh" ->
+          json("""{"authorization_code":"c1"}""")
+        else -> error("unexpected $form")
+      }
+    }
+    val auth = server.auth(FakePasskeys(response = "assertion"))
+
+    val step = assertIs<SignInStep.TwoFactorChoice>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
+    assertEquals(SignInStep.SignedIn, auth.verifyPasskey(step.session))
+    assertEquals(SignInStep.SignedIn, auth.verifyTotp(step.session, "123456"))
+    assertEquals(SignInStep.SignedIn, auth.verifyRecoveryCode(step.session, "abcd-efgh"))
+  }
+
+  // methods narrows two_factor to what this SDK knows; nothing known fails.
+  @Test
+  fun twoFactorMethodsThisSdkDoesNotKnowAreIgnored() = runTest {
+    var methods = ""
+    server.handlers["/v1/auth/challenge"] = {
+      json("""{"error":"insufficient_authorization","auth_session":"s1","next":"two_factor","methods":[$methods]}""", HttpStatusCode.Forbidden)
+    }
+    val auth = server.auth()
+
+    methods = """"totp","later""""
+    assertIs<SignInStep.TotpRequired>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
+    methods = """"passkey","later""""
+    assertIs<SignInStep.PasskeyRequired>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
+    methods = """"later""""
+    assertEquals(PolarisException.UNSUPPORTED_STEP, assertFailsWith<PolarisException> { auth.signInWithPassword("alice", "pw", "") }.error)
+  }
+
   @Test
   fun codeSignInBindsAPhoneWhenAsked() = runTest {
     server.handlers["/v1/auth/challenge"] = { form ->

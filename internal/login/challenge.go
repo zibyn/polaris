@@ -49,6 +49,12 @@ const (
 	nextPhone    = "phone"    // bind a phone number first
 	nextTOTP     = "totp"     // enter a TOTP code or a 恢复码
 	nextPassword = "password" // set your own password first: the account is 待激活
+	// 两步验证 by a Passkey, the User's only way: passkey=begin, then the
+	// assertion, on this auth_session (ADR 0037).
+	nextPasskey = "passkey"
+	// 两步验证, the User's choice of methods: totp (or recovery_code) or
+	// passkey (ADR 0037).
+	nextTwoFactor = "two_factor"
 )
 
 // challengeState is what an auth_session carries between requests.
@@ -61,7 +67,8 @@ type challengeState struct {
 	Pending *pendingLogin `json:"pending,omitempty"`
 	// The challenge of a Passkey sign-in begun in this auth_session, which
 	// the assertion submitted on it must answer (ADR 0014). Spent with the
-	// auth_session: a refused assertion ends it.
+	// auth_session: a refused assertion ends it. On the 两步验证 step, the
+	// challenge of the User's own Passkeys: a refused assertion spends it.
 	PasskeyChallenge string `json:"passkey_challenge,omitempty"`
 }
 
@@ -73,6 +80,8 @@ type challengeError struct {
 	AuthSession string `json:"auth_session,omitempty"`
 	// Next names the step an insufficient_authorization asks for (ADR 0010).
 	Next string `json:"next,omitempty"`
+	// Methods are the ways to take a two_factor step.
+	Methods []string `json:"methods,omitempty"`
 }
 
 // challengeTTL is how long a direct-auth sign-in waits for its next step.
@@ -197,11 +206,11 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		return s.q.SaveChallengeSession(ctx, sqlc.SaveChallengeSessionParams{Hash: hash(token), ClientID: c.ID, Data: data, TtlSecs: int32(challengeTTL.Seconds())})
 	}
 	// next keeps the sign-in going: the App must take another step.
-	next := func(step, description string) (answer, error) {
+	next := func(step, description string, methods ...string) (answer, error) {
 		if err := save(); err != nil {
 			return answer{}, err
 		}
-		return answer{}, &challengeError{status: http.StatusForbidden, Code: errInsufficientAuthorization, Description: description, AuthSession: token, Next: step}
+		return answer{}, &challengeError{status: http.StatusForbidden, Code: errInsufficientAuthorization, Description: description, AuthSession: token, Next: step, Methods: methods}
 	}
 	// signedIn ends the sign-in with an authorization code, unless sub must
 	// pass 两步验证, agree to the terms or bind a phone number first, in that
@@ -227,7 +236,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 				return answer{}, err
 			}
 		}
-		if what == stepSetPassword || what == stepTOTP || what == stepPhone {
+		if what == stepSetPassword || what == stepTwoFactor || what == stepPhone {
 			st.Pending, st.Identifier = newPending(sub, authTime, amr, method, what), ""
 		}
 		switch what {
@@ -237,7 +246,16 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			// letting that carry on through 两步验证, the terms and a phone
 			// number would build the session on it.
 			return next(nextPassword, "set your own password: send password")
-		case stepTOTP:
+		case stepTwoFactor:
+			totp, key, err := s.secondFactors(ctx, sub)
+			switch {
+			case err != nil:
+				return answer{}, err
+			case totp && key:
+				return next(nextTwoFactor, "两步验证 is on: send totp or recovery_code, or begin a passkey", nextTOTP, nextPasskey)
+			case key:
+				return next(nextPasskey, "两步验证 is on: begin a passkey")
+			}
 			return next(nextTOTP, "两步验证 is on: send totp or recovery_code")
 		case stepPhone:
 			return next(nextPhone, "a phone number must be bound: send a code to one")
@@ -320,8 +338,40 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		}
 		return signedIn(p.Sub, p.authTime(), p.AMR, p.Method)
 
-	case st.Pending != nil && st.Pending.TOTP: // nothing else before TOTP
+	case st.Pending != nil && st.Pending.TwoFactor: // nothing else before 两步验证
 		p := st.Pending
+		// A Passkey of the User's own, as for a sign-in: begin, then the
+		// assertion. A refused one spends the challenge, not the
+		// auth_session, and counts against nothing (ADR 0037).
+		switch key := r.PostFormValue("passkey"); {
+		case key == "begin":
+			options, challenge, err := s.passkeys.SecondFactorOptions(ctx, p.Sub)
+			if err != nil {
+				return mistake(err)
+			}
+			st.PasskeyChallenge = challenge
+			if err := save(); err != nil {
+				return answer{}, err
+			}
+			return answer{token: token, options: options}, nil
+		case key != "":
+			challenge := st.PasskeyChallenge
+			if challenge == "" {
+				return mistake(identity.Invalid("no Passkey was begun in this auth_session"))
+			}
+			st.PasskeyChallenge = ""
+			in, err := s.passkeys.SecondFactor(ctx, p.Sub, challenge, []byte(key))
+			if err != nil {
+				var bad identity.Invalid
+				if errors.As(err, &bad) {
+					if err := save(); err != nil {
+						return answer{}, err
+					}
+				}
+				return mistake(err)
+			}
+			return signedIn(p.Sub, p.authTime(), withPasskey(p.AMR, in.BackupEligible), p.Method)
+		}
 		totp, recoveryCode := r.PostFormValue("totp"), r.PostFormValue("recovery_code")
 		if totp == "" && recoveryCode == "" {
 			return mistake(identity.Invalid("两步验证 is on: send totp or recovery_code"))

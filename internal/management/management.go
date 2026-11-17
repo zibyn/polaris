@@ -65,7 +65,7 @@ type caller struct {
 	sub         string
 	permissions []string
 	satisfied   bool // 两步验证或 Passkey 已满足
-	totp        bool // a confirmed TOTP, whether or not a Passkey also does
+	twoFactor   bool // 两步验证 on, whether or not a Passkey also satisfies it
 	application bool // an M2M Application calling as itself, not a User
 }
 
@@ -103,13 +103,13 @@ func (s *Service) Register(mux *http.ServeMux) {
 	op(api, http.MethodPost, "disable-user", "users:write", "/users/{sub}/disable", "Disable a User: no logins, every Session ended", s.disableUser, http.StatusConflict)
 	op(api, http.MethodPost, "enable-user", "users:write", "/users/{sub}/enable", "Restore a disabled User", s.enableUser, http.StatusConflict)
 	op(api, http.MethodDelete, "delete-user", "users:write", "/users/{sub}", "Delete a User and all their data", s.deleteUser, http.StatusConflict)
-	op(api, http.MethodDelete, "reset-two-factor", "users:write", "/users/{sub}/2fa", "Reset a User's 两步验证: their TOTP and 恢复码 go, their Sessions stay", s.resetTwoFactor, http.StatusConflict)
+	op(api, http.MethodDelete, "reset-two-factor", "users:write", "/users/{sub}/2fa", "Reset a User's 两步验证: it goes off with their TOTP and 恢复码; their Passkeys and Sessions stay", s.resetTwoFactor, http.StatusConflict)
 	op(api, http.MethodPut, "replace-identifier", "users:write", "/users/{sub}/identifiers/{kind}", "Set a User's Identifier of a kind, replacing theirs", s.replaceIdentifier, http.StatusConflict)
 	// 用户资料: an admin edits the nickname and can only take an avatar down, never upload one.
 	op(api, http.MethodPatch, "set-user-profile", "users:write", "/users/{sub}/profile", "Set or clear the 用户资料 fields given; 400 for one refused", s.setProfile, http.StatusBadRequest)
 	op(api, http.MethodDelete, "remove-user-avatar", "users:write", "/users/{sub}/avatar", "Take a User's avatar down", s.removeAvatar)
 	get(api, "list-user-passkeys", "users:read", "/users/{sub}/passkeys", "A User's Passkeys", s.listPasskeys)
-	op(api, http.MethodDelete, "remove-user-passkey", "users:write", "/users/{sub}/passkeys/{id}", "Delete one of a User's Passkeys; its audit names the admin, not the User", s.removePasskey)
+	op(api, http.MethodDelete, "remove-user-passkey", "users:write", "/users/{sub}/passkeys/{id}", "Delete one of a User's Passkeys; its audit names the admin, not the User. 409 for the last one while 两步验证 is on with no TOTP: reset 两步验证 first", s.removePasskey, http.StatusConflict)
 	get(api, "list-external-identities", "users:read", "/users/{sub}/external-identities", "A User's External Identities", s.listExternalIdentities)
 	op(api, http.MethodDelete, "unbind-external-identity", "users:write", "/users/{sub}/external-identities/{provider}", "Unbind a User's External Identity, unless it is their last way to sign in; its Provider is told to revoke", s.unbindExternalIdentity, http.StatusConflict)
 	get(api, "overview", "users:read", "/overview", "Counts for the console's overview", s.overview)
@@ -204,7 +204,7 @@ func (s *Service) authorize(api huma.API) func(huma.Context, func(huma.Context))
 		}
 		// An M2M Application's token has its client_id as sub, and it holds
 		// Roles on the API that the User tables know nothing about.
-		call := caller{sub: sub, permissions: c.Permissions, satisfied: twofactor.Satisfied(c.Totp, c.HasPasskey, c.PasskeyLogin), totp: c.Totp}
+		call := caller{sub: sub, permissions: c.Permissions, satisfied: twofactor.Satisfied(c.TwoFactor, c.HasPasskey, c.PasskeyLogin), twoFactor: c.TwoFactor}
 		required, admin := c.TwoFactorRequired, c.Admin
 		if !admin {
 			a, err := s.q.M2MCaller(ctx.Context(), sqlc.M2MCallerParams{ClientID: sub, Api: identity.ManagementAPI})

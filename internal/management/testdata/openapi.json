@@ -5278,7 +5278,7 @@
             "description": "Internal Server Error"
           }
         },
-        "summary": "Reset a User's 两步验证: their TOTP and 恢复码 go, their Sessions stay"
+        "summary": "Reset a User's 两步验证: it goes off with their TOTP and 恢复码; their Passkeys and Sessions stay"
       }
     },
     "/users/{sub}/avatar": {
@@ -6068,6 +6068,16 @@
             },
             "description": "Not Found"
           },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
           "422": {
             "content": {
               "application/problem+json": {
@@ -6089,7 +6099,7 @@
             "description": "Internal Server Error"
           }
         },
-        "summary": "Delete one of a User's Passkeys; its audit names the admin, not the User"
+        "summary": "Delete one of a User's Passkeys; its audit names the admin, not the User. 409 for the last one while 两步验证 is on with no TOTP: reset 两步验证 first"
       }
     },
     "/users/{sub}/profile": {

@@ -5,7 +5,7 @@
 SELECT count(*) > 0 AS admin,
        COALESCE(array_agg(DISTINCT rp.permission ORDER BY rp.permission)
                 FILTER (WHERE rp.permission IS NOT NULL), '{}')::text[] AS permissions,
-       EXISTS (SELECT 1 FROM totp_credentials t WHERE t.user_id = @sub::text AND t.confirmed_at IS NOT NULL) AS totp,
+       EXISTS (SELECT 1 FROM two_factor t WHERE t.user_id = @sub::text) AS two_factor,
        EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = @sub::text) AS has_passkey,
        (SELECT passkey_login FROM settings) AS passkey_login,
        (SELECT admins_need_two_factor FROM settings) AS two_factor_required
@@ -62,7 +62,7 @@ SELECT u.id, u.created_at, u.disabled_at, u.pending,
                  FROM user_roles ur JOIN roles r ON r.api = ur.api AND r.key = ur.role
                  WHERE ur.user_id = u.id), '[]')::jsonb AS roles,
        EXISTS (SELECT 1 FROM passwords p WHERE p.user_id = u.id) AS has_password,
-       EXISTS (SELECT 1 FROM totp_credentials t WHERE t.user_id = u.id AND t.confirmed_at IS NOT NULL) AS two_factor,
+       EXISTS (SELECT 1 FROM two_factor t WHERE t.user_id = u.id) AS two_factor,
        EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = u.id) AS has_passkey,
        (SELECT passkey_login FROM settings) AS passkey_login,
        -- 注册邀请现在是什么状态: 表里还挂着一条还没到期的就是「已发出」, 上

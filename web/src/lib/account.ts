@@ -88,23 +88,24 @@ export type ReauthMethod = keyof typeof reauthMethods;
 
 // reauthChoices is the ways of reauthenticating to offer a User: a Passkey
 // when the instance offers Passkey login, they have one and the browser can
-// run the ceremony, then — with 两步验证 on — their TOTP, or otherwise the
-// codes to their Identifiers and their password. A Passkey itself passes
-// 两步验证.
+// run the ceremony, then — with 两步验证 on — their TOTP, or a recovery code
+// when they have none, or otherwise the codes to their Identifiers and their
+// password. A Passkey itself passes 两步验证.
 export const reauthChoices = (
 	me: {
 		identifiers: { kind: string }[];
 		hasPassword: boolean;
 		passwordAllowed: boolean;
 		passkeyLogin: boolean;
-		twoFactor: { enabled: boolean };
+		twoFactor: { enabled: boolean; totp: boolean };
 	},
 	hasPasskey: boolean,
 	supported: boolean,
 ): ReauthChoice[] => {
 	const passkey: ReauthChoice[] =
 		hasPasskey && me.passkeyLogin && supported ? ["passkey"] : [];
-	if (me.twoFactor.enabled) return [...passkey, "totp"];
+	if (me.twoFactor.enabled)
+		return [...passkey, me.twoFactor.totp ? "totp" : "recovery"];
 	const codes = me.identifiers
 		.map((i) => i.kind)
 		.filter((k): k is "phone" | "email" => k !== "username");
@@ -180,6 +181,50 @@ export const providerReturn = (
 	if (bound !== null) return { success: `已绑定 ${name(bound)}` };
 	if (q.has("reauthenticated")) return { success: "已验证身份，请继续操作" };
 	return null;
+};
+
+type TwoFactorState = {
+	passkeyLogin: boolean;
+	twoFactor: { enabled: boolean; totp: boolean };
+};
+
+// TwoFactorAction is a button of the account center's 两步验证 row.
+export type TwoFactorAction =
+	| "enable-passkey"
+	| "enable-totp"
+	| "add-totp"
+	| "remove-totp"
+	| "regenerate"
+	| "disable";
+
+// twoFactorActions is what the 两步验证 row offers. Off: turning it on with
+// a Passkey, while the User has one and the instance offers Passkey login,
+// or with a TOTP. On: adding a TOTP, or removing it while a Passkey is left
+// to pass 两步验证 with; new recovery codes; turning it off.
+export const twoFactorActions = (
+	me: TwoFactorState,
+	passkeys: number,
+): TwoFactorAction[] => {
+	const passkey = passkeys > 0 && me.passkeyLogin;
+	if (!me.twoFactor.enabled)
+		return passkey ? ["enable-passkey", "enable-totp"] : ["enable-totp"];
+	const totp: TwoFactorAction[] = !me.twoFactor.totp
+		? ["add-totp"]
+		: passkey
+			? ["remove-totp"]
+			: [];
+	return [...totp, "regenerate", "disable"];
+};
+
+// lastPasskeyNote is why the User's Passkey can't be deleted, or undefined:
+// it is their last, and 两步验证 is on with no TOTP. Same words as the
+// server's 409 (passkey.ErrLastPasskey).
+export const lastPasskeyNote = (
+	me: TwoFactorState,
+	passkeys: number,
+): string | undefined => {
+	if (me.twoFactor.enabled && !me.twoFactor.totp && passkeys === 1)
+		return "这是你唯一的两步验证方式，请先添加验证器或关闭两步验证";
 };
 
 // recoveryCodesText is the file the recovery codes download as.

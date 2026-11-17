@@ -424,15 +424,15 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 	}
 
 	op := r.PostFormValue("op")
-	awaitingTOTP := pl != nil && pl.TOTP
+	awaitingTwoFactor := pl != nil && pl.TwoFactor
 	awaitingPassword := pl != nil && pl.Password
 	switch {
 	case awaitingPassword && op != "set-password" && op != "delete-pending":
 		// 待激活: nothing else before the User sets their own password —
 		// except 注销, which is open to them too.
 		return s.render(w, r, as, c, loginPage{})
-	case awaitingTOTP && op != "totp":
-		return s.render(w, r, as, c, loginPage{}) // nothing else before TOTP
+	case awaitingTwoFactor && op != "totp" && op != "passkey":
+		return s.render(w, r, as, c, loginPage{}) // nothing else before 两步验证
 	}
 	switch op {
 	case "delete-pending":
@@ -463,7 +463,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		return s.complete(w, r, as, c, "", pending, pl.authTime(), pl.AMR, pl.Method)
 
 	case "totp":
-		if !awaitingTOTP {
+		if !awaitingTwoFactor {
 			break
 		}
 		form.Recovery = r.PostFormValue("recovery_code") != ""
@@ -601,10 +601,19 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		return s.login(w, r, as, c, sub, []string{string(goidc.AMRPassword)}, identity.MethodPassword, terms.TermsVersion)
 
 	case "passkey":
+		challenge, _ := as.Store[storePasskeyChallenge].(string)
+		if awaitingTwoFactor {
+			// 两步验证 with a Passkey of the User's own: no try of the login's
+			// nor of 2fa:<sub> spent on a failure (ADR 0037).
+			in, err := s.passkeys.SecondFactor(ctx, pending, challenge, []byte(r.PostFormValue("passkey")))
+			if err != nil {
+				return fail(err)
+			}
+			return s.complete(w, r, as, c, "", pending, pl.authTime(), withPasskey(pl.AMR, in.BackupEligible), pl.Method)
+		}
 		if pending != "" {
 			break
 		}
-		challenge, _ := as.Store[storePasskeyChallenge].(string)
 		in, err := s.passkeys.SignIn(ctx, challenge, []byte(r.PostFormValue("passkey")))
 		if err != nil {
 			return fail(err)
@@ -663,13 +672,24 @@ var (
 	errProviderDown = identity.Invalid("暂时无法连接该外部登录方式，请稍后重试")
 )
 
-// needsTOTP reports whether sub, signed in with amr, must still enter a
+// needsTwoFactor reports whether sub, signed in with amr, must still enter a
 // TOTP code or a 恢复码: 两步验证 is on and not yet passed.
-func (s *Service) needsTOTP(ctx context.Context, sub string, amr []string) (bool, error) {
+func (s *Service) needsTwoFactor(ctx context.Context, sub string, amr []string) (bool, error) {
 	if slices.Contains(amr, amrMFA) {
 		return false, nil
 	}
 	return s.twoFactor.On(ctx, sub)
+}
+
+// secondFactors reports which of TOTP and Passkey sub can pass 两步验证 with:
+// a confirmed TOTP, and a Passkey while the instance has Passkey login on
+// (ADR 0037). A 恢复码 goes wherever a TOTP code does.
+func (s *Service) secondFactors(ctx context.Context, sub string) (totp, key bool, err error) {
+	if totp, err = s.twoFactor.HasTOTP(ctx, sub); err != nil {
+		return false, false, err
+	}
+	key, err = s.q.PasskeySecondFactor(ctx, sub)
+	return totp, key, err
 }
 
 // wrongSecondFactor reports whether err is a wrong TOTP code or 恢复码: one
@@ -684,6 +704,12 @@ func withMFA(amr []string) []string {
 		amr = append(amr, string(goidc.AMROneTimePassword))
 	}
 	return append(amr, amrMFA)
+}
+
+// withPasskey is amr after a Passkey passed 两步验证: the first factor, the
+// key (hwk or swk), mfa; no otp, nothing was typed.
+func withPasskey(amr []string, synced bool) []string {
+	return append(slices.Clone(amr), passkey.AMR(synced)...)
 }
 
 // login goes on with a User who just passed the first factor, the login
@@ -983,9 +1009,10 @@ func hash(token string) []byte {
 type loginPage struct {
 	Client, Action, Error string
 	Terms                 sqlc.TermsRow
-	// TOTP: a User past the first factor must enter a TOTP code, or a 恢复码
-	// on the Recovery form.
-	TOTP, Recovery bool
+	// TwoFactor: a User past the first factor must enter a TOTP code, or a 恢复码
+	// on the Recovery form. HasTOTP: they have one; without, their 两步验证 is
+	// on by a Passkey alone, so the Recovery form is all there is to type into.
+	TwoFactor, Recovery, HasTOTP bool
 	// SetPassword: a 待激活 User must replace the admin's initial password
 	// before anything else happens (ADR 0016).
 	SetPassword bool
@@ -1008,7 +1035,8 @@ type loginPage struct {
 	PasswordForm bool
 	// Passkey, on the first step: the assertion options embedded in the
 	// page, which drive the identifier field's conditional UI, the
-	// 使用 Passkey 登录 button and the hidden form their response posts.
+	// 使用 Passkey 登录 button and the hidden form their response posts. On
+	// the 两步验证 step: the User's own Passkeys, behind 使用 Passkey.
 	Passkey template.JS
 }
 
@@ -1023,8 +1051,8 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		switch what {
 		case stepSetPassword:
 			p.SetPassword = true
-		case stepTOTP:
-			p.TOTP = true
+		case stepTwoFactor:
+			p.TwoFactor = true
 		case stepPhone:
 			p.Bind = true
 		case stepConsent:
@@ -1075,7 +1103,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		p.CodeKinds = "手机号或邮箱"
 	}
 	p.IdentifierLabel = p.CodeKinds
-	if pendingOf(as) == nil && !p.TOTP && !p.SetPassword {
+	if pendingOf(as) == nil && !p.TwoFactor && !p.SetPassword {
 		if p.Providers, err = s.providers.Buttons(ctx); err != nil {
 			return goidc.StatusFailure, err
 		}
@@ -1086,7 +1114,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 	}
 	// The first step carries Passkey assertion options, and a fresh challenge
 	// in the store: what makes an assertion for a page already left behind
-	// fail. Later steps (code, password, TOTP, consent, bind) carry none.
+	// fail. Later steps (code, password, consent, bind) carry none; the 两步验证 one its own, below.
 	// With Passkey login off the page carries none either: no conditional UI,
 	// no 「使用 Passkey 登录」 button, and no webauthn autocomplete hint
 	// (docs/spec/consoles.md#设置).
@@ -1103,6 +1131,24 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 			p.Passkey = template.JS(options)
 		}
 	}
+	// The 两步验证 step carries options naming the User's own Passkeys, if
+	// they have any and Passkey login is on (ADR 0037).
+	if pl := pendingOf(as); p.TwoFactor && pl != nil {
+		has, err := s.twoFactor.HasTOTP(ctx, pl.Sub)
+		if err != nil {
+			return goidc.StatusFailure, err
+		}
+		p.HasTOTP = has
+		p.Recovery = p.Recovery || !has
+		options, challenge, err := s.passkeys.SecondFactorOptions(ctx, pl.Sub)
+		switch {
+		case err == nil:
+			as.Store[storePasskeyChallenge] = challenge
+			p.Passkey = template.JS(options)
+		case !errors.Is(err, passkey.ErrNoPasskeys) && !errors.Is(err, passkey.ErrOff):
+			return goidc.StatusFailure, err
+		}
+	}
 	s.page(w, r, as.UILocales, c.ID, http.StatusOK, "login", p)
 	return goidc.StatusPending, nil
 }
@@ -1111,7 +1157,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 // identifier one, or the username and password one an instance without
 // Channels offers. A Passkey can start a login from either.
 func (p loginPage) firstStep() bool {
-	return !p.TOTP && !p.Consent && !p.Bind && !p.SetPassword && !p.CodeSent &&
+	return !p.TwoFactor && !p.Consent && !p.Bind && !p.SetPassword && !p.CodeSent &&
 		(p.Username == "" || p.PasswordForm)
 }
 

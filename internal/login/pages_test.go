@@ -91,8 +91,8 @@ func goldenCases() map[string]goldenCase {
 		"login-password":     {"login", with(func(p *loginPage) { p.PasswordForm = true; p.Error = "用户名或密码错误" })},
 		"login-username":     {"login", with(func(p *loginPage) { p.Username = "alice"; p.Passkey = "" })},
 		"login-code-sent":    {"login", with(func(p *loginPage) { p.Identifier = "a@b.c"; p.CodeSent = true; p.Passkey = "" })},
-		"login-totp":         {"login", with(func(p *loginPage) { p.TOTP = true; p.Error = "验证码不正确或已用过" })},
-		"login-recovery":     {"login", with(func(p *loginPage) { p.TOTP = true; p.Recovery = true })},
+		"login-totp":         {"login", with(func(p *loginPage) { p.TwoFactor, p.HasTOTP = true, true; p.Error = "验证码不正确或已用过" })},
+		"login-recovery":     {"login", with(func(p *loginPage) { p.TwoFactor, p.HasTOTP, p.Recovery = true, true, true })},
 		"login-consent":      {"login", with(func(p *loginPage) { p.Consent = true })},
 		"login-consent-none": {"login", with(func(p *loginPage) { p.Consent = true; p.Terms = sqlc.TermsRow{} })},
 		"login-bind": {"login", with(func(p *loginPage) {

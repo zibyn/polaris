@@ -20,6 +20,7 @@ type challengeResp struct {
 	Describe    string          `json:"error_description"`
 	AuthSession string          `json:"auth_session"`
 	Next        string          `json:"next"`
+	Methods     []string        `json:"methods"`
 	Options     json.RawMessage `json:"options"`
 }
 

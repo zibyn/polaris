@@ -5,6 +5,7 @@ package passkey
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -25,6 +26,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zibyn/polaris/internal/audit"
+	"github.com/zibyn/polaris/internal/db"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/oidc/goidc"
@@ -50,6 +52,9 @@ const (
 	// (docs/spec/consoles.md#设置); the Passkeys Users added are kept and
 	// work again once it is on.
 	ErrOff identity.Invalid = "Passkey 登录已关闭"
+	// ErrLastPasskey is deleting the last Passkey of a User whose
+	// 两步验证 is on by Passkey alone.
+	ErrLastPasskey identity.Invalid = "这是你唯一的两步验证方式，请先添加验证器或关闭两步验证"
 )
 
 // amrMFA marks an authentication that passed 两步验证 (RFC 8176).
@@ -77,6 +82,7 @@ const challengeTTL = 5 * time.Minute
 // Store is the Passkey module: the account center (and, later, login and
 // the Management API) go through these operations.
 type Store struct {
+	pool   *pgxpool.Pool
 	q      *sqlc.Queries
 	issuer string
 	wa     *webauthn.WebAuthn
@@ -107,7 +113,7 @@ func New(pool *pgxpool.Pool, issuer string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{q: sqlc.New(pool), issuer: issuer, wa: wa}, nil
+	return &Store{pool: pool, q: sqlc.New(pool), issuer: issuer, wa: wa}, nil
 }
 
 // Enabled reports whether the instance offers Passkey login.
@@ -291,15 +297,31 @@ func (s *Store) LoginOptions(ctx context.Context) (options json.RawMessage, chal
 // ponytail: shares passkey_challenges' one slot per Session with Begin (adding
 // one), so starting either cancels the other; the UI never has both open.
 func (s *Store) ReauthOptions(ctx context.Context, sub, session string) (json.RawMessage, error) {
-	if err := s.enabled(ctx); err != nil {
-		return nil, err
-	}
-	rows, err := s.q.PasskeyExclusions(ctx, sub)
+	options, challenge, err := s.SecondFactorOptions(ctx, sub)
 	if err != nil {
 		return nil, err
 	}
+	if err := s.putChallenge(ctx, session, sub, challenge); err != nil {
+		return nil, err
+	}
+	return options, nil
+}
+
+// SecondFactorOptions are the assertion options for sub to pass 两步验证
+// with a Passkey: naming only sub's own Passkeys, user verification
+// required. The challenge comes back for the caller to keep, as with
+// LoginOptions. ErrNoPasskeys when sub has none, ErrOff while the instance
+// has Passkey login off: either way there is no Passkey to offer.
+func (s *Store) SecondFactorOptions(ctx context.Context, sub string) (options json.RawMessage, challenge string, err error) {
+	if err = s.enabled(ctx); err != nil {
+		return nil, "", err
+	}
+	rows, err := s.q.PasskeyExclusions(ctx, sub)
+	if err != nil {
+		return nil, "", err
+	}
 	if len(rows) == 0 {
-		return nil, ErrNoPasskeys
+		return nil, "", ErrNoPasskeys
 	}
 	creds := make([]webauthn.Credential, len(rows))
 	for i, r := range rows {
@@ -307,12 +329,23 @@ func (s *Store) ReauthOptions(ctx context.Context, sub, session string) (json.Ra
 	}
 	assertion, sd, err := s.wa.BeginLogin(user{sub: sub, name: sub, creds: creds})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	if err := s.putChallenge(ctx, session, sub, sd.Challenge); err != nil {
-		return nil, err
+	if options, err = json.Marshal(assertion); err != nil {
+		return nil, "", err
 	}
-	return json.Marshal(assertion)
+	return options, sd.Challenge, nil
+}
+
+// SecondFactor passes sub's 两步验证 with a Passkey of theirs: the assertion
+// checked against the challenge SecondFactorOptions issued. Another User's
+// Passkey does not pass. A failure is not a guess, so nothing here counts it
+// (ADR 0036); a counter gone backwards is audited as on sign-in.
+func (s *Store) SecondFactor(ctx context.Context, sub, challenge string, response []byte) (SignIn, error) {
+	if err := s.enabled(ctx); err != nil {
+		return SignIn{}, err
+	}
+	return s.assert(ctx, challenge, response, sub)
 }
 
 // Reauth reauthenticates sub with a Passkey of theirs: the assertion checked
@@ -451,13 +484,22 @@ func (s *Store) Rename(ctx context.Context, sub, id, name string, by audit.Actor
 	return err
 }
 
-// Remove deletes one of the User's Passkeys.
+// Remove deletes one of the User's Passkeys: ErrLastPasskey for the
+// last one while 两步验证 is on with no TOTP, whoever asks.
 func (s *Store) Remove(ctx context.Context, sub, id string, by audit.Actor) error {
-	n, err := s.q.DeletePasskey(ctx, sqlc.DeletePasskeyParams{ByID: by.ID, ByType: by.Type, ID: id, UserID: sub})
-	if err == nil && n == 0 {
-		err = ErrGone
-	}
-	return err
+	// SERIALIZABLE: 两步验证 going on by this Passkey, or the TOTP going,
+	// meanwhile is refused here or there (twofactor), not both let through.
+	return db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		if last, err := q.LastSecondFactor(ctx, sqlc.LastSecondFactorParams{Sub: sub, ID: id}); err != nil || last {
+			return cmp.Or(err, error(ErrLastPasskey))
+		}
+		n, err := q.DeletePasskey(ctx, sqlc.DeletePasskeyParams{ByID: by.ID, ByType: by.Type, ID: id, UserID: sub})
+		if err == nil && n == 0 {
+			err = ErrGone
+		}
+		return err
+	})
 }
 
 // RegisterWellKnown serves /.well-known/passkey-endpoints, where password

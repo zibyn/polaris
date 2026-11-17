@@ -199,7 +199,7 @@ func TestDirectLoginAsksForTOTP(t *testing.T) {
 		}
 		sent := e.challenge(url.Values{"identifier": {phone}, "altcha": {e.solve()}})
 		r := e.challenge(url.Values{"auth_session": {sent.AuthSession}, "code": {e.inbox.take(phone)}})
-		if r.Status != 403 || r.Error != "insufficient_authorization" || r.Next != "totp" || r.AuthSession != sent.AuthSession {
+		if r.Status != 403 || r.Error != "insufficient_authorization" || r.Next != "totp" || r.Methods != nil || r.AuthSession != sent.AuthSession {
 			t.Fatalf("want next totp: %+v", r)
 		}
 		return r.AuthSession

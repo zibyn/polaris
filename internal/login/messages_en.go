@@ -60,6 +60,7 @@ var messagesEN = map[string]string{
 	"获取验证码":         "Get code",
 	"使用密码登录":        "Sign in with a password",
 	"使用 Passkey 登录": "Sign in with a passkey",
+	"使用 Passkey":    "Use a passkey",
 	"或":             "or",
 	"使用 %s 登录":      "Sign in with %s",
 	"创建所有者":         "Create the owner",
