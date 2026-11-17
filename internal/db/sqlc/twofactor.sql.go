@@ -158,11 +158,35 @@ func (q *Queries) KeepTwoFactorOn(ctx context.Context, userID string) (int64, er
 	return result.RowsAffected(), nil
 }
 
+const secondFactorIdentifier = `-- name: SecondFactorIdentifier :one
+SELECT value FROM identifiers WHERE user_id = $1 AND kind = $2 AND second_factor
+`
+
+type SecondFactorIdentifierParams struct {
+	UserID string
+	Kind   string
+}
+
+// The User's phone number or email added as a second factor; no row
+// without.
+func (q *Queries) SecondFactorIdentifier(ctx context.Context, arg SecondFactorIdentifierParams) (string, error) {
+	row := q.db.QueryRow(ctx, secondFactorIdentifier, arg.UserID, arg.Kind)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
 const secondFactorsOf = `-- name: SecondFactorsOf :one
 SELECT EXISTS (SELECT 1 FROM two_factor t WHERE t.user_id = $1) AS two_factor,
        EXISTS (SELECT 1 FROM totp_credentials c WHERE c.user_id = $1 AND c.confirmed_at IS NOT NULL) AS totp,
        EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = $1) AS passkey,
-       s.passkey_login
+       s.passkey_login,
+       -- A phone number or email added as a factor counts while its Channel
+       -- is configured: what could send it a code.
+       EXISTS (SELECT 1 FROM identifiers i JOIN channels ch ON ch.kind = i.kind
+               WHERE i.user_id = $1 AND i.kind = 'phone' AND i.second_factor) AS sms,
+       EXISTS (SELECT 1 FROM identifiers i JOIN channels ch ON ch.kind = i.kind
+               WHERE i.user_id = $1 AND i.kind = 'email' AND i.second_factor) AS email
 FROM settings s
 `
 
@@ -171,6 +195,8 @@ type SecondFactorsOfRow struct {
 	Totp         bool
 	Passkey      bool
 	PasskeyLogin bool
+	Sms          bool
+	Email        bool
 }
 
 // What sub has to pass 两步验证 with besides the recovery codes
@@ -183,8 +209,31 @@ func (q *Queries) SecondFactorsOf(ctx context.Context, sub string) (SecondFactor
 		&i.Totp,
 		&i.Passkey,
 		&i.PasskeyLogin,
+		&i.Sms,
+		&i.Email,
 	)
 	return i, err
+}
+
+const setIdentifierSecondFactor = `-- name: SetIdentifierSecondFactor :execrows
+UPDATE identifiers SET second_factor = $1
+WHERE user_id = $2 AND kind = $3 AND second_factor <> $1
+`
+
+type SetIdentifierSecondFactorParams struct {
+	Added  bool
+	UserID string
+	Kind   string
+}
+
+// Adds the User's Identifier of kind as a second factor, or removes it; no
+// row when it is so already, or not bound.
+func (q *Queries) SetIdentifierSecondFactor(ctx context.Context, arg SetIdentifierSecondFactorParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setIdentifierSecondFactor, arg.Added, arg.UserID, arg.Kind)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const tOTP = `-- name: TOTP :one

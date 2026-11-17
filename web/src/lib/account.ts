@@ -185,45 +185,76 @@ export const providerReturn = (
 
 type TwoFactorState = {
 	passkeyLogin: boolean;
-	twoFactor: { enabled: boolean; totp: boolean };
+	twoFactor: { enabled: boolean; totp: boolean; sms: boolean; email: boolean };
 };
+
+// otherFactors names the factors besides the TOTP that 两步验证 can be on
+// by (twofactor.Factors.Usable): a Passkey while the instance offers Passkey
+// login, the phone number and email added.
+export const otherFactors = (me: TwoFactorState, passkeys: number) =>
+	[
+		passkeys > 0 && me.passkeyLogin && "Passkey",
+		me.twoFactor.sms && "短信",
+		me.twoFactor.email && "邮箱",
+	].filter((f): f is string => !!f);
 
 // TwoFactorAction is a button of the account center's 两步验证 row.
 export type TwoFactorAction =
-	| "enable-passkey"
+	| "enable"
 	| "enable-totp"
 	| "add-totp"
 	| "remove-totp"
 	| "regenerate"
 	| "disable";
 
-// twoFactorActions is what the 两步验证 row offers. Off: turning it on with
-// a Passkey, while the User has one and the instance offers Passkey login,
-// or with a TOTP. On: adding a TOTP, or removing it while a Passkey is left
-// to pass 两步验证 with; new recovery codes; turning it off.
+// twoFactorActions is what the 两步验证 row offers. Off: turning it on by
+// the other factors (otherFactors), while there are any, or with a TOTP. On:
+// adding a TOTP, or removing it while another factor is left to pass
+// 两步验证 with; new recovery codes; turning it off.
 export const twoFactorActions = (
 	me: TwoFactorState,
 	passkeys: number,
 ): TwoFactorAction[] => {
-	const passkey = passkeys > 0 && me.passkeyLogin;
+	const other = otherFactors(me, passkeys).length > 0;
 	if (!me.twoFactor.enabled)
-		return passkey ? ["enable-passkey", "enable-totp"] : ["enable-totp"];
+		return other ? ["enable", "enable-totp"] : ["enable-totp"];
 	const totp: TwoFactorAction[] = !me.twoFactor.totp
 		? ["add-totp"]
-		: passkey
+		: other
 			? ["remove-totp"]
 			: [];
 	return [...totp, "regenerate", "disable"];
 };
 
+// lastCodeFactorNote is why the User's phone number or email can't be
+// removed as a factor, or undefined: 两步验证 is on and it is all it has.
+// Same words as the server's 409 (twofactor.ErrLastFactor).
+export const lastCodeFactorNote = (
+	me: TwoFactorState,
+	passkeys: number,
+): string | undefined => {
+	if (
+		me.twoFactor.enabled &&
+		!me.twoFactor.totp &&
+		otherFactors(me, passkeys).length === 1
+	)
+		return "这是你唯一的两步验证方式,请先添加其他方式或关闭两步验证";
+};
+
 // lastPasskeyNote is why the User's Passkey can't be deleted, or undefined:
-// it is their last, and 两步验证 is on with no TOTP. Same words as the
-// server's 409 (passkey.ErrLastPasskey).
+// it is their last, and 两步验证 is on with no TOTP, phone number or email.
+// Same words as the server's 409 (passkey.ErrLastPasskey).
 export const lastPasskeyNote = (
 	me: TwoFactorState,
 	passkeys: number,
 ): string | undefined => {
-	if (me.twoFactor.enabled && !me.twoFactor.totp && passkeys === 1)
+	if (
+		me.twoFactor.enabled &&
+		!me.twoFactor.totp &&
+		!me.twoFactor.sms &&
+		!me.twoFactor.email &&
+		passkeys === 1
+	)
 		return "这是你唯一的两步验证方式，请先添加验证器或关闭两步验证";
 };
 

@@ -252,7 +252,9 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			if err != nil {
 				return answer{}, err
 			}
-			switch u := f.Usable(); {
+			// shortcut: no SMS or email code here yet, so a User with only those gets
+			// totp (a recovery code goes there); offer them with the direct API (#207).
+			switch u := slices.DeleteFunc(f.Usable(), func(x twofactor.Factor) bool { return x.Kind() != "" }); {
 			case len(u) > 1:
 				return next(nextTwoFactor, "两步验证 is on: send totp or recovery_code, or begin a passkey", nextTOTP, nextPasskey)
 			case slices.Equal(u, []twofactor.Factor{twofactor.FactorPasskey}):
@@ -378,12 +380,12 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if totp == "" && recoveryCode == "" {
 			return mistake(identity.Invalid("两步验证 is on: send totp or recovery_code"))
 		}
-		err := s.ids.SecondFactor(ctx, identity.AttemptFrom(r, c.ID), p.Sub, recoveryCode != "", func() error {
+		err := s.ids.SecondFactor(ctx, identity.AttemptFrom(r, c.ID), p.Sub, twofactor.CheckMethod(recoveryCode), func() error {
 			return s.twoFactor.Check(ctx, p.Sub, totp, recoveryCode)
 		})
 		switch {
 		case err == nil:
-			return signedIn(p.Sub, p.authTime(), withMFA(p.AMR), p.Method)
+			return signedIn(p.Sub, p.authTime(), withMFA(p.AMR, string(goidc.AMROneTimePassword)), p.Method)
 		case errors.Is(err, twofactor.ErrOff): // turned off meanwhile: nothing to enter
 			return signedIn(p.Sub, p.authTime(), p.AMR, p.Method)
 		case wrongSecondFactor(err):

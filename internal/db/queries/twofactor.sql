@@ -33,8 +33,25 @@ INSERT INTO two_factor (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING;
 SELECT EXISTS (SELECT 1 FROM two_factor t WHERE t.user_id = @sub) AS two_factor,
        EXISTS (SELECT 1 FROM totp_credentials c WHERE c.user_id = @sub AND c.confirmed_at IS NOT NULL) AS totp,
        EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = @sub) AS passkey,
-       s.passkey_login
+       s.passkey_login,
+       -- A phone number or email added as a factor counts while its Channel
+       -- is configured: what could send it a code.
+       EXISTS (SELECT 1 FROM identifiers i JOIN channels ch ON ch.kind = i.kind
+               WHERE i.user_id = @sub AND i.kind = 'phone' AND i.second_factor) AS sms,
+       EXISTS (SELECT 1 FROM identifiers i JOIN channels ch ON ch.kind = i.kind
+               WHERE i.user_id = @sub AND i.kind = 'email' AND i.second_factor) AS email
 FROM settings s;
+
+-- name: SetIdentifierSecondFactor :execrows
+-- Adds the User's Identifier of kind as a second factor, or removes it; no
+-- row when it is so already, or not bound.
+UPDATE identifiers SET second_factor = @added
+WHERE user_id = @user_id AND kind = @kind AND second_factor <> @added;
+
+-- name: SecondFactorIdentifier :one
+-- The User's phone number or email added as a second factor; no row
+-- without.
+SELECT value FROM identifiers WHERE user_id = @user_id AND kind = @kind AND second_factor;
 
 -- name: DeleteConfirmedTOTP :execrows
 -- Removes the User's TOTP, leaving 两步验证 on; no row without one.

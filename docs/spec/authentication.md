@@ -65,29 +65,31 @@
 
 ## 2FA(二期)
 
-- **开启**:User 自愿开启,在账号中心用验证器(扫码并输入一个码确认 TOTP)开启,或者已有 Passkey 时只用 Passkey 开启,不必绑 TOTP;实例关着 Passkey 登录时不能只用 Passkey 开启。开着之后 TOTP 可以单独添加;有 Passkey(且 Passkey 登录开着)时也可以单独移除,移除后两步验证仍开着,没有可用的 Passkey 时移除返回 409。单独加、减 TOTP 不重新生成恢复码,分别记审计 `totp.added`、`totp.removed`;开启记 `mfa.enabled` 只在真正从关到开时写一次。
-- **只靠 Passkey 开着时**:删除最后一把 Passkey 一律返回 409(本人在账号中心删、管理员在控制台删都一样),提示先绑 TOTP 或先关闭两步验证;管理员要解除就用「重置两步验证」。重置清除 TOTP 和恢复码、关闭两步验证,不动 Passkey。实例之后关掉 Passkey 登录是允许的:这些 User 的第二步只剩恢复码,托管页直接给恢复码输入框(ADR 0037)。
+- **开启**:User 自愿开启,在账号中心用验证器(扫码并输入一个码确认 TOTP)开启,或者不绑 TOTP、只用已有的其他因素开启:Passkey(实例开着 Passkey 登录时才算),或已添加为第二因素的手机号、邮箱(ADR 0038)。开着之后 TOTP 可以单独添加;还有别的可用因素时也可以单独移除,移除后两步验证仍开着,没有时移除返回 409。单独加、减 TOTP 不重新生成恢复码,分别记审计 `totp.added`、`totp.removed`;开启记 `mfa.enabled` 只在真正从关到开时写一次。
+- **短信、邮箱作第二因素**:User 在账号中心把已绑定的手机号或邮箱添加为第二因素(`PUT /v1/account/2fa/identifiers/{kind}`),要求近期重新认证,不再发码确认。User 除这个渠道外没有别的登录途径(没有密码、没有可用的 Provider、没有另一种手机号或邮箱)时拒绝添加(422):每次用它登录第二步都只剩恢复码。这项检查只在添加时做。可以单独移除(`DELETE`,未添加 404)。两步验证关着时也能添加,之后用它开启;开着时加、减都不重新生成恢复码,记审计 `sms.added` / `sms.removed`、`email.added` / `email.removed`。标记跟着 Identifier 那一行:解绑 Identifier 时一并消失,更换号码时跟着换过去。
+- **最后一个因素**:两步验证开着时,TOTP、可用的 Passkey(实例开着 Passkey 登录)、短信、邮箱(Channel 配好)四种一起算还剩什么(`twofactor.Factors.Usable`)。移除 TOTP、移除短信或邮箱因素、删除 Passkey,删完一个都不剩时一律返回 409(本人在账号中心删、管理员在控制台删 Passkey 都一样),在 SERIALIZABLE 事务里先删再判断;Passkey 登录关着时 Passkey 不算,所以只靠 Passkey 开着的 User 一把也删不了。管理员要解除就用「重置两步验证」。重置清除 TOTP 和恢复码、关闭两步验证,不动 Passkey 和短信、邮箱标记。实例之后关掉 Passkey 登录是允许的:这些 User 的第二步只剩恢复码,托管页直接给恢复码输入框(ADR 0037)。
 - **管理员必须启用两步验证或 Passkey**:实例设置里的开关(设置组「登录方式」Tab),默认关闭,只对持有 Management API Role 的 User 生效。"满足要求"指已开启两步验证,或至少有一把 Passkey(Passkey 本身每次都要求生物识别或 PIN,已是两步验证)。打开后:
   - 持有 Role 但既没开两步验证也没有 Passkey 的 User 调用任何 Management API 接口,都返回 403,错误体带 `code: "two_factor_required"`;满足要求后立即恢复,不用等令牌过期。只看代表 User 的令牌,`client_credentials` 的服务账号不受影响。
   - 持有 Role 的 User 不能在账号中心删掉自己最后的满足项:还有 Passkey 时可以关闭两步验证,开了两步验证时可以删除最后一把 Passkey,两者都不剩时动哪个都返回 409;恢复码仍可重新生成。管理员仍可为别人重置两步验证,重置不动 Passkey。
   - 当前管理员自己不满足要求时,保存"打开"会被拒绝(422,「请先为自己开启两步验证」),免得把自己锁在外面。
   - Passkey 开关关掉后 Passkey 不再算满足项;只剩 Passkey 的管理员保存"关闭"会被拒绝(422,同一句提示;同一次保存里把这个要求也关掉就放行),理由同上。
-- **生效范围**:开启后,除 Passkey 外,任何第一因素登录都要再过一次第二因素:TOTP、Passkey 或恢复码之一(ADR 0037)。不把短信或邮箱验证码当第二因素。
+- **生效范围**:开启后,除 Passkey 外,任何第一因素登录都要再过一次第二因素:TOTP、Passkey、User 添加过的短信或邮箱验证码、恢复码之一(ADR 0037、0038)。短信、邮箱验证码要先添加才算,不与第一因素同渠道:短信验证码登录的第二步不提供短信,邮箱验证码登录不提供邮箱,按种类算,不按号码。
 - **TOTP 参数**:`otpauth://` 固定 SHA1 / 6 位 / 30 秒,同时显示可复制的 Base32 密钥。
-- **恢复码**:开启时(用验证器或只用 Passkey)生成 10 个一次性恢复码,只显示一次,可以重新生成。
-- **登录**:第一因素通过后进入两步验证这一步,输入一个 TOTP、用 Passkey 断言或输入一个恢复码,三者效果相同。步骤顺序固定为 TOTP → 绑手机号 → 同意协议;TOTP 通过之前不建 Session,也不发授权码,"已通过第一因素"的状态只存在 AuthnSession 的 store(托管页)或 `auth_session`(直连 API)里。
-  - **托管页**:输入框标注 `autocomplete="one-time-code"`;可切换到「使用恢复码」;没有 TOTP 的 User(只靠 Passkey 开着)直接看到恢复码输入框,没有「使用验证器」。提交了 TOTP 码却没有 TOTP 时按输错处理,不会放行。User 有 Passkey 且实例开着 Passkey 登录时,另有「使用 Passkey」按钮(只在支持 `PublicKeyCredential` 的浏览器上显示):渲染这一步时生成 challenge 存进 AuthnSession store,断言选项只列这个 User 自己的凭证(`allowCredentials`),要求 UV,不发起自动填充;以 `op=passkey` 提交,断言校验与 Passkey 登录相同,别人的 Passkey 不通过。
+- **恢复码**:开启时(用验证器或不绑 TOTP 开启)生成 10 个一次性恢复码,只显示一次,可以重新生成。
+- **登录**:第一因素通过后进入两步验证这一步,输入一个 TOTP、用 Passkey 断言、输入发到已添加的手机号或邮箱的验证码,或输入一个恢复码,效果相同。步骤顺序固定为 TOTP → 绑手机号 → 同意协议;TOTP 通过之前不建 Session,也不发授权码,"已通过第一因素"的状态只存在 AuthnSession 的 store(托管页)或 `auth_session`(直连 API)里。
+  - **托管页**:输入框标注 `autocomplete="one-time-code"`;可切换到「使用恢复码」;没有 TOTP 的 User(只靠 Passkey 开着)直接看到恢复码输入框,没有「使用验证器」。提交了 TOTP 码却没有 TOTP 时按输错处理,不会放行。User 有 Passkey 且实例开着 Passkey 登录时,另有「使用 Passkey」按钮(只在支持 `PublicKeyCredential` 的浏览器上显示):渲染这一步时生成 challenge 存进 AuthnSession store,断言选项只列这个 User 自己的凭证(`allowCredentials`),要求 UV,不发起自动填充;以 `op=passkey` 提交,断言校验与 Passkey 登录相同,别人的 Passkey 不通过。添加了短信或邮箱因素的 User 另有「发送验证码到 138****0000」(邮箱为 `o***@example.com`)按钮,点了才发(`op=send-2fa`),发码后显示 `autocomplete="one-time-code"` 的输入框(`op=code-2fa`),可「重新获取」或「使用其他方式」;有 TOTP 或 Passkey 时也照样列出。只看对应的 Channel 是否配好,不看登录方式开关:关掉短信验证码登录不影响短信码当第二步,Channel 不可用时不提供这一种。去掉与第一因素同渠道的那种后什么都不剩时,只给恢复码输入框,并提示可以改用别的方式登录。
+  - **发码**:沿用登录发码按 Identifier、按 IP 的发送限制与实例每日上限,与登录发码共用同一组计数;不要求 PoW(第一因素已过)。每个码最多试 5 次、5 分钟有效。
   - **直连 API**:返回 `next: "totp"`,在同一 `auth_session` 里提交 `totp` 或 `recovery_code`,见 [protocol.md](protocol.md#直连认证-api)。
-  - **输错**:每个待完成的登录最多输错 5 次,第 5 次后本次登录作废(托管页回到第一步,直连 API 的 `auth_session` 失效)。另按 User 锁定,见 [security-compliance.md](security-compliance.md#失败锁定)(ADR 0036)。Passkey 断言失败两者都不计入,TOTP 被锁定期间 Passkey 仍可完成这一步(ADR 0037)。
+  - **输错**:每个待完成的登录最多输错 5 次,第 5 次后本次登录作废(托管页回到第一步,直连 API 的 `auth_session` 失效)。另按 User 锁定,见 [security-compliance.md](security-compliance.md#失败锁定)(ADR 0036)。短信、邮箱验证码输错与 TOTP 一样两者都计入,锁定期间正确的码也被拒绝(ADR 0038)。Passkey 断言失败两者都不计入,TOTP 被锁定期间 Passkey 仍可完成这一步(ADR 0037)。
   - **时钟偏差**:接受前后各一个 30 秒时间步。
 - **已有浏览器 Session**:静默登录不再要求 TOTP,那个 Session 建立时已经输过了。
-- **`amr`**:用 TOTP 或恢复码做过两步验证的登录为 `[第一因素, "otp", "mfa"]`,不重复:邮箱验证码登录为 `["otp", "mfa"]`。用 Passkey 做第二步的为 `[第一因素, "hwk"/"swk", "mfa"]`,不加 `otp`。
+- **`amr`**:用 TOTP 或恢复码做过两步验证的登录为 `[第一因素, "otp", "mfa"]`,不重复:邮箱验证码登录为 `["otp", "mfa"]`。用短信验证码做第二步的为 `[第一因素, "sms", "mfa"]`,用邮箱验证码的为 `[第一因素, "otp", "mfa"]`,同样不重复:「密码 + 邮箱码」与「密码 + TOTP」同为 `["pwd", "otp", "mfa"]`,分不出来(ADR 0038)。用 Passkey 做第二步的为 `[第一因素, "hwk"/"swk", "mfa"]`,不加 `otp`。
 - **认证强度**:Application 需要更强认证时,用 `max_age` / `prompt=login`,并检查 `amr`。不支持 `acr_values`。
 
 ## Provider(二期)
 
 - **首次登录**:没有绑定过的 External Identity 直接新建 User,之后照常走 2FA、"必须绑定手机号"和协议同意。
-- **2FA**:Provider 登录属于第一因素,开了 2FA 的 User 仍要过第二因素(TOTP、Passkey 或恢复码)。
+- **2FA**:Provider 登录属于第一因素,开了 2FA 的 User 仍要过第二因素(TOTP、Passkey、添加过的短信或邮箱验证码,或恢复码);短信、邮箱两种都提供。
 - **托管页**:每个启用中的重定向型 Provider 一个按钮,"使用 {名称} 登录",放在验证码表单下方,按创建顺序排列;Apple 按 HIG 黑底样式,通用 OIDC 不带图标。
 - 配置与各 Provider 类型的细节见 [architecture.md](architecture.md#provider-的配置与身份)。
 

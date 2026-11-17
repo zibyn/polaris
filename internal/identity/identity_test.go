@@ -234,14 +234,14 @@ func TestFiftyFailuresLockAnIPOut(t *testing.T) {
 			t.Fatal(i, err)
 		}
 	}
-	if err := s.SecondFactor(ctx, a, sub, false, func() error { return ErrWrongTOTP }); !errors.Is(err, ErrWrongTOTP) {
+	if err := s.SecondFactor(ctx, a, sub, "totp", func() error { return ErrWrongTOTP }); !errors.Is(err, ErrWrongTOTP) {
 		t.Fatalf("50th failure: %v", err)
 	}
 	if n := audited(t, s, "login.ip_locked"); n != 1 {
 		t.Errorf("audited %d IP lockouts", n)
 	}
 	ran := false
-	if err := s.SecondFactor(ctx, a, sub, false, func() error { ran = true; return nil }); !errors.Is(err, ErrIPLocked) || ran {
+	if err := s.SecondFactor(ctx, a, sub, "totp", func() error { ran = true; return nil }); !errors.Is(err, ErrIPLocked) || ran {
 		t.Fatalf("while locked out: %v, check ran %v", err, ran)
 	}
 	if _, err := s.Password(ctx, a, "nobody", "wrong"); !errors.Is(err, ErrIPLocked) {

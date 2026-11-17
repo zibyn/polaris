@@ -109,26 +109,31 @@ func TestChecks(t *testing.T) {
 	}
 }
 
-// The second step takes a TOTP, and a Passkey only while the instance offers
-// Passkey login; a Passkey kept while it is off still counts as left.
+// 两步验证 takes a TOTP, a Passkey only while the instance offers Passkey
+// login, and the phone number and email added; a login's second step leaves
+// out a code over its first factor's channel (ADR 0038).
 func TestFactors(t *testing.T) {
-	T, P := twofactor.FactorTOTP, twofactor.FactorPasskey
+	T, P, S, E := twofactor.FactorTOTP, twofactor.FactorPasskey, twofactor.FactorSMS, twofactor.FactorEmail
+	all := twofactor.Factors{TOTP: true, Passkey: true, PasskeyLogin: true, SMS: true, Email: true}
 	for _, c := range []struct {
-		f      twofactor.Factors
-		usable []twofactor.Factor
-		kept   bool
+		f           twofactor.Factors
+		amr         []string
+		usable, now []twofactor.Factor
 	}{
-		{twofactor.Factors{}, nil, false},
-		{twofactor.Factors{TOTP: true}, []twofactor.Factor{T}, true},
-		{twofactor.Factors{Passkey: true, PasskeyLogin: true}, []twofactor.Factor{P}, true},
-		{twofactor.Factors{Passkey: true}, nil, true},
-		{twofactor.Factors{TOTP: true, Passkey: true, PasskeyLogin: true}, []twofactor.Factor{T, P}, true},
+		{twofactor.Factors{}, []string{"pwd"}, nil, nil},
+		{twofactor.Factors{TOTP: true}, []string{"sms"}, []twofactor.Factor{T}, []twofactor.Factor{T}},
+		{twofactor.Factors{Passkey: true}, []string{"pwd"}, nil, nil},
+		{all, []string{"pwd"}, []twofactor.Factor{T, P, S, E}, []twofactor.Factor{T, P, S, E}},
+		{all, []string{"fed"}, []twofactor.Factor{T, P, S, E}, []twofactor.Factor{T, P, S, E}},
+		{all, []string{"sms"}, []twofactor.Factor{T, P, S, E}, []twofactor.Factor{T, P, E}},
+		{all, []string{"otp"}, []twofactor.Factor{T, P, S, E}, []twofactor.Factor{T, P, S}},
+		{twofactor.Factors{SMS: true}, []string{"sms"}, []twofactor.Factor{S}, nil},
 	} {
 		if got := c.f.Usable(); !slices.Equal(got, c.usable) {
 			t.Errorf("%+v Usable() = %v, want %v", c.f, got, c.usable)
 		}
-		if got := c.f.Kept(); got != c.kept {
-			t.Errorf("%+v Kept() = %v", c.f, got)
+		if got := c.f.SecondStep(c.amr); !slices.Equal(got, c.now) {
+			t.Errorf("%+v SecondStep(%v) = %v, want %v", c.f, c.amr, got, c.now)
 		}
 	}
 }

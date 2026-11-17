@@ -53,8 +53,8 @@ const (
 	// (docs/spec/consoles.md#设置); the Passkeys Users added are kept and
 	// work again once it is on.
 	ErrOff identity.Invalid = "Passkey 登录已关闭"
-	// ErrLastPasskey is deleting the last Passkey of a User whose
-	// 两步验证 is on by Passkey alone.
+	// ErrLastPasskey is deleting a Passkey of a User whose 两步验证 would
+	// have no factor left.
 	ErrLastPasskey identity.Invalid = "这是你唯一的两步验证方式，请先添加验证器或关闭两步验证"
 )
 
@@ -485,8 +485,9 @@ func (s *Store) Rename(ctx context.Context, sub, id, name string, by audit.Actor
 	return err
 }
 
-// Remove deletes one of the User's Passkeys: ErrLastPasskey for the
-// last one while 两步验证 is on with no TOTP, whoever asks.
+// Remove deletes one of the User's Passkeys: ErrLastPasskey, whoever asks,
+// while 两步验证 is on and would have no factor left that counts
+// (twofactor.Factors.Usable): with Passkey login off, no Passkey does.
 func (s *Store) Remove(ctx context.Context, sub, id string, by audit.Actor) error {
 	// SERIALIZABLE: 两步验证 going on by this Passkey, or the TOTP going,
 	// meanwhile is refused here or there (twofactor), not both let through.
@@ -497,7 +498,7 @@ func (s *Store) Remove(ctx context.Context, sub, id string, by audit.Actor) erro
 			return cmp.Or(err, error(ErrGone))
 		}
 		// Weighed after the delete: what is left once it is gone.
-		if f, err := twofactor.SecondFactors(ctx, q, sub); err != nil || f.On && !f.Kept() {
+		if f, err := twofactor.SecondFactors(ctx, q, sub); err != nil || f.On && len(f.Usable()) == 0 {
 			return cmp.Or(err, error(ErrLastPasskey))
 		}
 		return nil

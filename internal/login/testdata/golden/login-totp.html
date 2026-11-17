@@ -98,8 +98,8 @@ altcha-widget { --altcha-border-radius: 8px; --altcha-color-border: var(--line);
 .or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 form.providers { margin-top: 8px; gap: 8px; }
 .or + form.providers { margin-top: 0; }
-button#passkey-login { display: block; width: 100%; background: var(--panel); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-xs); }
-button#passkey-login:hover { background: var(--canvas); }
+button#passkey-login, button.secondary { display: block; width: 100%; background: var(--panel); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-xs); }
+button#passkey-login:hover, button.secondary:hover { background: var(--canvas); }
 form.providers button { background: var(--panel); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-xs); }
 form.providers button:hover { background: var(--canvas); }
  
@@ -188,6 +188,8 @@ addEventListener("DOMContentLoaded", () => {
 
 <h1>两步验证</h1>
 <p class="error" role="alert">验证码不正确或已用过</p>
+
+
 <form method="post" action="/authorize/abc">
   <input type="hidden" name="op" value="totp">
   
@@ -199,6 +201,7 @@ addEventListener("DOMContentLoaded", () => {
   <a href="/authorize/abc?recovery">使用恢复码</a>
   
 </form>
+
 <p class="or" hidden>或</p>
 <button type="button" id="passkey-login" hidden>使用 Passkey</button>
 <form method="post" action="/authorize/abc" id="passkey-form" hidden>
@@ -252,6 +255,7 @@ addEventListener("DOMContentLoaded", () => {
   } catch {}
 });
 </script>
+
 
 </main>
 </div>

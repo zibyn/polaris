@@ -37,8 +37,11 @@ var messagesEN = map[string]string{
 	"恢复码":          "Recovery code",
 	"使用验证器":        "Use your authenticator",
 	"输入验证器 App 中的 6 位验证码。": "Enter the 6-digit code from your authenticator app.",
-	"验证码":         "Code",
-	"使用恢复码":       "Use a recovery code",
+	"验证码":     "Code",
+	"使用恢复码":   "Use a recovery code",
+	"发送验证码到 ": "Send a code to ",
+	"使用其他方式":  "Use another way",
+	"这次登录只能使用恢复码完成两步验证，也可以改用其他方式登录。": "Only a recovery code can complete two-factor authentication for this sign-in. You can also sign in another way.",
 	"协议已更新":       "Our terms have changed",
 	"继续登录":        "Continue signing in",
 	"请阅读并同意新版协议。": "Read and agree to the new terms.",
@@ -100,6 +103,7 @@ var messagesEN = map[string]string{
 	string(errTOTPTries):        "Too many wrong two-factor codes. Sign in again.",
 	string(errNoProvider):       "This external sign-in method has been turned off",
 	string(errProviderDown):     "Cannot reach this external sign-in method. Try again later.",
+	string(errNotOffered):       "This way cannot complete two-factor authentication for this sign-in",
 
 	// Errors from the stores behind the pages.
 	string(identity.ErrSetupToken):         "Invalid setup token",

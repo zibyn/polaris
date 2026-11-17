@@ -103,9 +103,10 @@ type ExternalIdentity struct {
 }
 
 type Identifier struct {
-	UserID string
-	Kind   string
-	Value  string
+	UserID       string
+	Kind         string
+	Value        string
+	SecondFactor bool
 }
 
 type Invite struct {

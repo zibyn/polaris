@@ -112,8 +112,8 @@ altcha-widget { --altcha-border-radius: 8px; --altcha-color-border: var(--line);
 .or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 form.providers { margin-top: 8px; gap: 8px; }
 .or + form.providers { margin-top: 0; }
-button#passkey-login { display: block; width: 100%; background: var(--panel); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-xs); }
-button#passkey-login:hover { background: var(--canvas); }
+button#passkey-login, button.secondary { display: block; width: 100%; background: var(--panel); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-xs); }
+button#passkey-login:hover, button.secondary:hover { background: var(--canvas); }
 form.providers button { background: var(--panel); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-xs); }
 form.providers button:hover { background: var(--canvas); }
 /* A type's own button: its logo inline, so the page fetches nothing, and
@@ -245,6 +245,19 @@ addEventListener("DOMContentLoaded", () => {
 </form>
 {{else if .TwoFactor}}<h1>{{t "两步验证"}}</h1>
 {{with .Error}}<p class="error" role="alert">{{msg .}}</p>{{end}}
+{{if .CodeFactor}}
+<form method="post" action="{{.Action}}">
+  <input type="hidden" name="factor" value="{{.CodeFactor}}">
+  <p>{{t "验证码已发送，5 分钟内有效。"}}</p>
+  <label>{{t "验证码"}}
+    <input name="code" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autofocus>
+  </label>
+  <button name="op" value="code-2fa">{{t "登录"}}</button>
+  <button name="op" value="send-2fa" formnovalidate>{{t "重新获取"}}</button>
+  <a href="{{.Action}}">{{t "使用其他方式"}}</a>
+</form>
+{{else}}
+{{if .Excluded}}<p>{{t "这次登录只能使用恢复码完成两步验证，也可以改用其他方式登录。"}}</p>{{end}}
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="totp">
   {{if .Recovery}}
@@ -263,9 +276,16 @@ addEventListener("DOMContentLoaded", () => {
   <a href="{{.Action}}?recovery">{{t "使用恢复码"}}</a>
   {{end}}
 </form>
+{{range .Codes}}
+<form method="post" action="{{$.Action}}">
+  <input type="hidden" name="factor" value="{{.Factor}}">
+  <button name="op" value="send-2fa" class="secondary">{{t "发送验证码到 "}}{{.To}}</button>
+</form>
+{{end}}
 {{if .Passkey}}<p class="or" hidden>{{t "或"}}</p>
 <button type="button" id="passkey-login" hidden>{{t "使用 Passkey"}}</button>
 {{template "passkey" .}}{{end}}
+{{end}}
 {{else if .Consent}}<h1>{{if .Terms.TermsVersion}}{{t "协议已更新"}}{{else}}{{t "继续登录"}}{{end}}</h1>
 {{if .Terms.TermsVersion}}<p>{{t "请阅读并同意新版协议。"}}</p>{{end}}
 {{with .Error}}<p class="error" role="alert">{{msg .}}</p>{{end}}
