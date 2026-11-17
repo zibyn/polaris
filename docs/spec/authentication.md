@@ -7,8 +7,8 @@
 | 短信验证码 | 第一因素 | 配好短信 Channel 即可用 | 托管页、直连 API | 一期 |
 | 邮箱验证码 | 第一因素 | 配好邮件 Channel 即可用 | 托管页、直连 API | 一期 |
 | 用户名 / 手机号 / 邮箱 + 密码 | 第一因素 | 开 | 托管页、直连 API | 一期 |
-| Passkey | 第一因素(本身已是多因素) | 开 | 托管页、直连 API;小程序不提供 | 二期 |
-| TOTP | 唯一的第二因素 | User 自愿开启 | 托管页、直连 API | 二期 |
+| Passkey | 第一因素(本身已是多因素);也可作第二因素 | 开 | 托管页、直连 API;小程序不提供 | 二期 |
+| TOTP | 第二因素 | User 自愿开启 | 托管页、直连 API | 二期 |
 | Provider(通用 OIDC、Apple 等) | 第一因素 | 管理员添加 Provider | 通用 OIDC:托管页;Apple:托管页、直连 API | 二期起 |
 
 ## 按 Application 指定登录方式
@@ -57,7 +57,7 @@
 - **RP ID**:固定为 Polaris 的域名;使用可发现凭证;User 可以添加多把。
 - **托管页**:渲染第一步时生成 challenge 存进 AuthnSession store(每次渲染换新的,重放即失效),断言选项内嵌在页面里;不引入前端 WebAuthn 库,base64url 由服务端在 `/login/passkey.js` 提供,账号中心共用同一份。标识输入框的 `autocomplete` 在现有取值后追加 `webauthn`,页面加载后发起 `mediation: "conditional"` 的自动填充;「使用 Passkey 登录」按钮只在支持 `PublicKeyCredential` 的浏览器上显示,电脑上可用手机扫码。断言以隐藏表单 `op=passkey` 提交,之后照常走绑手机号、同意协议。
 - **断言校验**(passkey 模块,托管页与直连 API 共用):不认识的凭证、签名错误、缺 UV、challenge 重放都拒绝,并且不建 User;计数器非零且回退时拒绝,并记审计 `passkey.counter_regressed`;成功后更新 `last_used_at` 和计数器。
-- **两步验证**:Passkey 每次都要求生物识别或 PIN,本身已满足两步验证,所以 `amr` 直接为 `["swk", "mfa"]`(凭证可跨设备同步,BE=1)或 `["hwk", "mfa"]`(仅本机,BE=0),开了两步验证的 User 不再进入 TOTP 步骤。
+- **两步验证**:Passkey 每次都要求生物识别或 PIN,本身已满足两步验证,所以 `amr` 直接为 `["swk", "mfa"]`(凭证可跨设备同步,BE=1)或 `["hwk", "mfa"]`(仅本机,BE=0),开了两步验证的 User 不再进入两步验证步骤。Passkey 也可在第一因素之后作第二因素,见下文 [2FA](#2fa二期)。
 - **实例开关**:设置组「登录方式」Tab 的 Passkey 开关,默认打开。关闭后托管页不渲染断言选项和「使用 Passkey 登录」按钮,直连 API 的 challenge、账号中心的添加与重新认证、以及一切断言校验都按"没开这项功能"拒绝;`/.well-known/passkey-endpoints` 返回 404。Passkey 行保留,重新打开后照常可用;`/.well-known/` 的两个关联文件还服务密码自动填充,不受影响。
 - **直连 API**:增加 WebAuthn challenge;KMP SDK 只调用系统凭证 API(Credential Manager / ASAuthorization),界面由系统弹出。
 - **大陆 Android**:先探测能力,有才展示。
@@ -71,22 +71,22 @@
   - 持有 Role 的 User 不能在账号中心删掉自己最后的满足项:还有 Passkey 时可以关闭两步验证,开了两步验证时可以删除最后一把 Passkey,两者都不剩时动哪个都返回 409;恢复码仍可重新生成。管理员仍可为别人重置两步验证,重置不动 Passkey。
   - 当前管理员自己不满足要求时,保存"打开"会被拒绝(422,「请先为自己开启两步验证」),免得把自己锁在外面。
   - Passkey 开关关掉后 Passkey 不再算满足项;只剩 Passkey 的管理员保存"关闭"会被拒绝(422,同一句提示;同一次保存里把这个要求也关掉就放行),理由同上。
-- **生效范围**:开启后,除 Passkey 外,任何第一因素登录都要再输一次 TOTP。不把短信或邮箱验证码当第二因素。
+- **生效范围**:开启后,除 Passkey 外,任何第一因素登录都要再过一次第二因素:TOTP、Passkey 或恢复码之一(ADR 0037)。不把短信或邮箱验证码当第二因素。
 - **TOTP 参数**:`otpauth://` 固定 SHA1 / 6 位 / 30 秒,同时显示可复制的 Base32 密钥。
 - **恢复码**:开启时生成 10 个一次性恢复码,只显示一次,可以重新生成。
-- **登录**:第一因素通过后进入两步验证这一步,输入一个 TOTP 或一个恢复码,两者效果相同。步骤顺序固定为 TOTP → 绑手机号 → 同意协议;TOTP 通过之前不建 Session,也不发授权码,"已通过第一因素"的状态只存在 AuthnSession 的 store(托管页)或 `auth_session`(直连 API)里。
-  - **托管页**:输入框标注 `autocomplete="one-time-code"`;可切换到「使用恢复码」。
+- **登录**:第一因素通过后进入两步验证这一步,输入一个 TOTP、用 Passkey 断言或输入一个恢复码,三者效果相同。步骤顺序固定为 TOTP → 绑手机号 → 同意协议;TOTP 通过之前不建 Session,也不发授权码,"已通过第一因素"的状态只存在 AuthnSession 的 store(托管页)或 `auth_session`(直连 API)里。
+  - **托管页**:输入框标注 `autocomplete="one-time-code"`;可切换到「使用恢复码」。User 有 Passkey 且实例开着 Passkey 登录时,另有「使用 Passkey」按钮(只在支持 `PublicKeyCredential` 的浏览器上显示):渲染这一步时生成 challenge 存进 AuthnSession store,断言选项只列这个 User 自己的凭证(`allowCredentials`),要求 UV,不发起自动填充;以 `op=passkey` 提交,断言校验与 Passkey 登录相同,别人的 Passkey 不通过。
   - **直连 API**:返回 `next: "totp"`,在同一 `auth_session` 里提交 `totp` 或 `recovery_code`,见 [protocol.md](protocol.md#直连认证-api)。
-  - **输错**:每个待完成的登录最多输错 5 次,第 5 次后本次登录作废(托管页回到第一步,直连 API 的 `auth_session` 失效)。另按 User 锁定,见 [security-compliance.md](security-compliance.md#失败锁定)(ADR 0036)。
+  - **输错**:每个待完成的登录最多输错 5 次,第 5 次后本次登录作废(托管页回到第一步,直连 API 的 `auth_session` 失效)。另按 User 锁定,见 [security-compliance.md](security-compliance.md#失败锁定)(ADR 0036)。Passkey 断言失败两者都不计入,TOTP 被锁定期间 Passkey 仍可完成这一步(ADR 0037)。
   - **时钟偏差**:接受前后各一个 30 秒时间步。
 - **已有浏览器 Session**:静默登录不再要求 TOTP,那个 Session 建立时已经输过了。
-- **`amr`**:做过两步验证的登录为 `[第一因素, "otp", "mfa"]`,不重复:邮箱验证码登录为 `["otp", "mfa"]`。
+- **`amr`**:用 TOTP 或恢复码做过两步验证的登录为 `[第一因素, "otp", "mfa"]`,不重复:邮箱验证码登录为 `["otp", "mfa"]`。用 Passkey 做第二步的为 `[第一因素, "hwk"/"swk", "mfa"]`,不加 `otp`。
 - **认证强度**:Application 需要更强认证时,用 `max_age` / `prompt=login`,并检查 `amr`。不支持 `acr_values`。
 
 ## Provider(二期)
 
 - **首次登录**:没有绑定过的 External Identity 直接新建 User,之后照常走 2FA、"必须绑定手机号"和协议同意。
-- **2FA**:Provider 登录属于第一因素,开了 2FA 的 User 仍要输入 TOTP。
+- **2FA**:Provider 登录属于第一因素,开了 2FA 的 User 仍要过第二因素(TOTP、Passkey 或恢复码)。
 - **托管页**:每个启用中的重定向型 Provider 一个按钮,"使用 {名称} 登录",放在验证码表单下方,按创建顺序排列;Apple 按 HIG 黑底样式,通用 OIDC 不带图标。
 - 配置与各 Provider 类型的细节见 [architecture.md](architecture.md#provider-的配置与身份)。
 

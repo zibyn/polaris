@@ -291,15 +291,31 @@ func (s *Store) LoginOptions(ctx context.Context) (options json.RawMessage, chal
 // ponytail: shares passkey_challenges' one slot per Session with Begin (adding
 // one), so starting either cancels the other; the UI never has both open.
 func (s *Store) ReauthOptions(ctx context.Context, sub, session string) (json.RawMessage, error) {
-	if err := s.enabled(ctx); err != nil {
-		return nil, err
-	}
-	rows, err := s.q.PasskeyExclusions(ctx, sub)
+	options, challenge, err := s.SecondFactorOptions(ctx, sub)
 	if err != nil {
 		return nil, err
 	}
+	if err := s.putChallenge(ctx, session, sub, challenge); err != nil {
+		return nil, err
+	}
+	return options, nil
+}
+
+// SecondFactorOptions are the assertion options for sub to pass 两步验证
+// with a Passkey: naming only sub's own Passkeys, user verification
+// required. The challenge comes back for the caller to keep, as with
+// LoginOptions. ErrNoPasskeys when sub has none, ErrOff while the instance
+// has Passkey login off: either way there is no Passkey to offer.
+func (s *Store) SecondFactorOptions(ctx context.Context, sub string) (options json.RawMessage, challenge string, err error) {
+	if err = s.enabled(ctx); err != nil {
+		return nil, "", err
+	}
+	rows, err := s.q.PasskeyExclusions(ctx, sub)
+	if err != nil {
+		return nil, "", err
+	}
 	if len(rows) == 0 {
-		return nil, ErrNoPasskeys
+		return nil, "", ErrNoPasskeys
 	}
 	creds := make([]webauthn.Credential, len(rows))
 	for i, r := range rows {
@@ -307,12 +323,23 @@ func (s *Store) ReauthOptions(ctx context.Context, sub, session string) (json.Ra
 	}
 	assertion, sd, err := s.wa.BeginLogin(user{sub: sub, name: sub, creds: creds})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	if err := s.putChallenge(ctx, session, sub, sd.Challenge); err != nil {
-		return nil, err
+	if options, err = json.Marshal(assertion); err != nil {
+		return nil, "", err
 	}
-	return json.Marshal(assertion)
+	return options, sd.Challenge, nil
+}
+
+// SecondFactor passes sub's 两步验证 with a Passkey of theirs: the assertion
+// checked against the challenge SecondFactorOptions issued. Another User's
+// Passkey does not pass. A failure is not a guess, so nothing here counts it
+// (ADR 0036); a counter gone backwards is audited as on sign-in.
+func (s *Store) SecondFactor(ctx context.Context, sub, challenge string, response []byte) (SignIn, error) {
+	if err := s.enabled(ctx); err != nil {
+		return SignIn{}, err
+	}
+	return s.assert(ctx, challenge, response, sub)
 }
 
 // Reauth reauthenticates sub with a Passkey of theirs: the assertion checked

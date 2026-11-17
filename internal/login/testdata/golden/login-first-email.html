@@ -231,12 +231,15 @@ addEventListener("submit", e => {
 
 
 
+
+
 const options = JSON.parse(document.getElementById("passkey-options").textContent).publicKey;
 const get = mediation => navigator.credentials.get({
   mediation,
   publicKey: {
     rpId: options.rpId,
     challenge: polaris.b64url.decode(options.challenge),
+    allowCredentials: options.allowCredentials?.map(c => ({...c, id: polaris.b64url.decode(c.id)})),
     userVerification: options.userVerification,
     timeout: options.timeout,
   },
@@ -262,7 +265,7 @@ addEventListener("DOMContentLoaded", () => {
     button.hidden = button.previousElementSibling.hidden = false; 
     button.onclick = () => get("optional").then(post, () => {});
   }
-  try { 
+  if (!options.allowCredentials) try { 
     get("conditional").then(post, () => {});
   } catch {}
 });

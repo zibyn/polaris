@@ -49,9 +49,18 @@ func passkeyUserAt(t *testing.T, e *env, a *passkeytest.Authenticator, kind, val
 	if err != nil {
 		t.Fatal(err)
 	}
+	enrollPasskey(t, e, a, sub)
+	return sub
+}
+
+// enrollPasskey gives sub, already a User, a Passkey of a's through the
+// account center's store.
+func enrollPasskey(t *testing.T, e *env, a *passkeytest.Authenticator, sub string) {
+	t.Helper()
+	session := "pk-enroll-" + sub
 	// The account center's registration challenge hangs off its Session.
 	if _, err := e.pool.Exec(context.Background(),
-		"INSERT INTO sessions (id, id_hash, user_id, auth_time, amr, lapses_at, idle_timeout, max_lifetime) VALUES ('pk-enroll', '\x02', $1, now(), '{}', now() + interval '30 days', '30 days', '90 days')", sub); err != nil {
+		"INSERT INTO sessions (id, id_hash, user_id, auth_time, amr, lapses_at, idle_timeout, max_lifetime) VALUES ($2, decode(md5($2), 'hex'), $1, now(), '{}', now() + interval '30 days', '30 days', '90 days')", sub, session); err != nil {
 		t.Fatal(err)
 	}
 	store, err := passkey.New(e.pool, e.issuer)
@@ -60,14 +69,13 @@ func passkeyUserAt(t *testing.T, e *env, a *passkeytest.Authenticator, kind, val
 	}
 	a.Origin = e.issuer
 	a.UserHandle = []byte(sub)
-	options, err := store.Begin(context.Background(), sub, sub, "pk-enroll")
+	options, err := store.Begin(context.Background(), sub, sub, session)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Finish(context.Background(), sub, "pk-enroll", a.Enroll(options)); err != nil {
+	if _, err := store.Finish(context.Background(), sub, session, a.Enroll(options)); err != nil {
 		t.Fatal(err)
 	}
-	return sub
 }
 
 // The first step of the login page carries assertion options, its identifier
@@ -479,4 +487,129 @@ func TestDirectPasskeyLoginOneCode(t *testing.T) {
 	if codes != 1 || gone != 1 {
 		t.Fatalf("two submissions of one auth_session: %+v", got)
 	}
+}
+
+// passkeySecondStep bootstraps owner with a TOTP and a Passkey of a's, and
+// signs in with the password up to the 两步验证 page.
+func passkeySecondStep(t *testing.T, e *env, a *passkeytest.Authenticator) (sub, page string) {
+	t.Helper()
+	e.ownerTwoFactor()
+	if err := e.pool.QueryRow(context.Background(), "SELECT user_id FROM identifiers WHERE value = 'owner'").Scan(&sub); err != nil {
+		t.Fatal(err)
+	}
+	enrollPasskey(t, e, a, sub)
+	_, page = e.authorize("")
+	_, page = e.submit(page, "owner", "password1")
+	if !strings.Contains(page, totpForm) {
+		t.Fatalf("want the 两步验证 step: %s", page)
+	}
+	return sub, page
+}
+
+// A User with a TOTP and a Passkey can pass 两步验证 with the Passkey: the
+// page offers it with options naming only their own credentials and asking
+// for user verification, and the amr claim says the first factor, the key and
+// mfa, no otp.
+func TestPasskeySecondStep(t *testing.T) {
+	e := start(t)
+	a := passkeytest.New(t)
+	_, page := passkeySecondStep(t, e, a)
+
+	options, ok := optionsOf(t, page)
+	if !ok || !strings.Contains(page, "使用 Passkey") {
+		t.Fatalf("no Passkey on the 两步验证 step: %s", page)
+	}
+	var o struct {
+		PublicKey struct {
+			AllowCredentials []struct {
+				ID string `json:"id"`
+			} `json:"allowCredentials"`
+			UserVerification string `json:"userVerification"`
+		} `json:"publicKey"`
+	}
+	if err := json.Unmarshal(options, &o); err != nil {
+		t.Fatal(err)
+	}
+	if len(o.PublicKey.AllowCredentials) != 1 || o.PublicKey.UserVerification != "required" {
+		t.Fatalf("options: %s", options)
+	}
+	if !strings.Contains(page, "allowCredentials") {
+		t.Fatal("the page's script does not pass allowCredentials on")
+	}
+
+	a.SignCount = 1
+	resp, page := e.post(page, url.Values{"op": {"passkey"}, "passkey": {string(a.Assert(options))}})
+	if resp.StatusCode/100 != 3 {
+		t.Fatalf("passkey second step: %d %s", resp.StatusCode, page)
+	}
+	claims := e.idToken(e.code(resp))
+	if amr, _ := claims["amr"].([]any); !slices.Equal(amr, []any{"pwd", "hwk", "mfa"}) {
+		t.Fatalf("amr: %v", claims["amr"])
+	}
+}
+
+// A User with no Passkey is offered none on the 两步验证 step, and neither is
+// one while the instance has Passkey login off.
+func TestPasskeySecondStepOnlyWithPasskey(t *testing.T) {
+	e := start(t)
+	e.ownerTwoFactor()
+	_, page := e.authorize("")
+	_, page = e.submit(page, "owner", "password1")
+	if !strings.Contains(page, totpForm) {
+		t.Fatalf("want the 两步验证 step: %s", page)
+	}
+	if _, ok := optionsOf(t, page); ok || strings.Contains(page, "使用 Passkey") {
+		t.Fatalf("Passkey offered to a User without one: %s", page)
+	}
+
+	e2 := start(t)
+	_, _ = passkeySecondStep(t, e2, passkeytest.New(t))
+	if _, err := e2.pool.Exec(context.Background(), "UPDATE settings SET passkey_login = false"); err != nil {
+		t.Fatal(err)
+	}
+	e2.newBrowser()
+	_, page = e2.authorize("")
+	_, page = e2.submit(page, "owner", "password1")
+	if _, ok := optionsOf(t, page); ok {
+		t.Fatalf("Passkey offered with Passkey login off: %s", page)
+	}
+}
+
+// A Passkey is not guessed: a failed assertion on the 两步验证 step counts
+// against neither the login nor 2fa:<sub> (ADR 0036), another User's Passkey
+// does not pass, and while the TOTP is locked the Passkey still does.
+func TestPasskeySecondStepWhileLocked(t *testing.T) {
+	e := start(t)
+	a := passkeytest.New(t)
+	sub, page := passkeySecondStep(t, e, a)
+
+	// Another User's Passkey, asserted against this page's challenge.
+	other := passkeytest.New(t)
+	passkeyUserAt(t, e, other, "phone", "+8613800138001")
+	options, _ := optionsOf(t, page)
+	for range 6 { // more than a login's TOTP tries
+		other.SignCount++
+		_, page = e.post(page, url.Values{"op": {"passkey"}, "passkey": {string(other.Assert(options))}})
+		if !strings.Contains(page, totpForm) {
+			t.Fatalf("another User's Passkey: %s", page)
+		}
+		options, _ = optionsOf(t, page)
+	}
+	var n int
+	if err := e.pool.QueryRow(context.Background(), "SELECT count(*) FROM login_failures WHERE key = $1", identity.TwoFactorLockKey(sub)).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("failed assertions counted against 两步验证: %d", n)
+	}
+
+	if _, err := e.pool.Exec(context.Background(), "INSERT INTO lockouts (key, until) VALUES ($1, now() + interval '15 minutes')", identity.TwoFactorLockKey(sub)); err != nil {
+		t.Fatal(err)
+	}
+	a.SignCount = 1
+	resp, page := e.post(page, url.Values{"op": {"passkey"}, "passkey": {string(a.Assert(options))}})
+	if resp.StatusCode/100 != 3 {
+		t.Fatalf("passkey second step while locked: %d %s", resp.StatusCode, page)
+	}
+	e.code(resp)
 }

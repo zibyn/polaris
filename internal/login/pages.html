@@ -263,6 +263,9 @@ addEventListener("DOMContentLoaded", () => {
   <a href="{{.Action}}?recovery">{{t "使用恢复码"}}</a>
   {{end}}
 </form>
+{{if .Passkey}}<p class="or" hidden>{{t "或"}}</p>
+<button type="button" id="passkey-login" hidden>{{t "使用 Passkey"}}</button>
+{{template "passkey" .}}{{end}}
 {{else if .Consent}}<h1>{{if .Terms.TermsVersion}}{{t "协议已更新"}}{{else}}{{t "继续登录"}}{{end}}</h1>
 {{if .Terms.TermsVersion}}<p>{{t "请阅读并同意新版协议。"}}</p>{{end}}
 {{with .Error}}<p class="error" role="alert">{{msg .}}</p>{{end}}
@@ -369,18 +372,29 @@ addEventListener("submit", e => {
 {{end}}
 {{$providers := and .Providers (not .CodeSent) (not (and .Username (not .PasswordForm)))}}
 {{if or .Passkey $providers}}<p class="or"{{if not $providers}} hidden{{end}}>{{t "或"}}</p>{{end}}
-{{with .Passkey}}
+{{if .Passkey}}
 <button type="button" id="passkey-login" hidden>{{t "使用 Passkey 登录"}}</button>
-<form method="post" action="{{$.Action}}" id="passkey-form" hidden>
+{{template "passkey" .}}
+{{end}}
+{{if $providers}}<form method="post" action="{{.Action}}" class="providers">
+  <input type="hidden" name="op" value="provider">
+  {{range $p := .Providers}}{{with providerButton $p.Type}}<button name="provider" value="{{$p.ID}}" class="mark"{{with .Style}} style="{{.}}"{{end}}>{{.Icon}}{{providerLabel . $p.Name}}</button>{{else}}<button name="provider" value="{{$p.ID}}">{{printf (t "使用 %s 登录") $p.Name}}</button>{{end}}
+  {{end}}</form>{{end}}
+{{end}}
+{{end}}
+
+{{define "passkey"}}<form method="post" action="{{.Action}}" id="passkey-form" hidden>
   <input type="hidden" name="op" value="passkey">
   <input type="hidden" name="passkey">
 </form>
-<script type="application/json" id="passkey-options">{{.}}</script>
+<script type="application/json" id="passkey-options">{{.Passkey}}</script>
 <script src="/login/passkey.js" defer></script>
 <script>
 // The Passkey ceremony the embedded options drive: the identifier field's
-// autofill above (conditional), and a modal one from the button, which on a
-// computer without a Passkey of its own offers a phone's by QR code. Runs at
+// autofill (conditional) on the first step, and a modal one from the
+// #passkey-login button, which on a computer without a Passkey of its own
+// offers a phone's by QR code. On the 两步验证 step the options name the
+// User's own Passkeys (allowCredentials) and only the button runs. Runs at
 // parse time but touches polaris only once /login/passkey.js (deferred, so
 // loaded before DOMContentLoaded) and a ceremony have both arrived.
 const options = JSON.parse(document.getElementById("passkey-options").textContent).publicKey;
@@ -389,6 +403,7 @@ const get = mediation => navigator.credentials.get({
   publicKey: {
     rpId: options.rpId,
     challenge: polaris.b64url.decode(options.challenge),
+    allowCredentials: options.allowCredentials?.map(c => ({...c, id: polaris.b64url.decode(c.id)})),
     userVerification: options.userVerification,
     timeout: options.timeout,
   },
@@ -414,18 +429,11 @@ addEventListener("DOMContentLoaded", () => {
     button.hidden = button.previousElementSibling.hidden = false; // and 或 before it
     button.onclick = () => get("optional").then(post, () => {});
   }
-  try { // browsers without conditional UI just never resolve it
+  if (!options.allowCredentials) try { // browsers without conditional UI just never resolve it
     get("conditional").then(post, () => {});
   } catch {}
 });
-</script>
-{{end}}
-{{if $providers}}<form method="post" action="{{.Action}}" class="providers">
-  <input type="hidden" name="op" value="provider">
-  {{range $p := .Providers}}{{with providerButton $p.Type}}<button name="provider" value="{{$p.ID}}" class="mark"{{with .Style}} style="{{.}}"{{end}}>{{.Icon}}{{providerLabel . $p.Name}}</button>{{else}}<button name="provider" value="{{$p.ID}}">{{printf (t "使用 %s 登录") $p.Name}}</button>{{end}}
-  {{end}}</form>{{end}}
-{{end}}
-{{end}}
+</script>{{end}}
 
 {{define "setup"}}
 <h1>{{t "创建所有者"}}</h1>
