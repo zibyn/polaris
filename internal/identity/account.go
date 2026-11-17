@@ -51,19 +51,20 @@ func (s *Store) RemovePassword(ctx context.Context, sub string) error {
 }
 
 // RemoveIdentifier unbinds the User's Identifier of kind, unless it is their
-// last way to sign in. When it was a second factor, factorGone runs in the
-// same transaction once it is gone (twofactor.FactorUnbound).
-func (s *Store) RemoveIdentifier(ctx context.Context, sub, kind string, factorGone func(*sqlc.Queries) error) error {
+// last way to sign in. When it is a second factor, factorGoing runs in the
+// same transaction just before it goes (twofactor.FactorUnbound).
+func (s *Store) RemoveIdentifier(ctx context.Context, sub, kind string, factorGoing func(*sqlc.Queries) error) error {
 	return s.changeLoginPaths(ctx, sub, func(q *sqlc.Queries) error {
 		_, err := q.SecondFactorIdentifier(ctx, sqlc.SecondFactorIdentifierParams{UserID: sub, Kind: kind})
-		factor := err == nil
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		if err == nil {
+			err = factorGoing(q)
+		} else if errors.Is(err, pgx.ErrNoRows) {
+			err = nil
+		}
+		if err != nil {
 			return err
 		}
-		if err := bound(q.RemoveIdentifier(ctx, sqlc.RemoveIdentifierParams{UserID: sub, Kind: kind})); err != nil || !factor {
-			return err
-		}
-		return factorGone(q)
+		return bound(q.RemoveIdentifier(ctx, sqlc.RemoveIdentifierParams{UserID: sub, Kind: kind}))
 	})
 }
 

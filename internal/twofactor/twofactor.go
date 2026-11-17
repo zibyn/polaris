@@ -46,7 +46,7 @@ const (
 	ErrLastFactor identity.Invalid = "这是你唯一的两步验证方式,请先添加其他方式或关闭两步验证"
 	// ErrLastTOTP is removing the TOTP that is all 两步验证 has besides
 	// the recovery codes.
-	ErrLastTOTP identity.Invalid = "验证器是你唯一的两步验证方式,请先添加 Passkey 或关闭两步验证"
+	ErrLastTOTP identity.Invalid = "验证器是你唯一的两步验证方式,请先添加其他方式或关闭两步验证"
 	// ErrNoTOTP is removing a TOTP the User has not added (or not confirmed).
 	ErrNoTOTP       identity.Invalid = "没有验证器"
 	ErrCode                          = identity.ErrWrongTOTP
@@ -91,25 +91,27 @@ const (
 // CodeFactor is the factor a code to an Identifier of kind (phone or email)
 // is, or "" for another kind.
 func CodeFactor(kind string) Factor {
-	switch kind {
-	case "phone":
-		return FactorSMS
-	case "email":
-		return FactorEmail
+	for f, c := range codeFactors {
+		if c.kind == kind {
+			return f
+		}
 	}
 	return ""
 }
 
-// Kind is the kind of Identifier a code factor sends to, or "".
-func (f Factor) Kind() string {
-	switch f {
-	case FactorSMS:
-		return "phone"
-	case FactorEmail:
-		return "email"
-	}
-	return ""
+// codeFactors pairs each code factor with the kind of Identifier it sends to
+// and the amr a code to it proves (RFC 8176).
+var codeFactors = map[Factor]struct{ kind, amr string }{
+	FactorSMS:   {"phone", "sms"},
+	FactorEmail: {"email", "otp"},
 }
+
+// Kind is the kind of Identifier a code factor sends to, or "".
+func (f Factor) Kind() string { return codeFactors[f].kind }
+
+// AMR is how a code by a code factor proves the User: "sms" by the phone
+// number, "otp" by the email; "" for another factor.
+func (f Factor) AMR() string { return codeFactors[f].amr }
 
 // Factors is what a User has to pass 两步验证 with besides a 恢复码: the one
 // place that weighs them (ADR 0037, 0038).
@@ -141,13 +143,27 @@ func (f Factors) Usable() []Factor {
 	return u
 }
 
+// Last is whether removing g would leave 两步验证 on with no usable factor:
+// g is the only one. A factor not usable now (its Channel gone, Passkey login
+// off) is never Last: removing it leaves Usable as it was. Weigh it before
+// the removal, in the same SERIALIZABLE transaction.
+func (f Factors) Last(g Factor) bool {
+	return f.On && slices.Equal(f.Usable(), []Factor{g})
+}
+
 // SecondStep is what the second step of a login whose first factor is amr
 // offers: Usable, less a code over the first factor's channel, which would
 // prove the same factor twice (ADR 0038).
 func (f Factors) SecondStep(amr []string) []Factor {
 	return slices.DeleteFunc(f.Usable(), func(u Factor) bool {
-		return u == FactorSMS && slices.Contains(amr, "sms") || u == FactorEmail && slices.Contains(amr, "otp")
+		return u.AMR() != "" && slices.Contains(amr, u.AMR())
 	})
+}
+
+// Excluded is whether SecondStep left out every Usable factor: only a 恢复码
+// is left, and the User is told to sign in another way (ADR 0038).
+func (f Factors) Excluded(amr []string) bool {
+	return len(f.SecondStep(amr)) == 0 && len(f.Usable()) > 0
 }
 
 // SecondFactors reads sub's Factors.
@@ -170,6 +186,20 @@ func (s *Store) CodeTo(ctx context.Context, sub string, f Factor) (string, error
 		return "", ErrNotAdded
 	}
 	return v, err
+}
+
+// OfferedCodeTo is CodeTo while the second step of a login whose first
+// factor is amr offers f (SecondStep; with no amr, as at reauthentication,
+// Usable), else refused (ADR 0038).
+func (s *Store) OfferedCodeTo(ctx context.Context, sub string, amr []string, f Factor, refused error) (string, error) {
+	fs, err := s.SecondFactors(ctx, sub)
+	if err != nil {
+		return "", err
+	}
+	if f.Kind() == "" || !slices.Contains(fs.SecondStep(amr), f) {
+		return "", refused
+	}
+	return s.CodeTo(ctx, sub, f)
 }
 
 // AddCode adds sub's phone number or email (kind) as a second factor,
@@ -199,27 +229,26 @@ func (s *Store) AddCode(ctx context.Context, sub, kind string) error {
 
 // RemoveCode removes sub's phone number or email (kind) as a second factor,
 // audited as sms.removed or email.removed: ErrNotAdded when it is not one,
-// ErrLastFactor when 两步验证 is on and would have none left.
+// ErrLastFactor when it is 两步验证's Last.
 func (s *Store) RemoveCode(ctx context.Context, sub, kind string) error {
 	return db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
+		if err := FactorUnbound(ctx, q, sub, kind, audit.User(sub)); err != nil {
+			return err
+		}
 		if n, err := q.SetIdentifierSecondFactor(ctx, sqlc.SetIdentifierSecondFactorParams{UserID: sub, Kind: kind, Added: false}); err != nil || n == 0 {
 			return cmp.Or(err, error(ErrNotAdded))
 		}
-		// Weighed after the change: what is left once it is gone.
-		if f, err := SecondFactors(ctx, q, sub); err != nil || f.On && len(f.Usable()) == 0 {
-			return cmp.Or(err, error(ErrLastFactor))
-		}
-		return writeAudit(ctx, q, string(CodeFactor(kind))+".removed", sub, audit.User(sub))
+		return nil
 	})
 }
 
-// FactorUnbound is sub's Identifier of kind, a second factor, unbound in
-// q's transaction (SERIALIZABLE): ErrLastFactor when 两步验证 is on and has
-// none left, else the factor's removal audited as sms.removed or
+// FactorUnbound is sub's Identifier of kind, a second factor, about to be
+// unbound or removed as one in q's transaction (SERIALIZABLE): ErrLastFactor
+// when it is 两步验证's Last, else its removal audited as sms.removed or
 // email.removed, done by by (ADR 0038).
 func FactorUnbound(ctx context.Context, q *sqlc.Queries, sub, kind string, by audit.Actor) error {
-	if f, err := SecondFactors(ctx, q, sub); err != nil || f.On && len(f.Usable()) == 0 {
+	if f, err := SecondFactors(ctx, q, sub); err != nil || f.Last(CodeFactor(kind)) {
 		return cmp.Or(err, error(ErrLastFactor))
 	}
 	return writeAudit(ctx, q, string(CodeFactor(kind))+".removed", sub, by)
@@ -286,16 +315,15 @@ func (s *Store) Enable(ctx context.Context, sub string) ([]string, error) {
 }
 
 // RemoveTOTP removes the User's TOTP, leaving 两步验证 on by their others:
-// ErrLastTOTP without one that counts, ErrNoTOTP without a TOTP.
+// ErrLastTOTP when it is 两步验证's Last, ErrNoTOTP without a TOTP.
 func (s *Store) RemoveTOTP(ctx context.Context, sub string) error {
 	return db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
+		if f, err := SecondFactors(ctx, q, sub); err != nil || f.Last(FactorTOTP) {
+			return cmp.Or(err, error(ErrLastTOTP))
+		}
 		if n, err := q.DeleteConfirmedTOTP(ctx, sub); err != nil || n == 0 {
 			return cmp.Or(err, error(ErrNoTOTP))
-		}
-		// Weighed after the delete: what is left once it is gone.
-		if f, err := SecondFactors(ctx, q, sub); err != nil || len(f.Usable()) == 0 {
-			return cmp.Or(err, error(ErrLastTOTP))
 		}
 		return writeAudit(ctx, q, "totp.removed", sub, audit.User(sub))
 	})

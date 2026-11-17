@@ -2,7 +2,6 @@ package login
 
 import (
 	"context"
-	"slices"
 
 	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/twofactor"
@@ -12,23 +11,10 @@ import (
 // offer: not added, its Channel gone, or the first factor's own channel.
 const errNotOffered identity.Invalid = "这次登录不能用这种方式完成两步验证"
 
-// codeFactorTo is the phone number or email that f, a code factor, sends
-// sub's second-step code to in a login whose first factor is amr (ADR 0038).
-func (s *Service) codeFactorTo(ctx context.Context, sub string, amr []string, f twofactor.Factor) (string, error) {
-	fs, err := s.twoFactor.SecondFactors(ctx, sub)
-	if err != nil {
-		return "", err
-	}
-	if f.Kind() == "" || !slices.Contains(fs.SecondStep(amr), f) {
-		return "", errNotOffered
-	}
-	return s.twoFactor.CodeTo(ctx, sub, f)
-}
-
 // sendSecondFactorCode sends sub the second step's code by f, from ip: only
 // when asked, within the send limits login codes count toward too.
 func (s *Service) sendSecondFactorCode(ctx context.Context, sub string, amr []string, f twofactor.Factor, ip string) error {
-	to, err := s.codeFactorTo(ctx, sub, amr, f)
+	to, err := s.twoFactor.OfferedCodeTo(ctx, sub, amr, f, errNotOffered)
 	if err != nil {
 		return err
 	}
@@ -40,7 +26,7 @@ func (s *Service) sendSecondFactorCode(ctx context.Context, sub string, amr []st
 // account center's 最近登录 know), which locks out and audits: a wrong one
 // counts as a wrong TOTP code does.
 func (s *Service) checkSecondFactorCode(ctx context.Context, sub string, amr []string, f twofactor.Factor, code string) error {
-	to, err := s.codeFactorTo(ctx, sub, amr, f)
+	to, err := s.twoFactor.OfferedCodeTo(ctx, sub, amr, f, errNotOffered)
 	if err != nil {
 		return err
 	}

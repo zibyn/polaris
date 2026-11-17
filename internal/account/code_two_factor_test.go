@@ -94,8 +94,8 @@ func TestOnlyWayInIsNoSecondFactor(t *testing.T) {
 	}
 }
 
-// With Passkey login off a Passkey is no factor at all: deleting one of two
-// is refused while 两步验证 has nothing else.
+// With Passkey login off a Passkey is no factor at all: deleting one leaves
+// what 两步验证 can be passed with as it was, so it is not refused.
 func TestPasskeysDoNotCountWhilePasskeyLoginIsOff(t *testing.T) {
 	e := start(t)
 	e.user("ALICE", "phone:+8613800138000")
@@ -106,9 +106,37 @@ func TestPasskeysDoNotCountWhilePasskeyLoginIsOff(t *testing.T) {
 		t.Fatalf("turn on with Passkeys: %d", c)
 	}
 	e.setPasskeyLogin(false)
-	if c := e.call("DELETE", tok, "/v1/account/passkeys/"+first, nil, nil); c != 409 {
-		t.Errorf("delete one of two Passkeys, Passkey login off: %d, want 409", c)
+	if c := e.call("DELETE", tok, "/v1/account/passkeys/"+first, nil, nil); c != 204 {
+		t.Errorf("delete one of two Passkeys, Passkey login off: %d, want 204", c)
 	}
+}
+
+// With the SMS Channel gone, the phone number is no factor 两步验证 can be
+// passed with: removing it, as a factor or by unbinding it, leaves that as it
+// was, so neither is refused though it was all 两步验证 had.
+func TestRemovingAnUnusableFactor(t *testing.T) {
+	e := start(t)
+	e.user("ALICE", "phone:+8613800138000", "email:alice@example.com")
+	tok := e.signIn("ALICE", 0)
+	if c := e.call("PUT", tok, "/v1/account/2fa/identifiers/phone", nil, nil); c != 204 {
+		t.Fatalf("add SMS: %d", c)
+	}
+	if c := e.call("POST", tok, "/v1/account/2fa", nil, nil); c != 200 {
+		t.Fatalf("turn on with SMS: %d", c)
+	}
+	if _, err := e.pool.Exec(context.Background(), "DELETE FROM channels WHERE kind = 'phone'"); err != nil {
+		t.Fatal(err)
+	}
+	if c := e.call("DELETE", tok, "/v1/account/2fa/identifiers/phone", nil, nil); c != 204 {
+		t.Errorf("remove SMS, its Channel gone: %d, want 204", c)
+	}
+	if c := e.call("PUT", tok, "/v1/account/2fa/identifiers/phone", nil, nil); c != 204 {
+		t.Fatalf("add SMS again: %d", c)
+	}
+	if c := e.call("DELETE", tok, "/v1/account/identifiers/phone", nil, nil); c != 204 {
+		t.Errorf("unbind the phone number, its Channel gone: %d, want 204", c)
+	}
+	e.audited(t, "sms.removed", 2)
 }
 
 // smsOnly is ALICE with 两步验证 on by her phone number alone, in a Session

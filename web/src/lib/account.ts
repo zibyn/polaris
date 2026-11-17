@@ -255,19 +255,21 @@ export const lastCodeFactorNote = (
 
 // lastPasskeyNote is why the User's Passkey can't be deleted, or undefined:
 // it is their last, and 两步验证 is on with no TOTP, phone number or email.
+// With Passkey login off it is no factor, and deleting it changes nothing.
 // Same words as the server's 409 (passkey.ErrLastPasskey).
 export const lastPasskeyNote = (
 	me: TwoFactorState,
 	passkeys: number,
 ): string | undefined => {
 	if (
+		me.passkeyLogin &&
 		me.twoFactor.enabled &&
 		!me.twoFactor.totp &&
 		!me.twoFactor.sms &&
 		!me.twoFactor.email &&
 		passkeys === 1
 	)
-		return "这是你唯一的两步验证方式，请先添加验证器或关闭两步验证";
+		return "这是你唯一的两步验证方式,请先添加其他方式或关闭两步验证";
 };
 
 // recoveryCodesText is the file the recovery codes download as.

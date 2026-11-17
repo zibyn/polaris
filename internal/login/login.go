@@ -483,7 +483,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		check := func() error { return s.twoFactor.Check(ctx, pending, r.PostFormValue("totp"), recoveryCode) }
 		if op == "code-2fa" {
 			f := twofactor.Factor(r.PostFormValue("factor"))
-			form.CodeFactor, method, amrValue = string(f), "code", string(codeAMR(f.Kind()))
+			form.CodeFactor, method, amrValue = string(f), "code", f.AMR()
 			check = func() error { return s.checkSecondFactorCode(ctx, pending, pl.AMR, f, r.PostFormValue("code")) }
 		}
 		amr := pl.AMR
@@ -593,7 +593,7 @@ func (s *Service) submit(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		if err != nil {
 			return fail(err)
 		}
-		return s.login(w, r, as, c, sub, []string{string(codeAMR(kind))}, identity.CodeMethod(kind), terms.TermsVersion)
+		return s.login(w, r, as, c, sub, []string{twofactor.CodeFactor(kind).AMR()}, identity.CodeMethod(kind), terms.TermsVersion)
 
 	case "password":
 		if pending != "" {
@@ -855,14 +855,6 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request, ls *goidc.Logou
 }
 
 type logoutPage struct{ Action, Name string }
-
-// codeAMR is how a code to an Identifier of kind proves the User (RFC 8176).
-func codeAMR(kind string) goidc.AMR {
-	if kind == "email" {
-		return goidc.AMROneTimePassword
-	}
-	return goidc.AMRSMS
-}
 
 type grantTypeKey struct{}
 
@@ -1156,7 +1148,7 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 		offered := f.SecondStep(pl.AMR)
 		p.HasTOTP = slices.Contains(offered, twofactor.FactorTOTP)
 		p.Recovery = p.Recovery || !p.HasTOTP
-		p.Excluded = len(offered) == 0 && len(f.Usable()) > 0
+		p.Excluded = f.Excluded(pl.AMR)
 		if p.Codes, err = s.codeFactors(ctx, pl.Sub, offered); err != nil {
 			return goidc.StatusFailure, err
 		}

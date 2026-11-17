@@ -139,6 +139,28 @@ func TestFactors(t *testing.T) {
 	}
 }
 
+// Removing a factor is refused only when it is the one usable factor of
+// 两步验证 on; one not usable now changes nothing (ADR 0038).
+func TestLast(t *testing.T) {
+	for _, c := range []struct {
+		f    twofactor.Factors
+		g    twofactor.Factor
+		want bool
+	}{
+		{twofactor.Factors{On: true, SMS: true}, twofactor.FactorSMS, true},
+		{twofactor.Factors{SMS: true}, twofactor.FactorSMS, false},
+		{twofactor.Factors{On: true, SMS: true, Email: true}, twofactor.FactorSMS, false},
+		{twofactor.Factors{On: true}, twofactor.FactorSMS, false},
+		{twofactor.Factors{On: true, TOTP: true, Passkey: true}, twofactor.FactorTOTP, true},
+		{twofactor.Factors{On: true, TOTP: true, Passkey: true}, twofactor.FactorPasskey, false},
+		{twofactor.Factors{On: true, Passkey: true}, twofactor.FactorPasskey, false},
+	} {
+		if got := c.f.Last(c.g); got != c.want {
+			t.Errorf("%+v Last(%s) = %v, want %v", c.f, c.g, got, c.want)
+		}
+	}
+}
+
 // A TOTP always satisfies 两步验证或 Passkey; a Passkey only while the
 // instance offers Passkey login.
 func TestSatisfied(t *testing.T) {

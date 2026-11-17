@@ -326,7 +326,14 @@ test("the last Passkey of 两步验证 without a TOTP can't be deleted (409)", (
 		passkeyLogin: true,
 		twoFactor: { ...factors, enabled, totp },
 	});
-	assert.match(lastPasskeyNote(me(true, false), 1) ?? "", /先添加验证器/);
+	assert.equal(
+		lastPasskeyNote(me(true, false), 1),
+		"这是你唯一的两步验证方式,请先添加其他方式或关闭两步验证",
+	);
+	assert.equal(
+		lastPasskeyNote({ ...me(true, false), passkeyLogin: false }, 1),
+		undefined,
+	);
 	assert.equal(lastPasskeyNote(me(true, false), 2), undefined);
 	assert.equal(lastPasskeyNote(me(true, true), 1), undefined);
 	assert.equal(lastPasskeyNote(me(false, false), 1), undefined);

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/url"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/zibyn/polaris/internal/identity"
@@ -97,6 +98,27 @@ func TestDirectSecondStepMethods(t *testing.T) {
 	r = e.challenge(url.Values{"auth_session": {r.AuthSession}, "code": {e.inbox.take(ownerPhone)}})
 	if r.Next != "email" || r.Methods != nil {
 		t.Errorf("SMS login with email left: %+v", r)
+	}
+}
+
+// An SMS login of a User whose one factor is SMS is left with the 恢复码:
+// next totp, saying to sign in another way, as the hosted page does; a
+// password login, and a User with a TOTP, are told just totp (ADR 0038).
+func TestDirectSecondStepLeavesOutTheFirstChannel(t *testing.T) {
+	const totp = "两步验证 is on: send totp or recovery_code"
+	e := start(t)
+	sub := e.ownerCodeFactors("phone")
+	r := e.challenge(url.Values{"identifier": {ownerPhone}, "altcha": {e.solve()}})
+	r = e.challenge(url.Values{"auth_session": {r.AuthSession}, "code": {e.inbox.take(ownerPhone)}})
+	if r.Next != "totp" || !strings.Contains(r.Describe, "sign in another way") {
+		t.Errorf("SMS login, SMS the one factor: %+v", r)
+	}
+	e.twoFactor(sub)
+	if _, err := e.pool.Exec(context.Background(), "UPDATE identifiers SET second_factor = false"); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.appPassword(); r.Next != "totp" || r.Describe != totp {
+		t.Errorf("password login, a TOTP alone: %+v", r)
 	}
 }
 

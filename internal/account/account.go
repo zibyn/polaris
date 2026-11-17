@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -447,16 +446,7 @@ const errTwoFactorOnly identity.Invalid = "已开启两步验证,请使用两步
 // factorCodeTo is where a code by kind goes for 两步验证: the phone number
 // or email, added as a factor, while its Channel is configured (ADR 0038).
 func (s *Service) factorCodeTo(ctx context.Context, kind string) (string, error) {
-	sub := callerOf(ctx).sub
-	fs, err := s.twoFactor.SecondFactors(ctx, sub)
-	if err != nil {
-		return "", err
-	}
-	f := twofactor.CodeFactor(kind)
-	if f == "" || !slices.Contains(fs.Usable(), f) {
-		return "", errTwoFactorOnly
-	}
-	return s.twoFactor.CodeTo(ctx, sub, f)
+	return s.twoFactor.OfferedCodeTo(ctx, callerOf(ctx).sub, nil, twofactor.CodeFactor(kind), errTwoFactorOnly)
 }
 
 func (s *Service) sendReauthCode(ctx context.Context, in *kindBody) (*struct{}, error) {
@@ -545,15 +535,7 @@ func (s *Service) reauth(ctx context.Context, in *reauthInput) (*struct{}, error
 	if err != nil {
 		return nil, fail(err)
 	}
-	return nil, s.reauthenticated(ctx, c, []string{codeAMR(in.Body.Kind)})
-}
-
-// codeAMR is how a code to an Identifier of kind proves the User (RFC 8176).
-func codeAMR(kind string) string {
-	if kind == "email" {
-		return "otp"
-	}
-	return "sms"
+	return nil, s.reauthenticated(ctx, c, []string{twofactor.CodeFactor(in.Body.Kind).AMR()})
 }
 
 // reauthenticated records a fresh authentication of c's Session, proved as
@@ -578,7 +560,7 @@ func (s *Service) reauthTwoFactor(ctx context.Context, in *reauthInput) error {
 		if err := s.ids.SecondFactor(ctx, c.from, c.sub, "code", func() error { return s.codes.Check(ctx, to, in.Body.Code) }); err != nil {
 			return err
 		}
-		return s.reauthenticated(ctx, c, []string{codeAMR(in.Body.Kind), "mfa"})
+		return s.reauthenticated(ctx, c, []string{twofactor.CodeFactor(in.Body.Kind).AMR(), "mfa"})
 	}
 	if in.Body.TOTP == "" && in.Body.RecoveryCode == "" {
 		return errTwoFactorOnly

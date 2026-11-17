@@ -279,6 +279,8 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 				return next(nextSMS, "两步验证 is on: send two_factor=sms for a code")
 			case slices.Equal(u, []twofactor.Factor{twofactor.FactorEmail}):
 				return next(nextEmail, "两步验证 is on: send two_factor=email for a code")
+			case f.Excluded(amr):
+				return next(nextTOTP, "两步验证 is on: only a recovery_code completes this sign-in; or sign in another way")
 			}
 			return next(nextTOTP, "两步验证 is on: send totp or recovery_code")
 		case stepPhone:
@@ -414,7 +416,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		case f == "":
 			return mistake(identity.Invalid("no code was sent in this auth_session: send two_factor first"))
 		default:
-			method, second = "code", string(codeAMR(f.Kind()))
+			method, second = "code", f.AMR()
 			check = func() error { return s.checkSecondFactorCode(ctx, p.Sub, p.AMR, f, code) }
 		}
 		err := s.ids.SecondFactor(ctx, identity.AttemptFrom(r, c.ID), p.Sub, method, check)
@@ -506,7 +508,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		if err != nil {
 			return mistake(err)
 		}
-		return signedIn(sub, time.Now(), []string{string(codeAMR(kind))}, identity.CodeMethod(kind))
+		return signedIn(sub, time.Now(), []string{twofactor.CodeFactor(kind).AMR()}, identity.CodeMethod(kind))
 
 	case r.PostFormValue("identifier") != "":
 		kind, value, err := identity.ParseIdentifier(r.PostFormValue("identifier"))

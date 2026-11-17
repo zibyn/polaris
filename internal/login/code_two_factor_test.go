@@ -126,7 +126,7 @@ func TestHostedSecondStepByCode(t *testing.T) {
 	if strings.Contains(page, "138****8000") || !strings.Contains(page, "o***@example.com") {
 		t.Errorf("SMS offered with no phone Channel: %s", page)
 	}
-	if page = e.sendSecondStep(page, "sms"); e.inbox.take(ownerPhone) != "" {
+	if e.sendSecondStep(page, "sms"); e.inbox.take(ownerPhone) != "" {
 		t.Errorf("sent by SMS with no phone Channel")
 	}
 }
@@ -164,7 +164,7 @@ func TestHostedSecondStepLeavesOutTheFirstChannel(t *testing.T) {
 		t.Fatalf("an SMS login's second step: %s", page)
 	}
 	// Nor is it sent when asked anyway.
-	if page = e.sendSecondStep(page, "sms"); e.inbox.take(ownerPhone) != "" {
+	if e.sendSecondStep(page, "sms"); e.inbox.take(ownerPhone) != "" {
 		t.Errorf("sent the second step's code over the first factor's channel")
 	}
 
@@ -202,7 +202,7 @@ func TestHostedSecondStepCodeLimits(t *testing.T) {
 	}
 
 	page = e.sendSecondStep(page, "sms")
-	code := e.inbox.take(ownerPhone)
+	e.inbox.take(ownerPhone) // unused: the wrong codes go in instead
 	for range 4 {
 		_, page = e.post(page, url.Values{"op": {"code-2fa"}, "factor": {"sms"}, "code": {"000000"}})
 	}
@@ -220,7 +220,7 @@ func TestHostedSecondStepCodeLimits(t *testing.T) {
 	}
 	page = e.passwordToSecondStep()
 	page = e.sendSecondStep(page, "sms")
-	code = e.inbox.take(ownerPhone)
+	code := e.inbox.take(ownerPhone)
 	resp, page := e.post(page, url.Values{"op": {"code-2fa"}, "factor": {"sms"}, "code": {code}})
 	if resp.StatusCode != 200 || !strings.Contains(html.UnescapeString(page), identity.ErrTwoFactorLocked.Error()) {
 		t.Errorf("a right code while locked: %d %s", resp.StatusCode, page)
