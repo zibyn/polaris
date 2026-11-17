@@ -243,7 +243,7 @@ addEventListener("DOMContentLoaded", () => {
   <input type="hidden" name="op" value="delete-pending">
   <a href="#" onclick="this.closest('form').requestSubmit();return false">{{t "注销账号"}}</a>
 </form>
-{{else if .TOTP}}<h1>{{t "两步验证"}}</h1>
+{{else if .TwoFactor}}<h1>{{t "两步验证"}}</h1>
 {{with .Error}}<p class="error" role="alert">{{msg .}}</p>{{end}}
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="op" value="totp">
@@ -253,7 +253,7 @@ addEventListener("DOMContentLoaded", () => {
     <input name="recovery_code" autocomplete="off" autocapitalize="none" spellcheck="false" required autofocus>
   </label>
   <button>{{t "登录"}}</button>
-  {{if not .NoTOTP}}<a href="{{.Action}}">{{t "使用验证器"}}</a>{{end}}
+  {{if .HasTOTP}}<a href="{{.Action}}">{{t "使用验证器"}}</a>{{end}}
   {{else}}
   <p>{{t "输入验证器 App 中的 6 位验证码。"}}</p>
   <label>{{t "验证码"}}

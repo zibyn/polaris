@@ -171,6 +171,22 @@ class PolarisTest {
     assertEquals(PolarisException.PASSKEY_CANCELLED, assertFailsWith<PolarisException> { server.auth(FakePasskeys(response = null)).verifyPasskey(step.session) }.error)
   }
 
+  // 两步验证 by a Passkey alone still takes a 恢复码, on the same auth_session.
+  @Test
+  fun recoveryCodeCompletesPasskeyRequired() = runTest {
+    server.handlers["/v1/auth/challenge"] = { form ->
+      when {
+        form["username"] == "alice" -> json(insufficient("s1", "passkey"), HttpStatusCode.Forbidden)
+        form["auth_session"] == "s1" && form["recovery_code"] == "abcd-efgh" -> json("""{"authorization_code":"c1"}""")
+        else -> error("unexpected $form")
+      }
+    }
+    val auth = server.auth()
+
+    val step = assertIs<SignInStep.PasskeyRequired>(auth.signInWithPassword("alice", "pw", termsVersion = ""))
+    assertEquals(SignInStep.SignedIn, auth.verifyRecoveryCode(step.session, "abcd-efgh"))
+  }
+
   // TOTP and Passkey both on: either completes it, and so does a 恢复码.
   @Test
   fun twoFactorChoiceTakesEitherMethod() = runTest {

@@ -236,7 +236,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 				return answer{}, err
 			}
 		}
-		if what == stepSetPassword || what == stepTOTP || what == stepPhone {
+		if what == stepSetPassword || what == stepTwoFactor || what == stepPhone {
 			st.Pending, st.Identifier = newPending(sub, authTime, amr, method, what), ""
 		}
 		switch what {
@@ -246,7 +246,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			// letting that carry on through 两步验证, the terms and a phone
 			// number would build the session on it.
 			return next(nextPassword, "set your own password: send password")
-		case stepTOTP:
+		case stepTwoFactor:
 			totp, key, err := s.secondFactors(ctx, sub)
 			switch {
 			case err != nil:
@@ -338,7 +338,7 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 		}
 		return signedIn(p.Sub, p.authTime(), p.AMR, p.Method)
 
-	case st.Pending != nil && st.Pending.TOTP: // nothing else before TOTP
+	case st.Pending != nil && st.Pending.TwoFactor: // nothing else before 两步验证
 		p := st.Pending
 		// A Passkey of the User's own, as for a sign-in: begin, then the
 		// assertion. A refused one spends the challenge, not the

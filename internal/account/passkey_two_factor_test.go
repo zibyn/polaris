@@ -60,8 +60,8 @@ func TestEnableTwoFactorWithPasskey(t *testing.T) {
 	if c := e.call("DELETE", tok, "/v1/account/passkeys/"+last, nil, nil); c != 409 {
 		t.Errorf("delete the last Passkey, nothing else: %d, want 409", c)
 	}
-	if c := e.call("DELETE", tok, "/v1/account/2fa/totp", nil, nil); c != 422 {
-		t.Errorf("remove a TOTP there isn't: %d", c)
+	if c := e.call("DELETE", tok, "/v1/account/2fa/totp", nil, nil); c != 404 {
+		t.Errorf("remove a TOTP there isn't: %d, want 404", c)
 	}
 
 	// Adding a TOTP keeps the recovery codes and is no second turning on.

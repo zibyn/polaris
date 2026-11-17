@@ -35,9 +35,11 @@ const (
 	// ErrNoPasskey is 两步验证 by a Passkey alone, from a User with none
 	// that counts.
 	ErrNoPasskey identity.Invalid = "请先添加 Passkey,或开启 Passkey 登录"
-	// ErrLastFactor is removing the TOTP that is all 两步验证 has besides
+	// ErrLastTOTP is removing the TOTP that is all 两步验证 has besides
 	// the recovery codes.
-	ErrLastFactor   identity.Invalid = "验证器是你唯一的两步验证方式,请先添加 Passkey 或关闭两步验证"
+	ErrLastTOTP identity.Invalid = "验证器是你唯一的两步验证方式,请先添加 Passkey 或关闭两步验证"
+	// ErrNoTOTP is removing a TOTP the User has not added (or not confirmed).
+	ErrNoTOTP       identity.Invalid = "没有验证器"
 	ErrCode                          = identity.ErrWrongTOTP
 	ErrRecoveryCode                  = identity.ErrWrongRecoveryCode
 )
@@ -64,6 +66,21 @@ func (s *Store) On(ctx context.Context, sub string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// HasTOTP reports whether sub has a confirmed TOTP.
+func (s *Store) HasTOTP(ctx context.Context, sub string) (bool, error) {
+	_, ok, err := confirmedTOTP(ctx, s.q, sub)
+	return ok, err
+}
+
+// confirmedTOTP is sub's TOTP, and whether it is there and confirmed.
+func confirmedTOTP(ctx context.Context, q *sqlc.Queries, sub string) (sqlc.TOTPRow, bool, error) {
+	t, err := q.TOTP(ctx, sub)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return t, false, nil
+	}
+	return t, err == nil && t.ConfirmedAt.Valid, err
 }
 
 func aad(sub string) []byte { return []byte("totp:" + sub) }
@@ -117,19 +134,18 @@ func (s *Store) Enable(ctx context.Context, sub string) ([]string, error) {
 }
 
 // RemoveTOTP removes the User's TOTP, leaving 两步验证 on by their Passkey:
-// ErrLastFactor without one that counts.
+// ErrLastTOTP without one that counts, ErrNoTOTP without a TOTP.
 func (s *Store) RemoveTOTP(ctx context.Context, sub string) error {
 	return db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if ok, err := q.PasskeySecondFactor(ctx, sub); err != nil {
-			return err
-		} else if !ok {
-			if t, err := q.TOTP(ctx, sub); err == nil && t.ConfirmedAt.Valid {
-				return ErrLastFactor
-			}
+		if _, has, err := confirmedTOTP(ctx, q, sub); err != nil || !has {
+			return cmp.Or(err, error(ErrNoTOTP))
+		}
+		if ok, err := q.PasskeySecondFactor(ctx, sub); err != nil || !ok {
+			return cmp.Or(err, error(ErrLastTOTP))
 		}
 		if n, err := q.DeleteConfirmedTOTP(ctx, sub); err != nil || n == 0 {
-			return cmp.Or(err, error(ErrNotBegun))
+			return cmp.Or(err, error(ErrNoTOTP))
 		}
 		return writeAudit(ctx, q, "totp.removed", sub, audit.User(sub))
 	})
@@ -239,14 +255,14 @@ func (s *Store) Check(ctx context.Context, sub, totp, recoveryCode string) error
 // once. Without one: ErrOff while 两步验证 is off, else a wrong code, so a
 // User whose 两步验证 has only a Passkey is not let past it by any code.
 func (s *Store) CheckTOTP(ctx context.Context, sub, code string) error {
-	t, err := s.q.TOTP(ctx, sub)
-	if errors.Is(err, pgx.ErrNoRows) || err == nil && !t.ConfirmedAt.Valid {
+	t, has, err := confirmedTOTP(ctx, s.q, sub)
+	if err != nil {
+		return err
+	} else if !has {
 		if on, err := s.On(ctx, sub); err != nil || on {
 			return cmp.Or(err, error(ErrCode))
 		}
 		return ErrOff
-	} else if err != nil {
-		return err
 	}
 	step, err := s.match(sub, t.Secret, t.LastStep, code)
 	if err != nil {

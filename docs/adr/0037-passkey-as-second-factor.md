@@ -1,6 +1,6 @@
 # Passkey 可作为两步验证的第二因素
 
-两步验证原来只认 TOTP 和恢复码:密码、验证码或 Provider 登录之后,只能输验证器里的 6 位码或一个恢复码。已经有 Passkey 的 User 想挡住拿到密码或手机号的人,还得再装一个验证器。改为第二因素可以是 TOTP、Passkey 或恢复码之一,三者效果相同。参照 Logto 等平台:Passkey 登录直接满足 MFA,同一把 Passkey 也是一种 WebAuthn MFA 因素。Passkey 本来就要求设备验证 User(生物识别或 PIN),当第二因素比 TOTP 更强,也不怕钓鱼。
+两步验证原来只认 TOTP 和恢复码:密码、验证码或 Provider 登录之后,只能输验证器里的 6 位码或一个恢复码。已经有 Passkey 的 User 想挡住拿到密码或手机号的人,还得再装一个验证器。改为第二因素可以是 TOTP、Passkey 或恢复码之一,三者效果相同。参照 Logto 等平台:Passkey 登录直接满足两步验证(Logto 称之为「MFA」),同一把 Passkey 也可当第二因素(Logto 的「WebAuthn MFA」)。Passkey 本来就要求设备验证 User(生物识别或 PIN),当第二因素比 TOTP 更强,也不怕钓鱼。
 
 - 第二步只在 User 有 Passkey 时提供,断言选项只列这个 User 自己的凭证(`allowCredentials`),要求 UV;别人的 Passkey 不通过。失败处理与 Passkey 登录一致,计数器回退照样写 `passkey.counter_regressed` 并拒绝。
 - 第二步用 Passkey 时 `amr` 为 `[第一因素, "hwk"/"swk", "mfa"]`,不加 `otp`:没有输入任何一次性码。

@@ -12,7 +12,7 @@ import (
 // The hosted page's pending login survives the AuthnSession store's trip
 // through JSON, failures included.
 func TestPendingOfRoundTrip(t *testing.T) {
-	p := newPending("u1", time.Unix(100, 0), []string{"pwd"}, "password", stepTOTP)
+	p := newPending("u1", time.Unix(100, 0), []string{"pwd"}, "password", stepTwoFactor)
 	p.Session = "s1"
 	if p.missed() {
 		t.Fatal("first miss ended the login")
@@ -26,7 +26,7 @@ func TestPendingOfRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := pendingOf(as)
-	if got == nil || got.Sub != "u1" || got.Session != "s1" || !got.TOTP || got.Password || got.Failures != 1 ||
+	if got == nil || got.Sub != "u1" || got.Session != "s1" || !got.TwoFactor || got.Password || got.Failures != 1 ||
 		!got.authTime().Equal(time.Unix(100, 0)) || !slices.Equal(got.AMR, []string{"pwd"}) || got.Method != "password" {
 		t.Fatalf("pendingOf = %+v", got)
 	}

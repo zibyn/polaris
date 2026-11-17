@@ -128,7 +128,7 @@ func (s *Service) Register(mux *http.ServeMux) {
 	op(api, http.MethodPost, "begin-totp", "/2fa/totp", "Begin turning 两步验证 on: a new TOTP to add to an authenticator, replacing one not yet confirmed", s.beginTOTP, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodPost, "confirm-totp", "/2fa/totp/confirm", "Turn 两步验证 on with a code from the new TOTP; the recovery codes are shown this once", s.confirmTOTP, http.StatusForbidden, http.StatusConflict)
 	op(api, http.MethodPost, "enable-2fa", "/2fa", "Turn 两步验证 on with a Passkey alone, no TOTP; the recovery codes are shown this once. 422 without a Passkey or while Passkey login is off", s.enableTwoFactor, http.StatusForbidden, http.StatusConflict)
-	op(api, http.MethodDelete, "remove-totp", "/2fa/totp", "Remove the TOTP, leaving 两步验证 on by a Passkey; 409 when no Passkey counts", s.removeTOTP, http.StatusForbidden, http.StatusConflict)
+	op(api, http.MethodDelete, "remove-totp", "/2fa/totp", "Remove the TOTP, leaving 两步验证 on by a Passkey; 404 without one, 409 when no Passkey counts", s.removeTOTP, http.StatusForbidden, http.StatusNotFound, http.StatusConflict)
 	op(api, http.MethodDelete, "disable-2fa", "/2fa", "Turn 两步验证 off, deleting the TOTP and recovery codes; 409 for an admin while 管理员必须启用两步验证或 Passkey is on and no Passkey is left", s.disableTwoFactor, http.StatusForbidden, http.StatusConflict)
 	// A Provider redirect comes back to the account center with ?bound=<id>,
 	// ?reauthenticated=<id> or ?error=<what to show the User>.
@@ -739,7 +739,11 @@ func (s *Service) removeTOTP(ctx context.Context, _ *struct{}) (*struct{}, error
 	if err := fresh(ctx); err != nil {
 		return nil, err
 	}
-	return nil, twoFactorErr(s.twoFactor.RemoveTOTP(ctx, callerOf(ctx).sub))
+	err := s.twoFactor.RemoveTOTP(ctx, callerOf(ctx).sub)
+	if errors.Is(err, twofactor.ErrNoTOTP) {
+		return nil, huma.Error404NotFound(err.Error())
+	}
+	return nil, twoFactorErr(err)
 }
 
 // disableTwoFactor turns 两步验证 off; the User's other Sessions stay.
@@ -771,7 +775,7 @@ func (s *Service) regenerateRecoveryCodes(ctx context.Context, _ *struct{}) (*re
 // twoFactorErr is 409 for 两步验证 already on, or for removing its last
 // factor.
 func twoFactorErr(err error) error {
-	if errors.Is(err, twofactor.ErrOn) || errors.Is(err, twofactor.ErrLastFactor) {
+	if errors.Is(err, twofactor.ErrOn) || errors.Is(err, twofactor.ErrLastTOTP) {
 		return huma.Error409Conflict(err.Error())
 	}
 	return fail(err)
@@ -831,7 +835,7 @@ func passkeyErr(err error) error {
 	if errors.Is(err, passkey.ErrGone) {
 		return huma.Error404NotFound("没有这把 Passkey")
 	}
-	if errors.Is(err, passkey.ErrLastSecondFactor) {
+	if errors.Is(err, passkey.ErrLastPasskey) {
 		return huma.Error409Conflict(err.Error())
 	}
 	return fail(err)

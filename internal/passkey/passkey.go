@@ -52,9 +52,9 @@ const (
 	// (docs/spec/consoles.md#设置); the Passkeys Users added are kept and
 	// work again once it is on.
 	ErrOff identity.Invalid = "Passkey 登录已关闭"
-	// ErrLastSecondFactor is deleting the last Passkey of a User whose
+	// ErrLastPasskey is deleting the last Passkey of a User whose
 	// 两步验证 is on by Passkey alone.
-	ErrLastSecondFactor identity.Invalid = "这是你唯一的两步验证方式,请先添加验证器或关闭两步验证"
+	ErrLastPasskey identity.Invalid = "这是你唯一的两步验证方式，请先添加验证器或关闭两步验证"
 )
 
 // amrMFA marks an authentication that passed 两步验证 (RFC 8176).
@@ -484,7 +484,7 @@ func (s *Store) Rename(ctx context.Context, sub, id, name string, by audit.Actor
 	return err
 }
 
-// Remove deletes one of the User's Passkeys: ErrLastSecondFactor for the
+// Remove deletes one of the User's Passkeys: ErrLastPasskey for the
 // last one while 两步验证 is on with no TOTP, whoever asks.
 func (s *Store) Remove(ctx context.Context, sub, id string, by audit.Actor) error {
 	// SERIALIZABLE: 两步验证 going on by this Passkey, or the TOTP going,
@@ -492,7 +492,7 @@ func (s *Store) Remove(ctx context.Context, sub, id string, by audit.Actor) erro
 	return db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if last, err := q.LastSecondFactor(ctx, sqlc.LastSecondFactorParams{Sub: sub, ID: id}); err != nil || last {
-			return cmp.Or(err, error(ErrLastSecondFactor))
+			return cmp.Or(err, error(ErrLastPasskey))
 		}
 		n, err := q.DeletePasskey(ctx, sqlc.DeletePasskeyParams{ByID: by.ID, ByType: by.Type, ID: id, UserID: sub})
 		if err == nil && n == 0 {
