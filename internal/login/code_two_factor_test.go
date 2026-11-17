@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zibyn/polaris/internal/audit"
 	"github.com/zibyn/polaris/internal/crypt"
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
@@ -127,6 +128,27 @@ func TestHostedSecondStepByCode(t *testing.T) {
 	}
 	if page = e.sendSecondStep(page, "sms"); e.inbox.take(ownerPhone) != "" {
 		t.Errorf("sent by SMS with no phone Channel")
+	}
+}
+
+// A phone number replaced, in the account center or by an admin (both
+// identity.ReplaceIdentifier), takes the factor along: the second step's
+// code goes to the new one (ADR 0038).
+func TestReplacedPhoneKeepsTheFactor(t *testing.T) {
+	e := start(t)
+	sub := e.ownerCodeFactors("phone")
+	keyring, _ := crypt.NewKeyring(1, map[byte][]byte{1: bytes.Repeat([]byte{7}, 32)})
+	const newPhone = "+8613900139000"
+	if err := identity.New(e.pool, keyring).ReplaceIdentifier(context.Background(), sub, "phone", newPhone, audit.User(sub)); err != nil {
+		t.Fatal(err)
+	}
+	page := e.passwordToSecondStep()
+	if !strings.Contains(page, "发送验证码到 139****9000") {
+		t.Fatalf("want the new phone number offered: %s", page)
+	}
+	e.sendSecondStep(page, "sms")
+	if e.inbox.take(ownerPhone) != "" || e.inbox.take(newPhone) == "" {
+		t.Errorf("the code should go to the new phone number only")
 	}
 }
 

@@ -352,6 +352,8 @@ SELECT u.id, u.created_at, u.disabled_at, u.pending,
        EXISTS (SELECT 1 FROM two_factor t WHERE t.user_id = u.id) AS two_factor,
        EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = u.id) AS has_passkey,
        (SELECT passkey_login FROM settings) AS passkey_login,
+       EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = u.id AND i.kind = 'phone' AND i.second_factor) AS sms_factor,
+       EXISTS (SELECT 1 FROM identifiers i WHERE i.user_id = u.id AND i.kind = 'email' AND i.second_factor) AS email_factor,
        -- 注册邀请现在是什么状态: 表里还挂着一条还没到期的就是「已发出」, 上
        -- 一条被本人用掉了就是「已接受」(users.invite_accepted_at), 其余
        -- 是「没发出过」——撤销过、过期了都算, 不等清理任务把那行扫掉。
@@ -373,6 +375,8 @@ type GetUserRow struct {
 	TwoFactor       bool
 	HasPasskey      bool
 	PasskeyLogin    bool
+	SmsFactor       bool
+	EmailFactor     bool
 	InviteExpiresAt pgtype.Timestamptz
 	InviteAccepted  bool
 }
@@ -391,6 +395,8 @@ func (q *Queries) GetUser(ctx context.Context, id string) (GetUserRow, error) {
 		&i.TwoFactor,
 		&i.HasPasskey,
 		&i.PasskeyLogin,
+		&i.SmsFactor,
+		&i.EmailFactor,
 		&i.InviteExpiresAt,
 		&i.InviteAccepted,
 	)

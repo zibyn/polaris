@@ -105,3 +105,30 @@ func TestPasskeysDoNotCountWhilePasskeyLoginIsOff(t *testing.T) {
 		t.Errorf("delete one of two Passkeys, Passkey login off: %d, want 409", c)
 	}
 }
+
+// Unbinding the phone number that is 两步验证's last factor is refused; with
+// another factor left it goes, and the factor with it (ADR 0038).
+func TestUnbindCodeSecondFactor(t *testing.T) {
+	e := start(t)
+	e.user("ALICE", "phone:+8613800138000", "email:alice@example.com")
+	tok := e.signIn("ALICE", 0)
+	if c := e.call("PUT", tok, "/v1/account/2fa/identifiers/phone", nil, nil); c != 204 {
+		t.Fatalf("add SMS: %d", c)
+	}
+	if c := e.call("POST", tok, "/v1/account/2fa", nil, nil); c != 200 {
+		t.Fatalf("turn on with SMS: %d", c)
+	}
+	if c := e.call("DELETE", tok, "/v1/account/identifiers/phone", nil, nil); c != 409 {
+		t.Errorf("unbind the last factor's phone number: %d, want 409", c)
+	}
+	if c := e.call("PUT", tok, "/v1/account/2fa/identifiers/email", nil, nil); c != 204 {
+		t.Fatalf("add email: %d", c)
+	}
+	if c := e.call("DELETE", tok, "/v1/account/identifiers/phone", nil, nil); c != 204 {
+		t.Fatalf("unbind the phone number with the email left: %d", c)
+	}
+	e.audited(t, "sms.removed", 1)
+	if sms, email := e.codeFactors(tok); sms || !email {
+		t.Errorf("me after unbinding: %v %v", sms, email)
+	}
+}

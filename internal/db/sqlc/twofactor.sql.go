@@ -64,6 +64,16 @@ func (q *Queries) BeginTOTP(ctx context.Context, arg BeginTOTPParams) (int64, er
 	return result.RowsAffected(), nil
 }
 
+const clearCodeFactors = `-- name: ClearCodeFactors :exec
+UPDATE identifiers SET second_factor = false WHERE user_id = $1 AND second_factor
+`
+
+// Removes the User's phone number and email as second factors.
+func (q *Queries) ClearCodeFactors(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, clearCodeFactors, userID)
+	return err
+}
+
 const confirmTOTP = `-- name: ConfirmTOTP :execrows
 UPDATE totp_credentials SET confirmed_at = now(), last_step = $1
 WHERE user_id = $2 AND confirmed_at IS NULL AND secret = $3 AND last_step < $1

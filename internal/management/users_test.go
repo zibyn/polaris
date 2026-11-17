@@ -467,15 +467,20 @@ func (e *env) twoFactorOn(sub string) {
 
 func TestAdminResetsTwoFactor(t *testing.T) {
 	e := start(t)
-	e.user("ALICE", nil, "username:alice")
+	e.user("ALICE", nil, "username:alice", "phone:+8613800138000", "email:alice@example.com")
 	e.user("RO", []string{"readonly"})
 	e.twoFactorOn("ALICE")
+	// The phone number and email added as second factors go with the reset
+	// (ADR 0038).
+	if _, err := e.pool.Exec(context.Background(), `UPDATE identifiers SET second_factor = true WHERE user_id = 'ALICE' AND kind <> 'username'`); err != nil {
+		t.Fatal(err)
+	}
 	app := e.session("ALICE", "polaris-console", false)
 	owner, ro := e.token(e.owner, nil), e.token("RO", nil)
 
-	var detail struct{ TwoFactor bool }
-	if code := e.get(ro, "/users/ALICE", &detail); code != 200 || !detail.TwoFactor {
-		t.Fatalf("readonly sees 2FA on: %d %+v", code, detail)
+	var detail struct{ TwoFactor, SMSFactor, EmailFactor bool }
+	if code := e.get(ro, "/users/ALICE", &detail); code != 200 || !detail.TwoFactor || !detail.SMSFactor || !detail.EmailFactor {
+		t.Fatalf("readonly sees 2FA on, by SMS and email: %d %+v", code, detail)
 	}
 	if code := e.call("DELETE", ro, "/users/ALICE/2fa", nil, nil); code != 403 {
 		t.Errorf("readonly resets: %d", code)
@@ -483,8 +488,8 @@ func TestAdminResetsTwoFactor(t *testing.T) {
 	if code := e.call("DELETE", owner, "/users/ALICE/2fa", nil, nil); code != 204 {
 		t.Fatalf("reset: %d", code)
 	}
-	if e.get(owner, "/users/ALICE", &detail); detail.TwoFactor {
-		t.Error("2FA still on after reset")
+	if e.get(owner, "/users/ALICE", &detail); detail.TwoFactor || detail.SMSFactor || detail.EmailFactor {
+		t.Errorf("2FA still on after reset: %+v", detail)
 	}
 	var left int
 	if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM recovery_codes WHERE user_id = 'ALICE'`).Scan(&left); err != nil || left != 0 {

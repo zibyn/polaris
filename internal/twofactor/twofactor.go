@@ -214,6 +214,17 @@ func (s *Store) RemoveCode(ctx context.Context, sub, kind string) error {
 	})
 }
 
+// FactorUnbound is sub's Identifier of kind, a second factor, unbound in
+// q's transaction (SERIALIZABLE): ErrLastFactor when 两步验证 is on and has
+// none left, else the factor's removal audited as sms.removed or
+// email.removed, done by by (ADR 0038).
+func FactorUnbound(ctx context.Context, q *sqlc.Queries, sub, kind string, by audit.Actor) error {
+	if f, err := SecondFactors(ctx, q, sub); err != nil || f.On && len(f.Usable()) == 0 {
+		return cmp.Or(err, error(ErrLastFactor))
+	}
+	return writeAudit(ctx, q, string(CodeFactor(kind))+".removed", sub, by)
+}
+
 // confirmedTOTP is sub's TOTP, and whether it is there and confirmed.
 func confirmedTOTP(ctx context.Context, q *sqlc.Queries, sub string) (sqlc.TOTPRow, bool, error) {
 	t, err := q.TOTP(ctx, sub)
@@ -329,8 +340,19 @@ func (s *Store) Confirm(ctx context.Context, sub, code string) ([]string, error)
 }
 
 // Disable turns 两步验证 off, deleting the TOTP and every 恢复码 and ending
-// its lockout (ADR 0036); audited as event done by by.
+// its lockout (ADR 0036); audited as event done by by. The Passkeys, phone
+// number and email added stay, as they do when the User turns it off.
 func (s *Store) Disable(ctx context.Context, sub, event string, by audit.Actor) error {
+	return s.disable(ctx, sub, event, by, false)
+}
+
+// Reset is an admin's Disable, audited as mfa.reset, that also removes the
+// phone number and email as factors (ADR 0038); the Passkeys stay.
+func (s *Store) Reset(ctx context.Context, sub string, by audit.Actor) error {
+	return s.disable(ctx, sub, "mfa.reset", by, true)
+}
+
+func (s *Store) disable(ctx context.Context, sub, event string, by audit.Actor, codes bool) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if n, err := q.DisableTwoFactor(ctx, sub); err != nil {
@@ -343,6 +365,11 @@ func (s *Store) Disable(ctx context.Context, sub, event string, by audit.Actor) 
 		}
 		if err := q.DeleteRecoveryCodes(ctx, sub); err != nil {
 			return err
+		}
+		if codes {
+			if err := q.ClearCodeFactors(ctx, sub); err != nil {
+				return err
+			}
 		}
 		if err := q.ClearLockout(ctx, identity.TwoFactorLockKey(sub)); err != nil {
 			return err
