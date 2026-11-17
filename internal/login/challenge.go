@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -247,13 +248,14 @@ func (s *Service) runChallenge(w http.ResponseWriter, r *http.Request) (answer, 
 			// number would build the session on it.
 			return next(nextPassword, "set your own password: send password")
 		case stepTwoFactor:
-			totp, key, err := s.secondFactors(ctx, sub)
-			switch {
-			case err != nil:
+			f, err := s.twoFactor.SecondFactors(ctx, sub)
+			if err != nil {
 				return answer{}, err
-			case totp && key:
+			}
+			switch u := f.Usable(); {
+			case len(u) > 1:
 				return next(nextTwoFactor, "两步验证 is on: send totp or recovery_code, or begin a passkey", nextTOTP, nextPasskey)
-			case key:
+			case slices.Equal(u, []twofactor.Factor{twofactor.FactorPasskey}):
 				return next(nextPasskey, "两步验证 is on: begin a passkey")
 			}
 			return next(nextTOTP, "两步验证 is on: send totp or recovery_code")

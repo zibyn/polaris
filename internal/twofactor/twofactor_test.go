@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -105,6 +106,30 @@ func TestChecks(t *testing.T) {
 	}
 	if err := s.UseRecoveryCode(ctx, "ALICE", codes[1]); !errors.Is(err, twofactor.ErrRecoveryCode) {
 		t.Errorf("recovery code after turning off: %v", err)
+	}
+}
+
+// The second step takes a TOTP, and a Passkey only while the instance offers
+// Passkey login; a Passkey kept while it is off still counts as left.
+func TestFactors(t *testing.T) {
+	T, P := twofactor.FactorTOTP, twofactor.FactorPasskey
+	for _, c := range []struct {
+		f      twofactor.Factors
+		usable []twofactor.Factor
+		kept   bool
+	}{
+		{twofactor.Factors{}, nil, false},
+		{twofactor.Factors{TOTP: true}, []twofactor.Factor{T}, true},
+		{twofactor.Factors{Passkey: true, PasskeyLogin: true}, []twofactor.Factor{P}, true},
+		{twofactor.Factors{Passkey: true}, nil, true},
+		{twofactor.Factors{TOTP: true, Passkey: true, PasskeyLogin: true}, []twofactor.Factor{T, P}, true},
+	} {
+		if got := c.f.Usable(); !slices.Equal(got, c.usable) {
+			t.Errorf("%+v Usable() = %v, want %v", c.f, got, c.usable)
+		}
+		if got := c.f.Kept(); got != c.kept {
+			t.Errorf("%+v Kept() = %v", c.f, got)
+		}
 	}
 }
 

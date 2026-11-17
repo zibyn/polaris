@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -68,10 +69,52 @@ func (s *Store) On(ctx context.Context, sub string) (bool, error) {
 	return err == nil, err
 }
 
-// HasTOTP reports whether sub has a confirmed TOTP.
-func (s *Store) HasTOTP(ctx context.Context, sub string) (bool, error) {
-	_, ok, err := confirmedTOTP(ctx, s.q, sub)
-	return ok, err
+// Factor is a way through 两步验证 besides a 恢复码.
+type Factor string
+
+const (
+	FactorTOTP    Factor = "totp"
+	FactorPasskey Factor = "passkey"
+)
+
+// Factors is what a User has to pass 两步验证 with besides a 恢复码: the one
+// place that weighs them (ADR 0037).
+type Factors struct {
+	// On: 两步验证 is on. TOTP: a confirmed one.
+	On, TOTP bool
+	// Passkey: the User has one; PasskeyLogin: the instance offers Passkey
+	// login.
+	Passkey, PasskeyLogin bool
+}
+
+// Usable is what the second step takes now, in this order: the TOTP, and a
+// Passkey while the instance offers Passkey login. A 恢复码 goes wherever a
+// TOTP code does.
+func (f Factors) Usable() []Factor {
+	var u []Factor
+	if f.TOTP {
+		u = append(u, FactorTOTP)
+	}
+	if f.Passkey && f.PasskeyLogin {
+		u = append(u, FactorPasskey)
+	}
+	return u
+}
+
+// Kept reports whether any factor is left at all: a Passkey counts while
+// Passkey login is off too, as it serves again once that is back.
+func (f Factors) Kept() bool { return f.TOTP || f.Passkey }
+
+// SecondFactors reads sub's Factors.
+func (s *Store) SecondFactors(ctx context.Context, sub string) (Factors, error) {
+	return SecondFactors(ctx, s.q, sub)
+}
+
+// SecondFactors reads sub's Factors with q, a transaction's for a check that
+// must hold against concurrent changes (run it SERIALIZABLE).
+func SecondFactors(ctx context.Context, q *sqlc.Queries, sub string) (Factors, error) {
+	r, err := q.SecondFactorsOf(ctx, sub)
+	return Factors{On: r.TwoFactor, TOTP: r.Totp, Passkey: r.Passkey, PasskeyLogin: r.PasskeyLogin}, err
 }
 
 // confirmedTOTP is sub's TOTP, and whether it is there and confirmed.
@@ -118,7 +161,7 @@ func (s *Store) Enable(ctx context.Context, sub string) ([]string, error) {
 	// there (passkey.Remove), not both let through.
 	err := db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if ok, err := q.PasskeySecondFactor(ctx, sub); err != nil || !ok {
+		if f, err := SecondFactors(ctx, q, sub); err != nil || !slices.Contains(f.Usable(), FactorPasskey) {
 			return cmp.Or(err, error(ErrNoPasskey))
 		}
 		if n, err := q.EnableTwoFactor(ctx, sub); err != nil || n == 0 {
@@ -138,14 +181,12 @@ func (s *Store) Enable(ctx context.Context, sub string) ([]string, error) {
 func (s *Store) RemoveTOTP(ctx context.Context, sub string) error {
 	return db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if _, has, err := confirmedTOTP(ctx, q, sub); err != nil || !has {
-			return cmp.Or(err, error(ErrNoTOTP))
-		}
-		if ok, err := q.PasskeySecondFactor(ctx, sub); err != nil || !ok {
-			return cmp.Or(err, error(ErrLastTOTP))
-		}
 		if n, err := q.DeleteConfirmedTOTP(ctx, sub); err != nil || n == 0 {
 			return cmp.Or(err, error(ErrNoTOTP))
+		}
+		// Weighed after the delete: what is left once it is gone.
+		if f, err := SecondFactors(ctx, q, sub); err != nil || len(f.Usable()) == 0 {
+			return cmp.Or(err, error(ErrLastTOTP))
 		}
 		return writeAudit(ctx, q, "totp.removed", sub, audit.User(sub))
 	})

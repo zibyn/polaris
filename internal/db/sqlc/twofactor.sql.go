@@ -158,17 +158,33 @@ func (q *Queries) KeepTwoFactorOn(ctx context.Context, userID string) (int64, er
 	return result.RowsAffected(), nil
 }
 
-const passkeySecondFactor = `-- name: PasskeySecondFactor :one
-SELECT (EXISTS (SELECT 1 FROM passkeys WHERE user_id = $1) AND (SELECT passkey_login FROM settings))::boolean AS usable
+const secondFactorsOf = `-- name: SecondFactorsOf :one
+SELECT EXISTS (SELECT 1 FROM two_factor t WHERE t.user_id = $1) AS two_factor,
+       EXISTS (SELECT 1 FROM totp_credentials c WHERE c.user_id = $1 AND c.confirmed_at IS NOT NULL) AS totp,
+       EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = $1) AS passkey,
+       s.passkey_login
+FROM settings s
 `
 
-// Whether sub has a Passkey 两步验证 can take: one at all, while the
-// instance offers Passkey login (ADR 0037).
-func (q *Queries) PasskeySecondFactor(ctx context.Context, userID string) (bool, error) {
-	row := q.db.QueryRow(ctx, passkeySecondFactor, userID)
-	var usable bool
-	err := row.Scan(&usable)
-	return usable, err
+type SecondFactorsOfRow struct {
+	TwoFactor    bool
+	Totp         bool
+	Passkey      bool
+	PasskeyLogin bool
+}
+
+// What sub has to pass 两步验证 with besides the recovery codes
+// (twofactor.Factors).
+func (q *Queries) SecondFactorsOf(ctx context.Context, sub string) (SecondFactorsOfRow, error) {
+	row := q.db.QueryRow(ctx, secondFactorsOf, sub)
+	var i SecondFactorsOfRow
+	err := row.Scan(
+		&i.TwoFactor,
+		&i.Totp,
+		&i.Passkey,
+		&i.PasskeyLogin,
+	)
+	return i, err
 }
 
 const tOTP = `-- name: TOTP :one

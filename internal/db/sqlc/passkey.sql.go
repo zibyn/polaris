@@ -122,27 +122,6 @@ func (q *Queries) DeletePasskey(ctx context.Context, arg DeletePasskeyParams) (i
 	return result.RowsAffected(), nil
 }
 
-const lastSecondFactor = `-- name: LastSecondFactor :one
-SELECT (EXISTS (SELECT 1 FROM two_factor t WHERE t.user_id = $1)
-   AND NOT EXISTS (SELECT 1 FROM totp_credentials c WHERE c.user_id = $1 AND c.confirmed_at IS NOT NULL)
-   AND (SELECT count(*) FROM passkeys p WHERE p.user_id = $1) = 1
-   AND EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = $1 AND p.id = $2::text))::boolean AS last
-`
-
-type LastSecondFactorParams struct {
-	Sub string
-	ID  string
-}
-
-// Whether the Passkey id is sub's last, and with 两步验证 on and no TOTP
-// all it has besides the recovery codes.
-func (q *Queries) LastSecondFactor(ctx context.Context, arg LastSecondFactorParams) (bool, error) {
-	row := q.db.QueryRow(ctx, lastSecondFactor, arg.Sub, arg.ID)
-	var last bool
-	err := row.Scan(&last)
-	return last, err
-}
-
 const passkeyByCredentialID = `-- name: PasskeyByCredentialID :one
 SELECT user_id, name, public_key, sign_count, backup_eligible, backup_state
 FROM passkeys WHERE credential_id = $1

@@ -681,17 +681,6 @@ func (s *Service) needsTwoFactor(ctx context.Context, sub string, amr []string) 
 	return s.twoFactor.On(ctx, sub)
 }
 
-// secondFactors reports which of TOTP and Passkey sub can pass 两步验证 with:
-// a confirmed TOTP, and a Passkey while the instance has Passkey login on
-// (ADR 0037). A 恢复码 goes wherever a TOTP code does.
-func (s *Service) secondFactors(ctx context.Context, sub string) (totp, key bool, err error) {
-	if totp, err = s.twoFactor.HasTOTP(ctx, sub); err != nil {
-		return false, false, err
-	}
-	key, err = s.q.PasskeySecondFactor(ctx, sub)
-	return totp, key, err
-}
-
 // wrongSecondFactor reports whether err is a wrong TOTP code or 恢复码: one
 // of the tries a pending login has.
 func wrongSecondFactor(err error) bool {
@@ -1134,12 +1123,12 @@ func (s *Service) render(w http.ResponseWriter, r *http.Request, as *goidc.Authn
 	// The 两步验证 step carries options naming the User's own Passkeys, if
 	// they have any and Passkey login is on (ADR 0037).
 	if pl := pendingOf(as); p.TwoFactor && pl != nil {
-		has, err := s.twoFactor.HasTOTP(ctx, pl.Sub)
+		f, err := s.twoFactor.SecondFactors(ctx, pl.Sub)
 		if err != nil {
 			return goidc.StatusFailure, err
 		}
-		p.HasTOTP = has
-		p.Recovery = p.Recovery || !has
+		p.HasTOTP = slices.Contains(f.Usable(), twofactor.FactorTOTP)
+		p.Recovery = p.Recovery || !p.HasTOTP
 		options, challenge, err := s.passkeys.SecondFactorOptions(ctx, pl.Sub)
 		switch {
 		case err == nil:

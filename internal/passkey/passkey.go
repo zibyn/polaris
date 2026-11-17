@@ -30,6 +30,7 @@ import (
 	"github.com/zibyn/polaris/internal/db/sqlc"
 	"github.com/zibyn/polaris/internal/identity"
 	"github.com/zibyn/polaris/internal/oidc/goidc"
+	"github.com/zibyn/polaris/internal/twofactor"
 )
 
 const (
@@ -491,14 +492,15 @@ func (s *Store) Remove(ctx context.Context, sub, id string, by audit.Actor) erro
 	// meanwhile is refused here or there (twofactor), not both let through.
 	return db.Serializable(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
-		if last, err := q.LastSecondFactor(ctx, sqlc.LastSecondFactorParams{Sub: sub, ID: id}); err != nil || last {
+		n, err := q.DeletePasskey(ctx, sqlc.DeletePasskeyParams{ByID: by.ID, ByType: by.Type, ID: id, UserID: sub})
+		if err != nil || n == 0 {
+			return cmp.Or(err, error(ErrGone))
+		}
+		// Weighed after the delete: what is left once it is gone.
+		if f, err := twofactor.SecondFactors(ctx, q, sub); err != nil || f.On && !f.Kept() {
 			return cmp.Or(err, error(ErrLastPasskey))
 		}
-		n, err := q.DeletePasskey(ctx, sqlc.DeletePasskeyParams{ByID: by.ID, ByType: by.Type, ID: id, UserID: sub})
-		if err == nil && n == 0 {
-			err = ErrGone
-		}
-		return err
+		return nil
 	})
 }
 
