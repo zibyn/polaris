@@ -157,7 +157,7 @@ const meUser = (over: Partial<Parameters<typeof reauthChoices>[0]> = {}) => ({
 	hasPassword: false,
 	passwordAllowed: false,
 	passkeyLogin: true,
-	twoFactor: { enabled: false, totp: false },
+	twoFactor: { enabled: false, totp: false, sms: false, email: false },
 	...over,
 });
 
@@ -173,7 +173,9 @@ test("reauthentication offers a Passkey only to a User who has one", () => {
 });
 
 test("with 两步验证 on, a Passkey joins the TOTP as a way to reauthenticate", () => {
-	const twoFactor = { twoFactor: { enabled: true, totp: true } };
+	const twoFactor = {
+		twoFactor: { enabled: true, totp: true, sms: false, email: false },
+	};
 	assert.deepEqual(reauthChoices(meUser(twoFactor), false, true), ["totp"]);
 	assert.deepEqual(reauthChoices(meUser(twoFactor), true, true), [
 		"passkey",
@@ -217,10 +219,30 @@ test("an avatar is a JPEG, PNG or WebP of at most 5 MB", () => {
 });
 
 test("with 两步验证 on by a Passkey alone, a recovery code joins the Passkey", () => {
-	const twoFactor = { twoFactor: { enabled: true, totp: false } };
+	const twoFactor = {
+		twoFactor: { enabled: true, totp: false, sms: false, email: false },
+	};
 	assert.deepEqual(reauthChoices(meUser(twoFactor), true, true), [
 		"passkey",
 		"recovery",
+	]);
+});
+
+test("with 两步验证 on, a code goes only to a phone number or email added as a factor", () => {
+	const me = meUser({
+		identifiers: [{ kind: "phone" }, { kind: "email" }],
+		twoFactor: { enabled: true, totp: false, sms: true, email: false },
+	});
+	assert.deepEqual(reauthChoices(me, false, true), ["phone", "recovery"]);
+	const both = meUser({
+		identifiers: [{ kind: "phone" }, { kind: "email" }],
+		twoFactor: { enabled: true, totp: true, sms: true, email: true },
+	});
+	assert.deepEqual(reauthChoices(both, true, true), [
+		"passkey",
+		"totp",
+		"phone",
+		"email",
 	]);
 });
 
